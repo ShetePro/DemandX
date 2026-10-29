@@ -44,7 +44,6 @@ export default defineConfig([
     files: ['src/**/*.{ts,tsx}'],
     plugins: { boundaries },
     settings: {
-      'boundaries/ignore': ['**/*.css'],
       'boundaries/elements': [
         { type: 'app', pattern: 'src/app/**', mode: 'full' },
         { type: 'feature', pattern: 'src/features/*/**', capture: ['feature'], mode: 'full' },
@@ -58,13 +57,13 @@ export default defineConfig([
         {
           default: 'disallow',
           rules: [
-            { from: 'app', allow: ['feature', 'ui', 'lib'] },
+            { from: 'app', allow: ['app', 'feature', 'ui', 'lib'] },
             {
               from: 'feature',
-              allow: ['ui', 'lib'],
+              allow: [['feature', { feature: '${from.feature}' }], 'ui', 'lib'],
               disallow: [['feature', { feature: '!${from.feature}' }]],
             },
-            { from: 'ui', allow: ['lib'] },
+            { from: 'ui', allow: ['ui', 'lib'] },
             { from: 'lib', allow: ['lib'] },
           ],
         },
