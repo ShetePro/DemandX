@@ -10,6 +10,12 @@ export type AdapterRequest = {
   apiKey: string | null;
   modelId: string;
   prompt: Prompt;
+  /**
+   * True for `LlmPort.structured` calls. Providers without native schema support
+   * key their "answer with JSON only" instruction off this flag, not off
+   * `jsonSchema`, so a schema with no JSON Schema form still means "structured".
+   */
+  structured: boolean;
   /** Present only for `structured` calls: native JSON schema, when supported. */
   jsonSchema?: Record<string, unknown> | undefined;
   /** Overrides `DEFAULT_TIMEOUT_MS`; the chain leaves it unset. */
@@ -50,7 +56,7 @@ export const JSON_ONLY_INSTRUCTION =
 
 /** The system prompt for one request, with the JSON rule added when structured. */
 export function systemPromptFor(request: AdapterRequest): string {
-  if (!request.jsonSchema) return request.prompt.system;
+  if (!request.structured) return request.prompt.system;
   return request.prompt.system === ''
     ? JSON_ONLY_INSTRUCTION
     : `${request.prompt.system}\n\n${JSON_ONLY_INSTRUCTION}`;

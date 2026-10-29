@@ -9,7 +9,7 @@ function endpoint(baseUrl: string, modelId: string, apiKey: string | null): stri
 
 export async function complete(request: AdapterRequest): Promise<AdapterResult> {
   const generationConfig: Record<string, unknown> = { temperature: 0 };
-  if (request.jsonSchema) generationConfig.responseMimeType = 'application/json';
+  if (request.structured) generationConfig.responseMimeType = 'application/json';
 
   const body = {
     contents: [{ role: 'user', parts: [{ text: request.prompt.user }] }],

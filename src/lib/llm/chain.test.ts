@@ -161,6 +161,32 @@ describe('createLlmPort · text', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('degrades past empty content without cooling the provider', async () => {
+    fetchMock.mockResolvedValueOnce(answer('')).mockResolvedValueOnce(answer('from b'));
+
+    const port = makePort([A, B]);
+    const first = await port.text(PROMPT, { profile: 'bulk' });
+    expect(first.ok && first.value.used.providerName).toBe('B');
+
+    fetchMock.mockResolvedValueOnce(answer('')).mockResolvedValueOnce(answer('again from b'));
+    await port.text(PROMPT, { profile: 'bulk' });
+
+    // A is asked again on the second call: an empty answer is output quality,
+    // not provider health.
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('https://a.example/v1/chat/completions');
+  });
+
+  it('returns LLM_UNAVAILABLE for an empty chain without calling fetch', async () => {
+    const result = await makePort([]).text(PROMPT, { profile: 'quality' });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('LLM_UNAVAILABLE');
+    expect(result.message).toContain('链为空');
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
   it('treats an aborted request as retryable and cools the provider', async () => {
     fetchMock
       .mockRejectedValueOnce(new DOMException('The operation was aborted.', 'AbortError'))
@@ -179,6 +205,33 @@ describe('createLlmPort · text', () => {
 });
 
 describe('createLlmPort · structured', () => {
+  it('sends the JSON Schema without the draft $schema pointer', async () => {
+    fetchMock.mockResolvedValueOnce(answer('{"score":1}'));
+
+    await makePort([A]).structured(RESULT_SCHEMA, PROMPT, { profile: 'bulk' });
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as {
+      response_format?: { json_schema?: { schema?: Record<string, unknown> } };
+    };
+    const schema = body.response_format?.json_schema?.schema;
+    expect(schema).toBeDefined();
+    expect(schema).not.toHaveProperty('$schema');
+    expect(schema?.properties).toEqual({ score: { type: 'number' } });
+    expect(schema?.required).toEqual(['score']);
+  });
+
+  it('refuses a schema with no JSON Schema form without calling any provider', async () => {
+    const result = await makePort([A, B]).structured(z.object({ when: z.date() }), PROMPT, {
+      profile: 'bulk',
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('LLM_BAD_OUTPUT');
+    expect(result.message).toContain('schema_unsupported');
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
   it('retries the same provider once when its answer is not JSON', async () => {
     fetchMock
       .mockResolvedValueOnce(answer('not json'))

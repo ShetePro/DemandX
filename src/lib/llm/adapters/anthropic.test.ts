@@ -10,6 +10,7 @@ const REQUEST: AdapterRequest = {
   apiKey: 'sk-ant-test',
   modelId: 'claude-test',
   prompt: { system: 'system text', user: 'user text' },
+  structured: false,
 };
 
 let fetchMock: Mock;
@@ -60,7 +61,7 @@ describe('anthropic adapter', () => {
       new Response(JSON.stringify({ content: [{ type: 'text', text: '{"score":3}' }] })),
     );
 
-    await complete({ ...REQUEST, jsonSchema: SCHEMA });
+    await complete({ ...REQUEST, structured: true, jsonSchema: SCHEMA });
 
     const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as Record<
       string,

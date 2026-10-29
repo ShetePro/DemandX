@@ -50,11 +50,12 @@ function summarize(failures: Failure[]): string {
 
 /**
  * Auth, quota, timeouts, transport failures and 5xx mean this provider is
- * unusable for a while. 400/404/422 mean the request or model is wrong: another
- * provider may well accept it, but cooling this one would gain nothing.
+ * unusable for a while. `empty`/`malformed` answers and 400/404/422 say nothing
+ * about the provider's health: degrade to the next item, but keep it in rotation.
  */
 function needsCooldown(failure: AdapterFailure): boolean {
-  if (failure.reason !== 'http') return true;
+  if (failure.reason === 'timeout' || failure.reason === 'network') return true;
+  if (failure.reason !== 'http') return false;
   return failure.status >= 500 || [401, 403, 408, 429].includes(failure.status);
 }
 
@@ -74,7 +75,11 @@ function decode<T>(text: string, schema: z.ZodType<T>): Result<T> {
   return ok(parsed.data);
 }
 
-/** JSON Schema for providers that accept one; `undefined` when it cannot be derived. */
+/**
+ * JSON Schema for providers that accept one. `undefined` means the schema has no
+ * JSON Schema form; `structured` refuses to run rather than silently degrade to
+ * an unvalidated text call.
+ */
 function jsonSchemaOf(schema: z.ZodType): Record<string, unknown> | undefined {
   try {
     const json = z.toJSONSchema(schema) as Record<string, unknown>;
@@ -117,6 +122,7 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
   async function attempt(
     item: ChainItem,
     prompt: Prompt,
+    structured: boolean,
     jsonSchema: Record<string, unknown> | undefined,
   ): Promise<Attempt> {
     const apiKey = await deps.resolveApiKey(item.providerId);
@@ -130,6 +136,7 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
         apiKey: apiKey.value,
         modelId: item.modelId,
         prompt,
+        structured,
         jsonSchema,
       });
     } catch {
@@ -157,7 +164,7 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
           continue;
         }
 
-        const result = await attempt(item, prompt, undefined);
+        const result = await attempt(item, prompt, false, undefined);
         if (result.ok) return ok({ text: result.text, used: item, usage: result.usage });
         failures.push({ item, code: result.code });
       }
@@ -166,10 +173,19 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
     },
 
     async structured<T>(schema: z.ZodType<T>, prompt: Prompt, options: { profile: Profile }) {
+      const jsonSchema = jsonSchemaOf(schema);
+      // No JSON Schema form means we cannot ask any provider for this shape.
+      // Sending it anyway would turn a caller bug into "all models are bad".
+      if (!jsonSchema) {
+        return fail(
+          'LLM_BAD_OUTPUT',
+          `schema_unsupported：该 schema 无法转换为 JSON Schema（${options.profile}）`,
+        );
+      }
+
       const chain = await deps.loadChain(options.profile);
       if (!chain.ok) return chain;
 
-      const jsonSchema = jsonSchemaOf(schema);
       const failures: Failure[] = [];
       let sawBadOutput = false;
       let sawOtherFailure = false;
@@ -185,7 +201,7 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
         // A malformed answer is usually a formatting slip, so the same item gets
         // exactly one retry before the chain moves on.
         for (let attemptNo = 1; attemptNo <= 2; attemptNo += 1) {
-          const result = await attempt(item, prompt, jsonSchema);
+          const result = await attempt(item, prompt, true, jsonSchema);
           if (!result.ok) {
             failures.push({ item, code: result.code });
             sawOtherFailure = true;

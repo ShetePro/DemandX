@@ -38,6 +38,7 @@ describe('ollama adapter', () => {
       apiKey: null,
       modelId: 'qwen-test',
       prompt: { system: 'sys', user: 'usr' },
+      structured: false,
     };
 
     const result = await complete(request);
@@ -59,6 +60,7 @@ describe('ollama adapter', () => {
       apiKey: null,
       modelId: 'qwen-test',
       prompt: { system: 'sys', user: 'usr' },
+      structured: true,
       jsonSchema: SCHEMA,
     });
 
@@ -82,6 +84,7 @@ describe('ollama adapter', () => {
       apiKey: null,
       modelId: 'qwen-test',
       prompt: { system: 'sys', user: 'usr' },
+      structured: false,
     });
 
     expect(result).toMatchObject({ ok: false, reason: 'empty', code: 'empty' });

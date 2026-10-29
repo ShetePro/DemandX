@@ -10,6 +10,7 @@ const REQUEST: AdapterRequest = {
   apiKey: 'sk-google-test',
   modelId: 'gemini-test',
   prompt: { system: 'system text', user: 'user text' },
+  structured: false,
 };
 
 let fetchMock: Mock;
@@ -59,7 +60,7 @@ describe('google adapter', () => {
       ),
     );
 
-    await complete({ ...REQUEST, jsonSchema: SCHEMA });
+    await complete({ ...REQUEST, structured: true, jsonSchema: SCHEMA });
 
     const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as Record<
       string,
