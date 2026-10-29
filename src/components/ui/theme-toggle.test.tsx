@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { ThemeProvider } from './theme-provider';
+import { ThemeProvider } from '../theme-provider';
 import { ThemeToggle } from './theme-toggle';
 
 beforeEach(() => {

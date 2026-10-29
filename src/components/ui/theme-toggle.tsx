@@ -15,10 +15,12 @@ import { useTheme } from '@/lib/hooks/use-theme';
  * `true` once the client is live. (A `mounted` flag set from `useEffect` does
  * the same thing but trips `react-hooks/set-state-in-effect`.)
  */
+const subscribeNoop = () => () => {};
+
 export function ThemeToggle() {
   const { resolved, toggle } = useTheme();
   const mounted = useSyncExternalStore(
-    () => () => {},
+    subscribeNoop,
     () => true,
     () => false,
   );
