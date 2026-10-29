@@ -26,6 +26,8 @@ export function CommandPalette() {
 
   useHotkeys('mod+k', () => {
     const active = document.activeElement;
+    // Already open: keep focus where it is (Escape closes the palette).
+    if (active?.closest('[cmdk-input]')) return;
     restoreFocusRef.current =
       active instanceof HTMLElement && active !== document.body ? active : null;
     setOpen(true);
