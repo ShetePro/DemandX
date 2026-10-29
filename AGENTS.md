@@ -40,21 +40,45 @@ Output contract: the 8-part report in `README.md:484-589` (executive summary →
 
 | Path | Purpose |
 |---|---|
-| `README.md` | Entire spec: prompt, methodology, rubrics, output format. Line anchors in this file point here. |
-| `.idea/` | JetBrains project metadata only (`DemandX.iml` is a bare `WEB_MODULE`, no SDK). Mostly git-ignored by `.idea/.gitignore`; not part of the product. |
-| `.git/` | Single-commit history; remote `origin/main`. |
-
-There is no `src/`, `docs/`, `scripts/`, `.github/`, or `tests/`. Do not create placeholder trees for them.
+| `README.md` | Product spec: prompt, methodology, rubrics, output format. Line anchors in this file point here. |
+| `docs/superpowers/specs/` | Design specs: architecture, data model, scoring rules, UI architecture. |
+| `docs/superpowers/plans/` | Task-by-task build plan (P0–P7). |
+| `docs/design/` | Interactive prototype (`prototype/index.html`) and static wireframes (`mockups/`). |
+| `src/app/` | Routes only: layouts, pages, route handlers. `(workbench)` is the app shell. |
+| `src/features/` | Business components + server actions, one folder per domain; never import each other. |
+| `src/components/ui/` | Token-only primitives (Button/Card/Sheet/Dialog/…); no business copy. |
+| `src/components/shell/`, `src/components/common/` | App chrome and shared semantic badges. |
+| `src/lib/` | Pure logic: `db/`, `hooks/`, `utils/`, and (soon) `llm/`, `pipeline/`, `evidence/`, `scoring/`. |
+| `drizzle/` | Generated SQL migrations. Never edit by hand; change schema + `pnpm db:generate`. |
+| `tests/e2e/` | Playwright specs. |
+| `.worktrees/` | Git-ignored isolated worktrees. |
 
 ## Development Commands
 
-**None exist.** There is nothing to build, lint, run, or test. Do not invent `npm test`/`make` invocations in docs or answers.
-
-If code is added later, land a manifest plus scripts in the same change, and update this section — otherwise assistants will keep guessing.
+```bash
+pnpm install
+docker compose up -d        # Postgres 16 on 127.0.0.1:5433 (5432 is occupied on this machine)
+pnpm db:generate            # schema -> drizzle/*.sql
+pnpm db:migrate             # apply migrations (idempotent)
+pnpm dev                    # http://127.0.0.1:3000
+pnpm verify                 # typecheck + lint + unit tests, must stay green
+pnpm test                   # vitest (unit-node + unit-dom projects)
+pnpm e2e                    # Playwright (starts dev server automatically)
+pnpm tokens:check           # fails on hard-coded colours outside globals.css
+```
 
 ## Code Conventions & Common Patterns
 
-No code, so no enforced style. What *is* enforced is documentary discipline — these are the spec's own mandatory rules (`README.md:591-610`) and apply to **any** answer or artifact generated in this repo's name:
+Enforced by tooling (see `eslint.config.mjs`, `scripts/check-tokens.mjs`):
+
+- **Colours only via semantic tokens** (`bg-surface`, `text-fg`, `border-border`, `bg-accent`, `text-success`, `text-on-accent`). No hex/rgb/hsl in `src`, no `dark:` prefixes — dark mode swaps the `[data-theme='dark']` variable set.
+- **Dependency direction**: `app → features/components → components/ui → lib`. Features must not import each other; `eslint-plugin-boundaries` blocks it.
+- **Hooks live in `src/lib/hooks/`** and are tested with `renderHook`; components stay declarative.
+- **External input is parsed with zod** before it reaches typed code; fallible operations return a discriminated `Result` rather than throwing across layers.
+- **Server Components by default**; `'use client'` only for stateful islands (palette, tables, forms, charts).
+- **No global state library.** Reads go through RSC + Drizzle, mutations through Server Actions, live progress through SSE with `after_seq` resume.
+
+Documentary discipline for any research output still applies — these are the spec's mandatory rules (`README.md:591-610`):
 
 - **Never fabricate evidence.** No invented posts, comments, user counts, sales, prices, revenues, or statistics. Missing data is marked `未知` (unknown), not estimated silently.
 - **First-hand over second-hand.** Cite reachable original threads/pages; a search summary is not a verified source. State when a platform could not be fully accessed.
