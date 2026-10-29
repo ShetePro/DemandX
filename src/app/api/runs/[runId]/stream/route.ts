@@ -52,7 +52,7 @@ export async function GET(request: Request, { params }: RouteContext): Promise<R
             const frame = formatSseEvent({
               id: event.seq,
               type: event.type,
-              data: event.payload,
+              payload: event.payload,
             });
             controller.enqueue(encoder.encode(frame));
             after = event.seq;

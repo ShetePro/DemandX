@@ -104,10 +104,13 @@ suite('GET /api/runs/[runId]/stream', () => {
       // Resolving at all proves the stream closed itself instead of hanging.
       const body = await response.text();
       expect(body).toContain(
-        'id: 1\nevent: run.created\ndata: {"idea":"验证可续传事件流","angles":[]}',
+        'id: 1\ndata: {"type":"run.created","payload":{"idea":"验证可续传事件流","angles":[]}}',
       );
-      expect(body).toContain('id: 2\nevent: stage.started\ndata: {"index":0}');
-      expect(body).toContain('id: 3\nevent: stage.progress\ndata: {"index":1}');
+      expect(body).toContain('id: 2\ndata: {"type":"stage.started","payload":{"index":0}}');
+      expect(body).toContain('id: 3\ndata: {"type":"stage.progress","payload":{"index":1}}');
+      // Default `message` frames only: a named `event:` line would bypass
+      // `onmessage` on the browser client.
+      expect(body).not.toMatch(/^event: /m);
       expect([...body.matchAll(/^id: /gm)]).toHaveLength(3);
     },
   );
@@ -120,8 +123,9 @@ suite('GET /api/runs/[runId]/stream', () => {
 
       const resumed = await callRoute(String(runId), '?after_seq=1');
       const resumedBody = await resumed.text();
-      expect(resumedBody).not.toContain('id: 1\nevent: run.created');
-      expect(resumedBody).toContain('id: 2\nevent: stage.started');
+      expect(resumedBody).not.toContain('"type":"run.created"');
+      expect(resumedBody).not.toContain('id: 1\n');
+      expect(resumedBody).toContain('id: 2\ndata: {"type":"stage.started"');
       expect([...resumedBody.matchAll(/^id: /gm)]).toHaveLength(1);
 
       const started = Date.now();

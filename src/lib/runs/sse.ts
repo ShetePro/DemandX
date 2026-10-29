@@ -1,13 +1,18 @@
 /** One frame of the event stream; `id` is the resume cursor (`run_events.seq`). */
-export type SseEvent = { id: number; type: string; data: unknown };
+export type SseEvent = { id: number; type: string; payload: unknown };
 
 /**
- * Serialize one server-sent event. `JSON.stringify` escapes every newline in
- * the payload, so the frame always has exactly one `data:` line and cannot be
- * terminated early by user text.
+ * Serialize one server-sent event as a default `message` frame. The event name
+ * travels inside the JSON body (`{ type, payload }`) instead of an `event:`
+ * line: `EventSource.onmessage` only sees unnamed frames, so a named frame
+ * needs the client to register every type by hand and silently drops any type
+ * it does not know about yet.
+ *
+ * `JSON.stringify` escapes every newline in the payload, so the frame always
+ * has exactly one `data:` line and cannot be terminated early by user text.
  */
-export function formatSseEvent({ id, type, data }: SseEvent): string {
-  return `id: ${id}\nevent: ${type}\ndata: ${JSON.stringify(data ?? null)}\n\n`;
+export function formatSseEvent({ id, type, payload }: SseEvent): string {
+  return `id: ${id}\ndata: ${JSON.stringify({ type, payload: payload ?? null })}\n\n`;
 }
 
 const SEQ_PATTERN = /^\d+$/;
