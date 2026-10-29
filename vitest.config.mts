@@ -30,6 +30,7 @@ export default defineConfig({
           include: [
             'src/lib/**/*.test.ts',
             'src/features/**/*.test.ts',
+            'src/app/**/*.test.ts',
             'scripts/**/*.test.ts',
           ],
           exclude: [...configDefaults.exclude, '**/*.test.tsx', 'src/lib/hooks/**'],

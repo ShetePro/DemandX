@@ -24,7 +24,8 @@ function parseSeq(raw: string | null): number | null {
 /**
  * Where the stream should resume. `Last-Event-ID` is what EventSource sends on
  * its own reconnect; `?after_seq=` is for a first load and for clients that
- * rebuild the URL themselves. Malformed values resume from the beginning.
+ * rebuild the URL themselves. A malformed header falls back to the query, and
+ * only when both are unusable does the stream start from 0.
  */
 export function parseAfterSeq(request: Request): number {
   const fromHeader = parseSeq(request.headers.get('last-event-id'));
