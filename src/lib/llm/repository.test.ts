@@ -128,7 +128,7 @@ suite('provider repository', () => {
     expect(row.keyMask).toBe(box.mask(KEY));
     expect(row.keyMask).not.toBe(KEY);
 
-    const list = await repo.listProviders();
+    const list = unwrap(await repo.listProviders());
     expect(list).toHaveLength(1);
     const serialized = JSON.stringify(list);
     expect(serialized).not.toContain(KEY);
@@ -154,7 +154,7 @@ suite('provider repository', () => {
     expect(row.monthlyAllowanceUsd).toBe(12.5);
     expect(row.enabled).toBe(false);
 
-    const [listed] = await repo.listProviders();
+    const [listed] = unwrap(await repo.listProviders());
     expect(listed?.headers).toEqual({ 'X-Org': 'acme' });
     expect(listed?.monthlyAllowanceUsd).toBe(12.5);
     expect(listed?.enabled).toBe(false);
@@ -205,7 +205,7 @@ suite('provider repository', () => {
     expect(updated.keyMask).toBe(box.mask(NEW_KEY));
     expect(unwrap(await repo.resolveApiKey(row.id))).toBe(NEW_KEY);
 
-    const serialized = JSON.stringify(await repo.listProviders());
+    const serialized = JSON.stringify(unwrap(await repo.listProviders()));
     expect(serialized).not.toContain(KEY);
     expect(serialized).not.toContain(NEW_KEY);
   });
@@ -232,7 +232,7 @@ suite('provider repository', () => {
 
     expect(unwrap(await repo.deleteProvider(row.id))).toBeUndefined();
     expect(await providerCount(row.id)).toBe(0);
-    expect(await repo.listProviders()).toEqual([]);
+    expect(unwrap(await repo.listProviders())).toEqual([]);
 
     const second = expectFailure(await repo.deleteProvider(row.id));
     expect(second.code).toBe('PROVIDER_NOT_FOUND');
@@ -245,7 +245,7 @@ suite('provider repository', () => {
 
     expect(result.code).toBe('VALIDATION_FAILED');
     expect(result.message).toContain('baseUrl');
-    expect(await repo.listProviders()).toEqual([]);
+    expect(unwrap(await repo.listProviders())).toEqual([]);
   });
 
   it('rejects invalid update input before touching storage', async () => {
@@ -263,6 +263,13 @@ suite('provider repository', () => {
 
     expect(await ciphertextOf(row.id)).toBe(before);
     expect(unwrap(await repo.resolveApiKey(row.id))).toBe(KEY);
+  });
+
+  it('rejects a whitespace-only API key instead of storing it', async () => {
+    const result = expectFailure(await create({ apiKey: '          ' }));
+
+    expect(result.code).toBe('VALIDATION_FAILED');
+    expect(unwrap(await repo.listProviders())).toEqual([]);
   });
 
   it('reports PROVIDER_NOT_FOUND for unknown ids', async () => {
@@ -286,7 +293,7 @@ suite('provider repository', () => {
     unwrap(await create({ name: 'alpha' }));
     unwrap(await create({ name: 'beta' }));
 
-    expect((await repo.listProviders()).map((provider) => provider.name)).toEqual([
+    expect(unwrap(await repo.listProviders()).map((provider) => provider.name)).toEqual([
       'alpha',
       'beta',
       'gamma',

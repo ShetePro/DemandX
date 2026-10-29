@@ -105,17 +105,15 @@ async function findChainReferences(providerId: number): Promise<ChainReference[]
 
 /**
  * All providers, ordered by name. Never includes ciphertext or plaintext keys.
- * A storage failure yields an empty list rather than throwing into rendering;
- * failures are logged so an outage is not invisible in the server logs.
+ * A storage failure is returned as `STORAGE_FAILED` so callers can tell an
+ * outage apart from "no providers configured yet".
  */
-export async function listProviders(): Promise<ProviderRow[]> {
+export async function listProviders(): Promise<Result<ProviderRow[]>> {
   try {
     const rows = await db.select().from(providers).orderBy(asc(providers.name));
-    return rows.map(toProviderRow);
+    return { ok: true, value: rows.map(toProviderRow) };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'unknown error';
-    console.error(`listProviders failed: ${message}`);
-    return [];
+    return storageFailure('读取 provider 列表', error);
   }
 }
 
