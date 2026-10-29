@@ -65,13 +65,13 @@ function RunTable({ runs }: { runs: readonly WorkbenchRun[] }) {
             <th scope="col" className="px-4 py-2.5">
               状态
             </th>
-            <th scope="col" className="px-4 py-2.5">
+            <th scope="col" className="hidden px-4 py-2.5 md:table-cell">
               结论
             </th>
             <th scope="col" className="px-4 py-2.5">
               总分与可信度
             </th>
-            <th scope="col" className="px-4 py-2.5">
+            <th scope="col" className="hidden px-4 py-2.5 md:table-cell">
               更新
             </th>
           </tr>
@@ -90,13 +90,18 @@ function RunTable({ runs }: { runs: readonly WorkbenchRun[] }) {
                   {run.title}
                 </Link>
               </td>
-              <td className="px-4 py-2.5">
+              <td className="px-4 py-2.5 whitespace-nowrap">
                 <StatusBadge status={run.status} />
               </td>
-              <td className={cn('px-4 py-2.5', run.decision ? 'text-fg' : 'text-muted')}>
+              <td
+                className={cn(
+                  'hidden px-4 py-2.5 md:table-cell',
+                  run.decision ? 'text-fg' : 'text-muted',
+                )}
+              >
                 {run.decision ? DECISION_LABELS[run.decision] : '—'}
               </td>
-              <td className="px-4 py-2.5">
+              <td className="px-4 py-2.5 whitespace-nowrap">
                 {run.score === null || run.grade === null ? (
                   <span className="text-muted">— / —</span>
                 ) : (
@@ -108,7 +113,7 @@ function RunTable({ runs }: { runs: readonly WorkbenchRun[] }) {
                   </span>
                 )}
               </td>
-              <td className="px-4 py-2.5 whitespace-nowrap text-muted">
+              <td className="hidden px-4 py-2.5 whitespace-nowrap text-muted md:table-cell">
                 {formatRelativeTime(run.updatedAt)}
               </td>
             </tr>
