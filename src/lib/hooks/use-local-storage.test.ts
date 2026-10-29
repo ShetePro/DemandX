@@ -89,6 +89,20 @@ describe('useLocalStorage', () => {
     expect(result.current[0]).toBe('other tab');
   });
 
+  it('resets when another tab clears storage (null key)', () => {
+    const { result } = renderHook(() => useLocalStorage(KEY, 'fallback'));
+
+    act(() => result.current[1]('local value'));
+    expect(result.current[0]).toBe('local value');
+
+    act(() => {
+      window.localStorage.clear();
+      window.dispatchEvent(new StorageEvent('storage', { key: null }));
+    });
+
+    expect(result.current[0]).toBe('fallback');
+  });
+
   it('degrades to the in-memory value when writing throws', () => {
     const { result } = renderHook(() => useLocalStorage(KEY, 'fallback'));
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {

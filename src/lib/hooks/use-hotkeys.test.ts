@@ -108,6 +108,25 @@ describe('useHotkeys', () => {
     expect(second).toHaveBeenCalledTimes(1);
   });
 
+  it('treats space as a literal single key', () => {
+    const handler = vi.fn();
+    renderHook(() => useHotkeys('space', handler));
+
+    press({ key: ' ' });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire mod+k when shift is also held', () => {
+    stubPlatform('MacIntel');
+    const handler = vi.fn();
+    renderHook(() => useHotkeys('mod+k', handler));
+
+    press({ key: 'k', metaKey: true, shiftKey: true });
+
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it('unsubscribes on unmount', () => {
     stubPlatform('MacIntel');
     const handler = vi.fn();

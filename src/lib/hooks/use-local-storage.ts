@@ -81,7 +81,8 @@ export function useLocalStorage<T>(key: string, initial: T): LocalStorageControl
     if (typeof window === 'undefined') return;
 
     const onStorage = (event: StorageEvent) => {
-      if (event.key !== key) return;
+      // `null` means another tab called clear(); a null key must also reset us.
+      if (event.key !== null && event.key !== key) return;
       const stored = readStored(key, initialRef.current);
       valueRef.current = stored;
       setValueState(stored);
