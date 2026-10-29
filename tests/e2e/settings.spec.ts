@@ -13,7 +13,7 @@ import postgres from 'postgres';
  * `beforeEach` / `afterAll`, so the shared `demandx` database is left as found.
  */
 
-const STUB_ORIGIN = 'http://127.0.0.1:4010';
+const STUB_ORIGIN = `http://127.0.0.1:${process.env.STUB_PORT ?? '4010'}`;
 const PROVIDER_NAME = 'e2e-stub';
 const API_KEY = 'sk-e2e-123456789';
 const MARKER_HEADER = 'x-e2e-marker';

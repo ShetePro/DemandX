@@ -2,7 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 const PORT = 3000;
 const baseURL = `http://127.0.0.1:${PORT}`;
-const STUB_URL = 'http://127.0.0.1:4010';
+const STUB_PORT = process.env.STUB_PORT ?? '4010';
+const STUB_URL = `http://127.0.0.1:${STUB_PORT}`;
 
 export default defineConfig({
   testDir: './tests/e2e',
