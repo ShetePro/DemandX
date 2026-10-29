@@ -1,5 +1,5 @@
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 const alias = { '@': new URL('./src', import.meta.url).pathname };
 
@@ -23,7 +23,7 @@ export default defineConfig({
           name: 'unit-node',
           environment: 'node',
           include: ['src/lib/**/*.test.ts', 'scripts/**/*.test.ts'],
-          exclude: ['**/*.test.tsx', 'src/lib/hooks/**'],
+          exclude: [...configDefaults.exclude, '**/*.test.tsx', 'src/lib/hooks/**'],
         },
       },
       {
