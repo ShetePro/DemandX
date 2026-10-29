@@ -59,7 +59,8 @@ export type AppErrorCode =
   | 'SECRET_FAILED'
   | 'STORAGE_FAILED'
   | 'LLM_UNAVAILABLE'
-  | 'LLM_BAD_OUTPUT';
+  | 'LLM_BAD_OUTPUT'
+  | 'CHAT_PROVIDER_UNSUPPORTED';
 
 /** A failure that crosses a layer boundary without throwing. */
 export type AppError = {
