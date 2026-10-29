@@ -1,0 +1,24 @@
+# Local Postgres for DemandX. Only the database runs in Docker; the app and the
+# worker run on the host so they can reach local LLM providers (Ollama).
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: demandx
+      POSTGRES_PASSWORD: demandx
+      POSTGRES_DB: demandx
+    ports:
+      # Host 5432 is commonly taken by other local Postgres instances, so this
+      # project publishes 5433. .env.example points at the same port.
+      - '5433:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U demandx -d demandx']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
