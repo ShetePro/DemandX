@@ -88,7 +88,9 @@ app/**            只做路由、数据装配、metadata
 
 **P0 状态：已完成（2026-10-30）** — 9/9 任务；`pnpm verify` 绿（76 单测）、`pnpm e2e` 绿、`next build` 通过；工作台页在 1440/390 两种宽度实测。
 
-**P1 状态：已完成（2026-10-30）** — 6/6 任务；特征见下（密钥箱、provider 仓储、LlmPort、配置 actions、配置页 UI、settings E2E）。`/settings/llm` 已可用。
+**P1 状态：已完成（2026-10-30）** — 6/6 任务；密钥箱、provider 仓储、LlmPort、配置 actions、配置页 UI、settings E2E。`/settings/llm` 已可用。
+
+**P2 状态：已完成（2026-10-30）** — 6/6 任务；run 创建 + 追加式事件 + 可续传 SSE；`useRunStream`（退避/终态不重连）；`/api/chat`（AI SDK 7 + 工具、`[eN]` 经 rehype 管线且保留 sanitize）；对话页 + 右栏实时 + 引用抽屉；Composer（IME/停止）；Chat E2E（真流式 + SSE 活推）。
 
 ### T0.1 初始化工程与脚本
 
