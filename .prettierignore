@@ -2,5 +2,6 @@ docs/
 pnpm-lock.yaml
 .next/
 data/
+drizzle/
 node_modules/
 playwright-report/

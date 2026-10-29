@@ -6,8 +6,8 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 
 const COLOR_RULE = {
   selector: [
-    'JSXAttribute > Literal:matches([value=/#[0-9a-fA-F]{3,8}/], [value=/\\brgba?\\(/], [value=/\\bhsla?\\(/])',
-    'JSXAttribute > JSXExpressionContainer > Literal:matches([value=/#[0-9a-fA-F]{3,8}/], [value=/\\brgba?\\(/], [value=/\\bhsla?\\(/])',
+    'JSXAttribute Literal:matches([value=/#[0-9a-fA-F]{3,8}/], [value=/\\brgba?\\(/], [value=/\\bhsla?\\(/])',
+    'JSXAttribute JSXExpressionContainer TemplateElement[value.raw=/#[0-9a-fA-F]{3,8}/]',
   ].join(', '),
   message:
     '禁止硬编码颜色，请使用语义 token（bg-surface / text-fg / border-border …），定义见 src/app/globals.css',
@@ -48,6 +48,7 @@ export default defineConfig([
         { type: 'app', pattern: 'src/app/**', mode: 'full' },
         { type: 'feature', pattern: 'src/features/*/**', capture: ['feature'], mode: 'full' },
         { type: 'ui', pattern: 'src/components/ui/**', mode: 'full' },
+        { type: 'component', pattern: 'src/components/**', mode: 'full' },
         { type: 'lib', pattern: 'src/lib/**', mode: 'full' },
       ],
     },
@@ -57,7 +58,8 @@ export default defineConfig([
         {
           default: 'disallow',
           rules: [
-            { from: 'app', allow: ['app', 'feature', 'ui', 'lib'] },
+            { from: 'app', allow: ['app', 'component', 'feature', 'ui', 'lib'] },
+            { from: 'component', allow: ['component', 'ui', 'lib'] },
             {
               from: 'feature',
               allow: [['feature', { feature: '${from.feature}' }], 'ui', 'lib'],

@@ -6,7 +6,8 @@
  * Inline CSS variables are fine: `style={{ '--w': `${pct}%` }}`.
  *
  * Scans .ts / .tsx / .css files under src/; `src/app/globals.css` is the token
- * source and is skipped entirely. Lines containing a `data:` URL are skipped too.
+ * source and is skipped entirely. `data:` URLs are blanked out before scanning
+ * and comment-only lines are ignored.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -44,11 +45,25 @@ for (const file of walk(SRC).sort()) {
 
   const lines = readFileSync(file, 'utf8').split(/\r?\n/);
   lines.forEach((line, index) => {
-    if (line.includes('data:')) return;
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    if (
+      trimmed.startsWith('//') ||
+      trimmed.startsWith('/*') ||
+      trimmed.startsWith('*') ||
+      trimmed.endsWith('*/')
+    ) {
+      return;
+    }
+
+    // Blank out `data:` URLs (preserving column offsets) so their payload can
+    // never hide a real color literal further along the same line.
+    const masked = line.replace(/data:[^"'\s)\],]+/g, (match) => ' '.repeat(match.length));
+
     for (const { pattern } of FORBIDDEN) {
       pattern.lastIndex = 0;
       let match;
-      while ((match = pattern.exec(line)) !== null) {
+      while ((match = pattern.exec(masked)) !== null) {
         violations.push({
           file: path.relative(ROOT, file),
           line: index + 1,
