@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="520" viewBox="0 0 980 520"
+     style="--fg:#18181b;--muted:#71717a;--border:#d4d4d8;--accent:#2563eb;--success:#15803d;--warning:#b45309;--error:#b91c1c;--c1:#0284c7;--c2:#7c3aed;--c4:#0f766e"
+     font-family="system-ui, -apple-system, sans-serif">
+  <rect width="980" height="520" fill="#ffffff"/>
+  <rect x="8" y="8" width="964" height="504" rx="12" fill="none" stroke="var(--border)"/>
+  <text x="28" y="40" font-size="14" font-weight="600" fill="var(--fg)">run #42 · 跨境卖家多平台库存同步</text>
+  <rect x="356" y="26" width="62" height="20" rx="10" fill="none" stroke="var(--accent)"/>
+  <text x="366" y="40" font-size="9" fill="var(--accent)">进行中</text>
+  <text x="430" y="40" font-size="9" fill="var(--muted)">已用 22:14 · 预计剩余 13 分钟</text>
+  <rect x="700" y="24" width="70" height="26" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="714" y="41" font-size="9" fill="var(--muted)">暂停</text>
+  <rect x="778" y="24" width="58" height="26" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="792" y="41" font-size="9" fill="var(--muted)">报告</text>
+
+  <line x1="8" y1="66" x2="972" y2="66" stroke="var(--border)"/>
+  <line x1="82" y1="112" x2="896" y2="112" stroke="var(--border)"/>
+  <circle cx="82" cy="112" r="9" fill="none" stroke="var(--success)"/>
+  <circle cx="218" cy="112" r="9" fill="none" stroke="var(--success)"/>
+  <circle cx="354" cy="112" r="9" fill="none" stroke="var(--success)"/>
+  <circle cx="490" cy="112" r="9" fill="none" stroke="var(--accent)"/>
+  <circle cx="626" cy="112" r="9" fill="none" stroke="var(--border)"/>
+  <circle cx="762" cy="112" r="9" fill="none" stroke="var(--border)"/>
+  <circle cx="896" cy="112" r="9" fill="none" stroke="var(--border)"/>
+  <text x="66" y="140" font-size="9" fill="var(--muted)">S0 角度</text>
+  <text x="200" y="140" font-size="9" fill="var(--muted)">S1 采集</text>
+  <text x="336" y="140" font-size="9" fill="var(--muted)">S2 抽取</text>
+  <text x="472" y="140" font-size="9" fill="var(--fg)">S3 聚类</text>
+  <text x="608" y="140" font-size="9" fill="var(--muted)">S4 评级</text>
+  <text x="744" y="140" font-size="9" fill="var(--muted)">S5 报告</text>
+  <text x="878" y="140" font-size="9" fill="var(--muted)">S6 自检</text>
+  <text x="66" y="156" font-size="9" fill="var(--muted)">5 查询</text>
+  <text x="200" y="156" font-size="9" fill="var(--muted)">24/40 源</text>
+  <text x="336" y="156" font-size="9" fill="var(--muted)">18/24 引用</text>
+
+  <text x="28" y="192" font-size="11" font-weight="600" fill="var(--fg)">查询</text>
+  <text x="60" y="214" font-size="9" fill="var(--muted)">角度</text>
+  <text x="150" y="214" font-size="9" fill="var(--muted)">查询词</text>
+  <text x="520" y="214" font-size="9" fill="var(--muted)">结果</text>
+  <text x="590" y="214" font-size="9" fill="var(--muted)">落库</text>
+  <line x1="28" y1="222" x2="660" y2="222" stroke="var(--border)"/>
+  <text x="60" y="244" font-size="10" fill="var(--muted)">需求</text>
+  <text x="150" y="244" font-size="10" fill="var(--fg)">库存 同步 多个 平台</text>
+  <text x="520" y="244" font-size="10" fill="var(--fg)">12</text>
+  <text x="590" y="244" font-size="10" fill="var(--success)">8</text>
+  <text x="60" y="270" font-size="10" fill="var(--muted)">缺陷</text>
+  <text x="150" y="270" font-size="10" fill="var(--fg)">ERP 太贵 不好用</text>
+  <text x="520" y="270" font-size="10" fill="var(--fg)">9</text>
+  <text x="590" y="270" font-size="10" fill="var(--success)">6</text>
+  <text x="60" y="296" font-size="10" fill="var(--muted)">付费</text>
+  <text x="150" y="296" font-size="10" fill="var(--fg)">愿意付费 订阅 多少钱</text>
+  <text x="520" y="296" font-size="10" fill="var(--fg)">7</text>
+  <text x="590" y="296" font-size="10" fill="var(--success)">3</text>
+  <text x="60" y="322" font-size="10" fill="var(--muted)">替代</text>
+  <text x="150" y="322" font-size="10" fill="var(--fg)">ERP 替代品 迁移</text>
+  <text x="520" y="322" font-size="10" fill="var(--fg)">6</text>
+  <text x="590" y="322" font-size="10" fill="var(--muted)">4</text>
+  <text x="60" y="348" font-size="10" fill="var(--muted)">频率</text>
+  <text x="150" y="348" font-size="10" fill="var(--fg)">每天 手动 改库存</text>
+  <text x="520" y="348" font-size="10" fill="var(--fg)">5</text>
+  <text x="590" y="348" font-size="10" fill="var(--success)">3</text>
+
+  <text x="692" y="192" font-size="11" font-weight="600" fill="var(--fg)">需要处理</text>
+  <rect x="688" y="204" width="272" height="64" rx="8" fill="none" stroke="var(--warning)"/>
+  <text x="700" y="224" font-size="10" fill="var(--fg)">小红书 · 登录态过期</text>
+  <text x="700" y="242" font-size="9" fill="var(--muted)">3 个查询被跳过</text>
+  <rect x="700" y="250" width="72" height="12" rx="3" fill="none" stroke="var(--warning)"/>
+  <text x="708" y="260" font-size="8" fill="var(--warning)">重新登录后重试</text>
+
+  <rect x="688" y="280" width="272" height="64" rx="8" fill="none" stroke="var(--error)"/>
+  <text x="700" y="300" font-size="10" fill="var(--fg)">1 条引文未在快照中</text>
+  <text x="700" y="318" font-size="9" fill="var(--muted)">已拒绝，原因 quote_not_in_snapshot</text>
+  <rect x="700" y="326" width="64" height="12" rx="3" fill="none" stroke="var(--error)"/>
+  <text x="708" y="336" font-size="8" fill="var(--error)">查看证据</text>
+
+  <text x="692" y="374" font-size="10" fill="var(--muted)">配额：Exa 70% · GitHub 12% · 本地推理 无限</text>
+  <text x="692" y="394" font-size="10" fill="var(--muted)">跳过来源 2 · 失败抓取 5</text>
+
+  <text x="28" y="394" font-size="11" font-weight="600" fill="var(--fg)">事件</text>
+  <line x1="28" y1="406" x2="660" y2="406" stroke="var(--border)"/>
+  <text x="28" y="428" font-size="9" fill="var(--muted)">22:14:02</text>
+  <text x="96" y="428" font-size="10" fill="var(--fg)">S2 抽取 12/24 · 拒绝 1（引文不在快照）</text>
+  <text x="28" y="452" font-size="9" fill="var(--muted)">22:11:37</text>
+  <text x="96" y="452" font-size="10" fill="var(--fg)">S1 采集 24/40 · 小红书跳过 3</text>
+  <text x="28" y="476" font-size="9" fill="var(--muted)">22:06:10</text>
+  <text x="96" y="476" font-size="10" fill="var(--fg)">run 启动 · bulk=ollama/qwen3:8b · quality=ollama/qwen3:14b</text>
+</svg>

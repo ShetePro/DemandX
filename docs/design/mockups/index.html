@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DemandX · UI 设计稿</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; padding: 40px 24px 80px;
+    font: 14px/1.6 system-ui, -apple-system, "PingFang SC", sans-serif;
+    max-width: 1040px; margin-inline: auto;
+  }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  p.lead { margin: 0 0 36px; opacity: .7; }
+  section { margin: 0 0 56px; }
+  h2 { font-size: 15px; margin: 0 0 4px; }
+  .note { font-size: 12px; opacity: .65; margin: 0 0 14px; }
+  img {
+    width: 100%; height: auto; display: block;
+    border: 1px solid rgba(128,128,128,.35); border-radius: 10px;
+  }
+  .links { font-size: 12px; opacity: .6; margin-top: 8px; }
+  a { color: inherit; }
+  @media (prefers-color-scheme: dark) { img { background: #fff; } }
+</style>
+</head>
+<body>
+<h1>DemandX · UI 设计稿</h1>
+<p class="lead">7 个页面，2 倍分辨率 PNG（1960px 宽）。同名 SVG 为矢量源文件，可直接拖入 Figma 编辑。</p>
+
+<section>
+  <h2>01 对话页</h2>
+  <p class="note">三栏常驻：线程 240 / 对话自适应 / 运行详情 320。审批卡在对话流内，证据 chip 可点开右栏。</p>
+  <img src="01-chat.png" alt="对话页">
+  <p class="links"><a href="01-chat.svg">SVG 源文件</a></p>
+</section>
+
+<section>
+  <h2>02 报告页</h2>
+  <p class="note">目录 200 / 正文 max 760 / 引用 320。无引用论断灰标并归入“本节未知项”。</p>
+  <img src="02-report.png" alt="报告页">
+  <p class="links"><a href="02-report.svg">SVG 源文件</a></p>
+</section>
+
+<section>
+  <h2>03 证据库</h2>
+  <p class="note">筛选写入 URL；右侧抽屉展示原文、quote 定位、支持什么 / 不能证明什么。</p>
+  <img src="03-evidence.png" alt="证据库">
+  <p class="links"><a href="03-evidence.svg">SVG 源文件</a></p>
+</section>
+
+<section>
+  <h2>04 LLM 配置</h2>
+  <p class="note">Providers / 模型 / 双链拖拽 / 用量四块；Key 只回显后四位。</p>
+  <img src="04-llm-settings.png" alt="LLM 配置">
+  <p class="links"><a href="04-llm-settings.svg">SVG 源文件</a></p>
+</section>
+
+<section>
+  <h2>05 工作台</h2>
+  <p class="note">只做“继续上次”和“开新研究”，不做仪表盘。</p>
+  <img src="05-home.png" alt="工作台">
+  <p class="links"><a href="05-home.svg">SVG 源文件</a></p>
+</section>
+
+<section>
+  <h2>06 运行监控</h2>
+  <p class="note">七阶段进度条 + 查询明细 + 异常队列；暂停只停后续请求。</p>
+  <img src="06-run.png" alt="运行监控">
+  <p class="links"><a href="06-run.svg">SVG 源文件</a></p>
+</section>
+
+<section>
+  <h2>07 采集设置</h2>
+  <p class="note">平台会话与限速分离；登录墙/验证码进入 needs_human 队列，不自动破解。</p>
+  <img src="07-crawl.png" alt="采集设置">
+  <p class="links"><a href="07-crawl.svg">SVG 源文件</a></p>
+</section>
+
+</body>
+</html>

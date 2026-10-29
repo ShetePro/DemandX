@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="620" viewBox="0 0 980 620"
+     style="--fg:#18181b;--muted:#71717a;--border:#d4d4d8;--accent:#2563eb;--success:#15803d;--warning:#b45309;--error:#b91c1c;--c1:#0284c7;--c2:#7c3aed;--c4:#0f766e"
+     font-family="system-ui, -apple-system, sans-serif">
+  <rect width="980" height="620" fill="#ffffff"/>
+  <rect x="8" y="8" width="964" height="604" rx="12" fill="none" stroke="var(--border)"/>
+  <line x1="190" y1="88" x2="190" y2="604" stroke="var(--border)"/>
+  <line x1="690" y1="88" x2="690" y2="604" stroke="var(--border)"/>
+  <line x1="8" y1="88" x2="972" y2="88" stroke="var(--border)"/>
+
+  <text x="28" y="40" font-size="14" font-weight="600" fill="var(--fg)">报告 · 跨境卖家库存同步</text>
+  <rect x="28" y="50" width="196" height="24" rx="6" fill="none" stroke="var(--success)"/>
+  <text x="40" y="66" font-size="10" fill="var(--success)">建议先验证 · 68/100 · 可信度 C</text>
+  <rect x="706" y="34" width="92" height="26" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="718" y="51" font-size="10" fill="var(--muted)">导出 Markdown</text>
+  <rect x="806" y="34" width="60" height="26" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="820" y="51" font-size="10" fill="var(--muted)">打印</text>
+
+  <text x="28" y="116" font-size="10" fill="var(--accent)">一 执行摘要</text>
+  <text x="28" y="144" font-size="10" fill="var(--muted)">二 需求证据</text>
+  <text x="28" y="172" font-size="10" fill="var(--muted)">三 竞品调查</text>
+  <text x="28" y="200" font-size="10" fill="var(--muted)">四 机会排名</text>
+  <text x="28" y="228" font-size="10" fill="var(--muted)">五 最佳方向</text>
+  <text x="28" y="256" font-size="10" fill="var(--muted)">六 财务模型</text>
+  <text x="28" y="284" font-size="10" fill="var(--muted)">七 14 天验证</text>
+  <text x="28" y="312" font-size="10" fill="var(--muted)">八 最终决策</text>
+
+  <text x="208" y="118" font-size="13" font-weight="600" fill="var(--fg)">一、执行摘要</text>
+  <text x="208" y="142" font-size="10" fill="var(--fg)">最值得做的方向：中小卖家的跨平台库存同步，付费证据集中在</text>
+  <text x="208" y="158" font-size="10" fill="var(--fg)">月费 99–199 元区间的 SaaS，但已有 4 个直接竞品。</text>
+  <rect x="512" y="146" width="34" height="16" rx="4" fill="none" stroke="var(--accent)"/>
+  <text x="520" y="158" font-size="9" fill="var(--accent)">e12</text>
+  <text x="208" y="180" font-size="10" fill="var(--muted)">证据可信度 C：3 条付费信号，仅 1 条可核实价格页。</text>
+
+  <text x="208" y="212" font-size="12" font-weight="600" fill="var(--fg)">评分</text>
+  <line x1="390" y1="230" x2="390" y2="370" stroke="var(--border)"/>
+  <line x1="320" y1="300" x2="460" y2="300" stroke="var(--border)"/>
+  <polygon points="390,230 444.7,256.4 458.2,315.6 420.4,363.1 359.6,363.1 321.8,315.6 335.3,256.4" fill="none" stroke="var(--border)"/>
+  <polygon points="390,265 417.4,278.2 424.1,307.8 405.2,331.6 374.8,331.6 355.9,307.8 362.6,278.2" fill="none" stroke="var(--border)"/>
+  <polygon points="390,240.5 414.6,280.4 437.8,310.9 408.2,337.8 374.8,341.5 335.4,312.5 368.1,282.6" fill="none" stroke="var(--accent)"/>
+  <text x="376" y="220" font-size="9" fill="var(--muted)">需求 16</text>
+  <text x="456" y="242" font-size="9" fill="var(--muted)">付费 8</text>
+  <text x="470" y="320" font-size="9" fill="var(--muted)">缺口 10</text>
+  <text x="416" y="384" font-size="9" fill="var(--muted)">获客 10</text>
+  <text x="340" y="384" font-size="9" fill="var(--muted)">利润 5</text>
+  <text x="292" y="318" font-size="9" fill="var(--muted)">可行 10</text>
+  <text x="300" y="238" font-size="9" fill="var(--muted)">长期 3</text>
+
+  <text x="208" y="410" font-size="12" font-weight="600" fill="var(--fg)">二、需求证据</text>
+  <line x1="208" y1="424" x2="672" y2="424" stroke="var(--border)"/>
+  <text x="208" y="444" font-size="10" fill="var(--fg)">「三个平台改库存改到凌晨」</text>
+  <rect x="420" y="433" width="34" height="16" rx="4" fill="none" stroke="var(--accent)"/>
+  <text x="428" y="445" font-size="9" fill="var(--accent)">e7</text>
+  <text x="208" y="470" font-size="9" fill="var(--muted)">小红书 · 2026-02-18 · 一手 · 不能证明有付费意愿</text>
+  <line x1="208" y1="484" x2="672" y2="484" stroke="var(--border)"/>
+  <text x="208" y="504" font-size="10" fill="var(--fg)">「已经在用某 ERP，但每月 399 太贵」</text>
+  <rect x="474" y="493" width="34" height="16" rx="4" fill="none" stroke="var(--accent)"/>
+  <text x="482" y="505" font-size="9" fill="var(--accent)">e19</text>
+  <text x="208" y="530" font-size="9" fill="var(--muted)">Reddit · 2026-01-07 · 一手 · 含价格</text>
+  <line x1="208" y1="544" x2="672" y2="544" stroke="var(--border)"/>
+  <text x="208" y="564" font-size="10" fill="var(--muted)">2 条论断缺少引用，已移入“本节未知项”</text>
+  <text x="208" y="584" font-size="9" fill="var(--muted)">本节未知项 2 ▾</text>
+
+  <text x="706" y="112" font-size="11" font-weight="600" fill="var(--fg)">引用 e19</text>
+  <text x="706" y="132" font-size="9" fill="var(--muted)">Reddit · r/ecommerce · 2026-01-07</text>
+  <rect x="702" y="144" width="252" height="96" rx="8" fill="none" stroke="var(--border)"/>
+  <rect x="712" y="174" width="150" height="16" rx="3" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="714" y="166" font-size="10" fill="var(--fg)">“We already pay for an ERP</text>
+  <text x="714" y="184" font-size="10" fill="var(--fg)">but 399 a month is too much</text>
+  <text x="714" y="202" font-size="10" fill="var(--fg)">for 3 marketplaces.”</text>
+  <text x="714" y="228" font-size="9" fill="var(--muted)">一手 · 已确认 · 快照 2026-10-29</text>
+
+  <rect x="702" y="254" width="120" height="24" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="714" y="270" font-size="9" fill="var(--muted)">打开原文 ↗</text>
+  <rect x="830" y="254" width="124" height="24" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="842" y="270" font-size="9" fill="var(--muted)">在证据库中定位</text>
+
+  <text x="706" y="308" font-size="10" font-weight="600" fill="var(--fg)">这条证据支持什么</text>
+  <text x="706" y="326" font-size="9" fill="var(--muted)">存在已付费的替代方案</text>
+  <text x="706" y="352" font-size="10" font-weight="600" fill="var(--fg)">不能证明</text>
+  <text x="706" y="370" font-size="9" fill="var(--muted)">用户愿意换到更便宜的产品</text>
+
+  <line x1="702" y1="392" x2="958" y2="392" stroke="var(--border)"/>
+  <text x="706" y="414" font-size="9" fill="var(--muted)">合成模型：ollama/qwen3:14b</text>
+  <text x="706" y="432" font-size="9" fill="var(--muted)">采集：24 源 · 跳过 2 源（配额）</text>
+</svg>

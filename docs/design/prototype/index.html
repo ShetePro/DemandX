@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234f46e5'/%3E%3Cpath d='M16 7l8 4.5-8 4.5-8-4.5L16 7z' fill='white'/%3E%3Cpath d='M8 16l8 4.5 8-4.5M8 20.5l8 4.5 8-4.5' stroke='white' stroke-width='1.6' fill='none'/%3E%3C/svg%3E">
+<title>DemandX · 高保真原型</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-report" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><circle cx="4" cy="12" r="2"/><circle cx="12" cy="10" r="2"/><circle cx="20" cy="14" r="2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 3h7v7M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5 9-5z"/><path d="m3 12 9 5 9-5M3 17l9 5 9-5"/></symbol>
+    <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 4v16M15 4v16"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"/></symbol>
+    <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3L12 3z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8V4z"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><svg class="i"><use href="#i-layers"/></svg></div>
+      <div>
+        <div class="brand-name">DemandX</div>
+        <div class="brand-sub">需求验证工作台</div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary btn-block" data-nav="chat">
+      <svg class="i"><use href="#i-plus"/></svg>新建研究
+      <span class="kbd">⌘K</span>
+    </button>
+
+    <nav class="nav" aria-label="主导航">
+      <button class="nav-item" data-nav="home"><svg class="i"><use href="#i-chat"/></svg>工作台</button>
+      <button class="nav-item is-active" data-nav="chat"><svg class="i"><use href="#i-chat"/></svg>对话<span class="dot-live"></span></button>
+      <button class="nav-item" data-nav="report"><svg class="i"><use href="#i-report"/></svg>报告</button>
+      <button class="nav-item" data-nav="evidence"><svg class="i"><use href="#i-db"/></svg>证据库<span class="pill-count">24</span></button>
+    </nav>
+
+    <div class="side-label">最近线程</div>
+    <div class="threads">
+      <button class="thread is-active"><span class="thread-title">跨境卖家库存同步</span><span class="thread-meta">run #42 · 进行中</span></button>
+      <button class="thread"><span class="thread-title">记账 App 机会</span><span class="thread-meta">昨天 · 71 分</span></button>
+      <button class="thread"><span class="thread-title">宠物健康订阅</span><span class="thread-meta">3 天前 · 已放弃</span></button>
+      <button class="thread"><span class="thread-title">小红书选题工具</span><span class="thread-meta">5 天前 · 证据不足</span></button>
+    </div>
+
+    <div class="side-foot">
+      <button class="nav-item" data-nav="settings"><svg class="i"><use href="#i-sliders"/></svg>LLM 与采集</button>
+      <button class="icon-btn theme-toggle" id="themeToggle" aria-label="切换主题">
+        <svg class="i i-sun"><use href="#i-sun"/></svg>
+        <svg class="i i-moon"><use href="#i-moon"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- 工作台 -->
+    <section class="screen" data-screen="home">
+      <header class="page-head">
+        <div>
+          <h1>工作台</h1>
+          <p class="sub">所有研究都在本机运行，数据不出机器</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-ghost"><svg class="i"><use href="#i-search"/></svg>搜索</button>
+          <button class="btn btn-primary" data-nav="chat"><svg class="i"><use href="#i-plus"/></svg>开始一次新研究</button>
+        </div>
+      </header>
+
+      <div class="prompt-row">
+        <span class="prompt-label"><svg class="i"><use href="#i-sparkles"/></svg>试试这些方向</span>
+        <button class="chip chip-action">跨境库存同步</button>
+        <button class="chip chip-action">小团队发票管理</button>
+        <button class="chip chip-action">小红书选题工具</button>
+      </div>
+
+      <div class="card table-card">
+        <div class="table-head cols-runs">
+          <span>研究方向</span><span>状态</span><span>结论</span><span>总分 / 可信度</span><span>更新</span>
+        </div>
+        <button class="row cols-runs row-link" data-nav="report">
+          <span class="row-title">跨境卖家多平台库存同步</span>
+          <span><span class="status status-live"><i></i>进行中</span></span>
+          <span class="muted">—</span><span class="muted">— / —</span><span class="muted">2 分钟前</span>
+        </button>
+        <button class="row cols-runs row-link" data-nav="report">
+          <span class="row-title">独立开发者发票与报销</span>
+          <span><span class="status status-done">已完成</span></span>
+          <span>建议先验证</span>
+          <span class="score"><b>71</b><span class="grade grade-b">B</span></span>
+          <span class="muted">昨天</span>
+        </button>
+        <button class="row cols-runs row-link">
+          <span class="row-title">宠物健康订阅盒</span>
+          <span><span class="status status-dead">已放弃</span></span>
+          <span>建议放弃</span>
+          <span class="score"><b class="dim">34</b><span class="grade grade-d">D</span></span>
+          <span class="muted">3 天前</span>
+        </button>
+        <button class="row cols-runs row-link">
+          <span class="row-title">小红书选题与竞品监控</span>
+          <span><span class="status status-warn">部分完成</span></span>
+          <span>证据不足</span>
+          <span class="score"><b>52</b><span class="grade grade-c">C</span></span>
+          <span class="muted">5 天前</span>
+        </button>
+      </div>
+
+      <div class="hint">
+        <svg class="i"><use href="#i-alert"/></svg>
+        “部分完成”表示采集被配额或登录墙中断，结论会被标记为待验证，而不是直接给分。
+      </div>
+    </section>
+
+    <!-- 对话 -->
+    <section class="screen is-active" data-screen="chat">
+      <div class="chat-grid">
+        <div class="chat-col">
+          <header class="chat-head">
+            <div class="chat-title">
+              <h2>跨境卖家多平台库存同步</h2>
+              <div class="chat-meta"><span class="status status-live"><i></i>S3 聚类中</span><span>run #42</span><span>已用 22 分钟</span></div>
+            </div>
+            <div class="head-actions">
+              <button class="btn btn-ghost" data-nav="report"><svg class="i"><use href="#i-report"/></svg>查看报告</button>
+              <button class="icon-btn" aria-label="更多"><svg class="i"><use href="#i-grip"/></svg></button>
+            </div>
+          </header>
+
+          <div class="thread-scroll" id="thread">
+            <div class="msg msg-user">
+              <div class="bubble">我想做一个跨境卖家多平台库存同步工具，帮我把需求验证一遍</div>
+              <div class="avatar avatar-user">你</div>
+            </div>
+
+            <div class="msg msg-ai">
+              <div class="avatar avatar-ai"><svg class="i"><use href="#i-sparkles"/></svg></div>
+              <div class="msg-body">
+                <div class="typing" id="typing"><span></span><span></span><span></span></div>
+                <div class="stream" id="stream">
+                  <p>先看证据：<b>3 条付费信号</b>里只有 1 条有价格页。其余两条只是“愿意付”，不能当成成交。</p>
+                  <p class="cite-line">
+                    <button class="cite" data-e="e12">e12</button>
+                    <button class="cite" data-e="e19">e19</button>
+                    <span class="muted">点击查看原文</span>
+                  </p>
+                </div>
+
+                <div class="card run-card">
+                  <div class="run-card-head">
+                    <span class="run-card-title"><span class="spinner"></span>研究进行中 · S3 聚类</span>
+                    <span class="run-card-time">预计还需 13 分钟</span>
+                  </div>
+                  <div class="bar"><i style="--w:30%"></i></div>
+                  <div class="run-stages">
+                    <span class="st done">S1 采集</span><span class="st done">S2 抽取</span>
+                    <span class="st now">S3 聚类 30%</span><span class="st">S4–S6</span>
+                  </div>
+                </div>
+
+                <div class="card evidence-mini">
+                  <div class="evidence-mini-head">
+                    <svg class="i i-success"><use href="#i-zap"/></svg>
+                    <span>付费证据 3 条 · 其中 1 条含价格页（¥99/月）</span>
+                  </div>
+                  <div class="mini-list">
+                    <button class="mini-item" data-e="e19"><span class="pf pf-reddit">R</span><span class="mini-text">已经付费 399/月，觉得太贵</span><span class="mini-tag">含价格</span></button>
+                    <button class="mini-item" data-e="e12"><span class="pf pf-xhs">小</span><span class="mini-text">三个平台改库存改到凌晨</span><span class="mini-tag">一手</span></button>
+                    <button class="mini-item" data-e="e21"><span class="pf pf-hn">Y</span><span class="mini-text">愿意为新工具付费，但要看迁移成本</span><span class="mini-tag">口头意愿</span></button>
+                  </div>
+                </div>
+
+                <div class="card approval">
+                  <div class="approval-main">
+                    <div class="approval-title">开始完整研究？</div>
+                    <div class="approval-sub">预计 35 分钟 · 60 次检索 · 120 页抓取 · 本地推理</div>
+                  </div>
+                  <div class="approval-actions">
+                    <button class="btn btn-primary" id="startRun"><svg class="i"><use href="#i-play"/></svg>开始研究</button>
+                    <button class="btn btn-ghost">调整角度</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="composer">
+            <textarea id="composer" name="message" rows="1" aria-label="输入研究需求" placeholder="描述一个产品想法，或粘贴一段用户抱怨…"></textarea>
+            <div class="composer-bar">
+              <div class="composer-tools">
+                <button class="icon-btn" aria-label="导入"><svg class="i"><use href="#i-db"/></svg></button>
+                <button class="icon-btn" aria-label="联网"><svg class="i"><use href="#i-globe"/></svg></button>
+                <span class="muted tiny">Enter 发送 · Shift+Enter 换行</span>
+              </div>
+              <button class="btn btn-primary btn-icon" aria-label="发送"><svg class="i"><use href="#i-send"/></svg></button>
+            </div>
+          </div>
+        </div>
+
+        <aside class="rail">
+          <div class="rail-head">
+            <span>运行详情</span>
+            <span class="muted tiny">S0–S6</span>
+          </div>
+          <ol class="stages" id="stages">
+            <li class="done"><span class="stage-dot"><svg class="i"><use href="#i-check"/></svg></span><span class="stage-name">S0 检索角度</span><span class="stage-meta">5 条</span></li>
+            <li class="done"><span class="stage-dot"><svg class="i"><use href="#i-check"/></svg></span><span class="stage-name">S1 采集</span><span class="stage-meta">24/40</span></li>
+            <li class="done"><span class="stage-dot"><svg class="i"><use href="#i-check"/></svg></span><span class="stage-name">S2 抽取</span><span class="stage-meta">18/24</span></li>
+            <li class="now"><span class="stage-dot"><span class="pulse"></span></span><span class="stage-name">S3 聚类</span><span class="stage-meta">30%</span></li>
+            <li><span class="stage-dot"></span><span class="stage-name">S4 评级</span><span class="stage-meta">—</span></li>
+            <li><span class="stage-dot"></span><span class="stage-name">S5 报告</span><span class="stage-meta">—</span></li>
+            <li><span class="stage-dot"></span><span class="stage-name">S6 自检</span><span class="stage-meta">—</span></li>
+          </ol>
+
+          <div class="rail-divider"></div>
+
+          <div class="stat-grid">
+            <div class="stat"><b>24</b><span>证据</span></div>
+            <div class="stat"><b>3</b><span>付费</span></div>
+            <div class="stat"><b>4</b><span>竞品</span></div>
+          </div>
+
+          <div class="quota">
+            <div class="quota-head"><span><svg class="i"><use href="#i-cpu"/></svg>Exa 本月配额</span><b>70%</b></div>
+            <div class="bar bar-warn"><i style="--w:70%"></i></div>
+            <div class="quota-foot">已跳过 2 个来源</div>
+          </div>
+
+          <button class="rail-link" data-nav="evidence">打开证据库<svg class="i"><use href="#i-arrow"/></svg></button>
+
+          <div class="rail-card">
+            <div class="rail-card-title"><svg class="i i-warn"><use href="#i-alert"/></svg>需要你处理</div>
+            <p>小红书登录态过期，3 个查询被跳过</p>
+            <button class="btn btn-sm">扫码登录</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 报告 -->
+    <section class="screen" data-screen="report">
+      <header class="report-head">
+        <div class="report-id">
+          <h2>报告 · 跨境卖家库存同步</h2>
+          <div class="badges">
+            <span class="decision">建议先验证</span>
+            <span class="score-chip">68 / 100</span>
+            <span class="cred cred-c">可信度 C</span>
+          </div>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-ghost"><svg class="i"><use href="#i-download"/></svg>导出 Markdown</button>
+          <button class="btn btn-ghost">打印</button>
+        </div>
+      </header>
+
+      <div class="report-grid">
+        <nav class="toc">
+          <a href="#s1" class="toc-item is-active">一 执行摘要</a>
+          <a href="#s2" class="toc-item">二 需求证据</a>
+          <a href="#s3" class="toc-item">三 竞品调查</a>
+          <a href="#s4" class="toc-item">四 机会排名</a>
+          <a href="#s5" class="toc-item">五 最佳方向</a>
+          <a href="#s6" class="toc-item">六 财务模型</a>
+          <a href="#s7" class="toc-item">七 14 天验证</a>
+          <a href="#s8" class="toc-item">八 最终决策</a>
+        </nav>
+
+        <article class="report-body">
+          <section id="s1" class="rsec">
+            <h3>一、执行摘要</h3>
+            <p>最值得做的方向：<b>中小卖家的跨平台库存同步</b>。付费证据集中在月费 99–199 元区间的 SaaS，但已有 4 个直接竞品。</p>
+            <p class="muted">证据可信度 C：3 条付费信号，仅 1 条可核实价格页。<button class="cite" data-e="e12">e12</button></p>
+
+            <div class="score-panel">
+              <div class="score-panel-head">
+                <span>七维评分</span>
+                <span class="muted tiny">总分 68 · 上限 100</span>
+              </div>
+              <svg class="radar" viewBox="0 0 260 260" role="img" aria-label="七维评分雷达图">
+                <g class="radar-grid">
+                  <polygon points="130,30 199.6,66.4 216.1,140.1 173.3,202 130,214.9 86.7,202 43.9,140.1 60.4,66.4" />
+                  <polygon points="130,80 169.8,101.4 179.7,145.9 155.2,181.8 130,189.4 104.8,181.8 80.3,145.9 90.2,101.4" />
+                </g>
+                <g class="radar-axes">
+                  <line x1="130" y1="30" x2="130" y2="214.9"/><line x1="199.6" y1="66.4" x2="60.4" y2="140.1"/>
+                  <line x1="216.1" y1="140.1" x2="43.9" y2="140.1"/><line x1="173.3" y1="202" x2="86.7" y2="202"/>
+                </g>
+                <polygon class="radar-shape" points="130,55 170.6,90.5 175.3,140.1 155.2,168.4 130,157.7 104.8,155.1 84,125.6"/>
+                <g class="radar-labels" font-size="9">
+                  <text x="130" y="22" text-anchor="middle">需求 16</text>
+                  <text x="206" y="62">付费 8</text>
+                  <text x="222" y="144">缺口 10</text>
+                  <text x="176" y="222">获客 10</text>
+                  <text x="82" y="222" text-anchor="end">利润 5</text>
+                  <text x="38" y="144" text-anchor="end">可行 10</text>
+                  <text x="54" y="62" text-anchor="end">长期 3</text>
+                </g>
+              </svg>
+            </div>
+          </section>
+
+          <section id="s2" class="rsec">
+            <h3>二、需求证据</h3>
+            <div class="claim">
+              <p>「三个平台改库存改到凌晨，每次都怕超卖。」<button class="cite" data-e="e12">e12</button></p>
+              <div class="claim-meta"><span class="pf pf-xhs">小</span>小红书 · 2026-02-18 · 一手 <span class="sep">·</span> 不能证明有付费意愿</div>
+            </div>
+            <div class="claim">
+              <p>「已经在用某 ERP，但每月 399 太贵。」<button class="cite" data-e="e19">e19</button></p>
+              <div class="claim-meta"><span class="pf pf-reddit">R</span>Reddit · 2026-01-07 · 一手 <span class="sep">·</span> 含价格</div>
+            </div>
+            <div class="unknown">
+              <span>2 条论断缺少引用，已移入「本节未知项」</span>
+              <button class="btn btn-xs">展开</button>
+            </div>
+          </section>
+
+          <section id="s3" class="rsec">
+            <h3>三、竞品调查</h3>
+            <div class="table-lite">
+              <div class="tl-head"><span>竞品</span><span>定价</span><span>主要差评</span><span>缺口</span></div>
+              <div class="tl-row"><span>竞品 A</span><span>¥99/月</span><span>不支持 4 个以上平台</span><span class="tag tag-warn">明显</span></div>
+              <div class="tl-row"><span>竞品 B</span><span>¥399/月</span><span>太重，配置复杂</span><span class="tag tag-warn">明显</span></div>
+              <div class="tl-row"><span>竞品 C</span><span>免费 + 抽成</span><span>抽成不透明</span><span class="tag">中等</span></div>
+            </div>
+          </section>
+
+          <section id="s7" class="rsec">
+            <h3>七、14 天验证计划</h3>
+            <ul class="checklist">
+              <li class="done"><span class="cb"><svg class="i"><use href="#i-check"/></svg></span>访谈 5 个已付费的小卖家</li>
+              <li class="done"><span class="cb"><svg class="i"><use href="#i-check"/></svg></span>做一页落地页 + 价格测试</li>
+              <li><span class="cb"></span>投放 3 个卖家社区，记录点击与留资</li>
+              <li><span class="cb"></span>拿到 2 笔真实预付或明确购买承诺</li>
+            </ul>
+          </section>
+        </article>
+
+        <aside class="cites">
+          <div class="cites-head">
+            <span>引用 e19</span>
+            <span class="muted tiny">1 / 3</span>
+          </div>
+          <div class="cite-source"><span class="pf pf-reddit">R</span> Reddit · r/ecommerce · 2026-01-07</div>
+          <blockquote class="quote">
+            “We already pay for an ERP but <mark>399 a month</mark> is too much for 3 marketplaces.”
+          </blockquote>
+          <div class="quote-meta"><svg class="i i-success"><use href="#i-check"/></svg>一手 · 已确认 · 快照 2026-10-29</div>
+          <div class="cite-actions">
+            <button class="btn btn-sm btn-ghost">打开原文<svg class="i"><use href="#i-ext"/></svg></button>
+            <button class="btn btn-sm btn-ghost" data-nav="evidence">在证据库定位</button>
+          </div>
+          <div class="cite-block">
+            <div class="cite-label">这条证据支持什么</div>
+            <p>存在已付费的替代方案</p>
+          </div>
+          <div class="cite-block">
+            <div class="cite-label">不能证明</div>
+            <p class="muted">用户愿意换到更便宜的产品</p>
+          </div>
+          <div class="cites-foot">
+            <div>合成模型：ollama/qwen3:14b</div>
+            <div>采集：24 源 · 跳过 2 源（配额）</div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 证据库 -->
+    <section class="screen" data-screen="evidence">
+      <header class="page-head">
+        <div>
+          <h1>证据库</h1>
+          <p class="sub"><span id="evCount">24</span> 条 · 付费 3 · 已驳回 1</p>
+        </div>
+        <div class="head-actions">
+          <label class="search"><svg class="i"><use href="#i-search"/></svg><input id="evSearch" name="q" placeholder="搜索原文、作者、URL…" aria-label="搜索证据"></label>
+          <button class="btn btn-ghost"><svg class="i"><use href="#i-download"/></svg>导出</button>
+        </div>
+      </header>
+
+      <div class="filters">
+        <button class="chip is-active" data-filter="signal">信号：全部</button>
+        <button class="chip" data-filter="platform">平台：全部</button>
+        <button class="chip" data-filter="hand">仅一手</button>
+        <button class="chip" data-filter="price">含价格</button>
+        <span class="muted tiny">筛选条件已同步到 URL</span>
+      </div>
+
+      <div class="card table-card">
+        <div class="table-head cols-ev">
+          <span>信号</span><span>来源</span><span>时间</span><span>原文摘要</span><span>状态</span>
+        </div>
+        <button class="row cols-ev row-link" data-e="e19">
+          <span><span class="sig sig-pay">付费</span></span>
+          <span class="src"><span class="pf pf-reddit">R</span>Reddit</span>
+          <span class="muted">01-07</span>
+          <span class="ellipsis">已经付费 399/月，觉得太贵</span>
+          <span class="tag tag-ok">已确认</span>
+        </button>
+        <button class="row cols-ev row-link" data-e="e12">
+          <span><span class="sig sig-need">需要</span></span>
+          <span class="src"><span class="pf pf-xhs">小</span>小红书</span>
+          <span class="muted">02-18</span>
+          <span class="ellipsis">三个平台改库存改到凌晨</span>
+          <span class="tag">待确认</span>
+        </button>
+        <button class="row cols-ev row-link" data-e="e21">
+          <span><span class="sig sig-switch">切换</span></span>
+          <span class="src"><span class="pf pf-hn">Y</span>Hacker News</span>
+          <span class="muted">03-02</span>
+          <span class="ellipsis">正在找 ERP 的替代品，最好能自托管</span>
+          <span class="tag">待确认</span>
+        </button>
+        <button class="row cols-ev row-link">
+          <span><span class="sig sig-keep">持续</span></span>
+          <span class="src"><span class="pf pf-app">A</span>App Store</span>
+          <span class="muted">03-11</span>
+          <span class="ellipsis">续费三年，但缺少多平台同步</span>
+          <span class="tag tag-ok">已确认</span>
+        </button>
+        <button class="row cols-ev row-link is-rejected">
+          <span><span class="sig sig-bad">驳回</span></span>
+          <span class="src"><span class="pf pf-zh">知</span>知乎</span>
+          <span class="muted">03-14</span>
+          <span class="ellipsis">引文不在快照中，已拒绝</span>
+          <span class="tag tag-bad">quote 校验失败</span>
+        </button>
+        <button class="row cols-ev row-link" data-e="e12">
+          <span><span class="sig sig-need">需要</span></span>
+          <span class="src"><span class="pf pf-v2">V</span>V2EX</span>
+          <span class="muted">03-18</span>
+          <span class="ellipsis">有没有能同步三个平台库存的工具</span>
+          <span class="tag">待确认</span>
+        </button>
+        <button class="row cols-ev row-link" data-e="e19">
+          <span><span class="sig sig-pay">付费</span></span>
+          <span class="src"><span class="pf pf-dy">抖</span>抖音</span>
+          <span class="muted">03-21</span>
+          <span class="ellipsis">每月花 200 找人手动对账</span>
+          <span class="tag tag-ok">已确认</span>
+        </button>
+        <button class="row cols-ev row-link" data-e="e21">
+          <span><span class="sig sig-switch">切换</span></span>
+          <span class="src"><span class="pf pf-gh">G</span>GitHub</span>
+          <span class="muted">03-25</span>
+          <span class="ellipsis">开源 ERP 的同步插件没人维护了</span>
+          <span class="tag">待确认</span>
+        </button>
+        <button class="row cols-ev row-link">
+          <span><span class="sig sig-keep">持续</span></span>
+          <span class="src"><span class="pf pf-xhs">小</span>小红书</span>
+          <span class="muted">03-28</span>
+          <span class="ellipsis">用了两年，涨价后想换</span>
+          <span class="tag tag-ok">已确认</span>
+        </button>
+      </div>
+
+      <div class="hint"><svg class="i"><use href="#i-shield"/></svg>每条证据可回溯到压缩快照；驳回会写 rejected_reason 并重算评分。</div>
+    </section>
+
+    <!-- 设置 -->
+    <section class="screen" data-screen="settings">
+      <header class="page-head">
+        <div>
+          <h1>LLM 与采集</h1>
+          <p class="sub">模型链决定每次调用用哪个 provider；改动只影响下一次运行</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-ghost"><svg class="i"><use href="#i-key"/></svg>密钥管理</button>
+          <button class="btn btn-primary" id="saveChain">保存链</button>
+        </div>
+      </header>
+
+      <div class="settings-grid">
+        <div class="providers">
+          <div class="block-head"><span>Providers</span><button class="btn btn-sm btn-ghost"><svg class="i"><use href="#i-plus"/></svg>添加</button></div>
+
+          <div class="provider is-active">
+            <div class="provider-top">
+              <span class="provider-logo logo-ollama"><svg class="i"><use href="#i-cpu"/></svg></span>
+              <div class="provider-id"><b>本地 Ollama</b><span>127.0.0.1:11434 · 3 个模型</span></div>
+              <span class="health health-ok"></span>
+            </div>
+            <div class="provider-foot"><span class="ok-text">已连接 · 812 ms</span><span class="muted tiny">无需密钥</span></div>
+          </div>
+
+          <div class="provider">
+            <div class="provider-top">
+              <span class="provider-logo logo-oc">OC</span>
+              <div class="provider-id"><b>OpenCode Go</b><span>opencode.ai/inference/go · sk-…9f2c</span></div>
+              <span class="health health-ok"></span>
+            </div>
+            <div class="provider-foot"><span class="muted tiny">月额度 $80 · 已用 12%</span></div>
+          </div>
+
+          <div class="provider">
+            <div class="provider-top">
+              <span class="provider-logo logo-gem"><svg class="i"><use href="#i-sparkles"/></svg></span>
+              <div class="provider-id"><b>Gemini 免费层</b><span>未配置 key</span></div>
+              <span class="health"></span>
+            </div>
+            <div class="provider-foot"><button class="btn btn-xs">填入 key</button></div>
+          </div>
+        </div>
+
+        <div class="settings-main">
+          <div class="panel">
+            <div class="block-head"><span>模型</span><span class="muted tiny">灰色 = 仅官方客户端可用</span></div>
+            <div class="chips">
+              <span class="chip is-static">qwen3:8b</span>
+              <span class="chip is-static">qwen3:14b</span>
+              <span class="chip is-static">glm-5.3</span>
+              <span class="chip is-static is-disabled">deepseek-v4.1-flash</span>
+              <span class="chip is-static is-disabled">claude-haiku-5.5</span>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="block-head"><span>链</span><span class="muted tiny">拖动排序 · 保存后下一次 run 生效</span></div>
+
+            <div class="chain">
+              <div class="chain-label"><b>bulk</b><span>批量抽取 · 约 120 次/run</span></div>
+              <div class="chain-items">
+                <div class="chain-item"><svg class="i grip"><use href="#i-grip"/></svg><span>ollama / qwen3:8b</span><span class="tag tag-ok">首选</span></div>
+                <svg class="i chain-arrow"><use href="#i-arrow"/></svg>
+                <div class="chain-item"><svg class="i grip"><use href="#i-grip"/></svg><span>ollama / qwen3:14b</span></div>
+              </div>
+            </div>
+
+            <div class="chain">
+              <div class="chain-label"><b>quality</b><span>合成与判断 · 4–6 次/run</span></div>
+              <div class="chain-items">
+                <div class="chain-item"><svg class="i grip"><use href="#i-grip"/></svg><span>ollama / qwen3:14b</span><span class="tag tag-ok">首选</span></div>
+                <svg class="i chain-arrow"><use href="#i-arrow"/></svg>
+                <div class="chain-item"><svg class="i grip"><use href="#i-grip"/></svg><span>OpenCode Go / glm-5.3</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel panel-split">
+            <div>
+              <div class="block-head"><span>用量</span></div>
+              <div class="usage"><div class="usage-row"><span>5 小时</span><div class="bar"><i style="--w:12%"></i></div><b>12%</b></div>
+                <div class="usage-row"><span>本周</span><div class="bar"><i style="--w:31%"></i></div><b>31%</b></div>
+                <div class="usage-row"><span>本月</span><div class="bar bar-ok"><i style="--w:12%"></i></div><b>$9.6 / $80</b></div>
+              </div>
+            </div>
+            <div>
+              <div class="block-head"><span>测试连接</span></div>
+              <button class="btn btn-ghost btn-block" id="testBtn"><svg class="i"><use href="#i-zap"/></svg><span>测试 OpenCode Go</span></button>
+              <div class="test-result" id="testResult" hidden></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <div>
+      <div class="drawer-title" id="dTitle">证据 e12</div>
+      <div class="drawer-sub" id="dSub">小红书 · 2026-02-18 · 一手</div>
+    </div>
+    <button class="icon-btn" id="drawerClose" aria-label="关闭"><svg class="i"><use href="#i-x"/></svg></button>
+  </div>
+  <blockquote class="quote" id="dQuote"></blockquote>
+  <div class="quote-meta"><svg class="i i-success"><use href="#i-check"/></svg>quote 已在快照中定位</div>
+  <div class="cite-block"><div class="cite-label">这条证据支持什么</div><p id="dSupports"></p></div>
+  <div class="cite-block"><div class="cite-label">不能证明</div><p class="muted" id="dNot"></p></div>
+  <div class="cite-block"><div class="cite-label">信号 / 价格</div><p id="dSignal"></p></div>
+  <div class="drawer-actions">
+    <button class="btn btn-primary btn-sm">确认有效</button>
+    <button class="btn btn-ghost btn-sm">驳回</button>
+    <button class="btn btn-ghost btn-sm"><svg class="i"><use href="#i-ext"/></svg>原文</button>
+  </div>
+</aside>
+<div class="scrim" id="scrim"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

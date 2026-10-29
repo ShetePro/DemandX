@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="520" viewBox="0 0 980 520"
+     style="--fg:#18181b;--muted:#71717a;--border:#d4d4d8;--accent:#2563eb;--success:#15803d;--warning:#b45309;--error:#b91c1c;--c1:#0284c7;--c2:#7c3aed;--c4:#0f766e"
+     font-family="system-ui, -apple-system, sans-serif">
+  <rect width="980" height="520" fill="#ffffff"/>
+  <rect x="8" y="8" width="964" height="504" rx="12" fill="none" stroke="var(--border)"/>
+  <line x1="452" y1="72" x2="452" y2="504" stroke="var(--border)"/>
+  <line x1="8" y1="72" x2="972" y2="72" stroke="var(--border)"/>
+  <text x="28" y="40" font-size="14" font-weight="600" fill="var(--fg)">设置 · 采集</text>
+  <text x="152" y="40" font-size="10" fill="var(--muted)">平台会话由你手动登录；抓取只针对公开页面，遇验证码即暂停</text>
+
+  <text x="28" y="100" font-size="11" font-weight="600" fill="var(--fg)">平台会话</text>
+  <rect x="16" y="112" width="420" height="76" rx="8" fill="none" stroke="var(--border)"/>
+  <circle cx="34" cy="134" r="4" fill="none" stroke="var(--success)"/>
+  <text x="46" y="138" font-size="11" fill="var(--fg)">小红书</text>
+  <text x="46" y="156" font-size="9" fill="var(--muted)">已登录 · 会话 3 天前更新</text>
+  <text x="46" y="174" font-size="9" fill="var(--muted)">上次抓取成功率 82% · 平均 4.1 秒/页</text>
+  <rect x="348" y="124" width="76" height="24" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="360" y="140" font-size="9" fill="var(--muted)">重新登录</text>
+
+  <rect x="16" y="196" width="420" height="76" rx="8" fill="none" stroke="var(--error)"/>
+  <circle cx="34" cy="218" r="4" fill="none" stroke="var(--error)"/>
+  <text x="46" y="222" font-size="11" fill="var(--fg)">抖音</text>
+  <text x="46" y="240" font-size="9" fill="var(--error)">会话已过期 · 本次跳过 3 个查询</text>
+  <text x="46" y="258" font-size="9" fill="var(--muted)">登录窗口会打开有头浏览器，完成后自动继续</text>
+  <rect x="348" y="208" width="76" height="24" rx="6" fill="none" stroke="var(--error)"/>
+  <text x="360" y="224" font-size="9" fill="var(--error)">去登录</text>
+
+  <rect x="16" y="280" width="420" height="76" rx="8" fill="none" stroke="var(--border)"/>
+  <circle cx="34" cy="302" r="4" fill="none" stroke="var(--success)"/>
+  <text x="46" y="306" font-size="11" fill="var(--fg)">知乎</text>
+  <text x="46" y="324" font-size="9" fill="var(--muted)">已登录 · 会话 1 天前更新</text>
+  <text x="46" y="342" font-size="9" fill="var(--muted)">仅抓取问题页与回答正文</text>
+  <rect x="348" y="292" width="76" height="24" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="360" y="308" font-size="9" fill="var(--muted)">重新登录</text>
+
+  <rect x="16" y="364" width="420" height="76" rx="8" fill="none" stroke="var(--border)"/>
+  <circle cx="34" cy="386" r="4" fill="none" stroke="var(--muted)"/>
+  <text x="46" y="390" font-size="11" fill="var(--muted)">Reddit</text>
+  <text x="46" y="408" font-size="9" fill="var(--muted)">公开 JSON 返回 403，需 OAuth；当前未接入</text>
+  <text x="46" y="426" font-size="9" fill="var(--muted)">可用替代：搜索 API 结果页 + 手动导入</text>
+
+  <text x="472" y="100" font-size="11" font-weight="600" fill="var(--fg)">抓取限速</text>
+  <text x="472" y="126" font-size="9" fill="var(--muted)">每域名并发</text>
+  <rect x="610" y="112" width="60" height="24" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="626" y="128" font-size="10" fill="var(--fg)">1</text>
+  <text x="694" y="126" font-size="9" fill="var(--muted)">请求间隔</text>
+  <rect x="790" y="112" width="120" height="24" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="802" y="128" font-size="10" fill="var(--fg)">3–8 秒（随机）</text>
+
+  <text x="472" y="160" font-size="9" fill="var(--muted)">每 run 每域名页数</text>
+  <rect x="610" y="146" width="60" height="24" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="622" y="162" font-size="10" fill="var(--fg)">30</text>
+  <text x="694" y="160" font-size="9" fill="var(--muted)">单 run 总时长</text>
+  <rect x="790" y="146" width="120" height="24" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="802" y="162" font-size="10" fill="var(--fg)">90 分钟</text>
+
+  <text x="472" y="196" font-size="9" fill="var(--muted)">遵守 robots</text>
+  <rect x="610" y="182" width="34" height="18" rx="9" fill="none" stroke="var(--success)"/>
+  <text x="626" y="195" font-size="9" fill="var(--success)">开</text>
+  <text x="656" y="196" font-size="9" fill="var(--muted)">CRAWL_ENABLED</text>
+  <rect x="700" y="182" width="110" height="18" rx="9" fill="none" stroke="var(--border)"/>
+  <text x="714" y="195" font-size="9" fill="var(--muted)">全局关闭抓取</text>
+
+  <line x1="472" y1="224" x2="948" y2="224" stroke="var(--border)"/>
+  <text x="472" y="250" font-size="11" font-weight="600" fill="var(--fg)">待人工处理（needs_human）</text>
+  <text x="472" y="272" font-size="9" fill="var(--muted)">URL</text>
+  <text x="760" y="272" font-size="9" fill="var(--muted)">原因</text>
+  <text x="880" y="272" font-size="9" fill="var(--muted)">操作</text>
+  <line x1="472" y1="280" x2="948" y2="280" stroke="var(--border)"/>
+  <text x="472" y="302" font-size="9" fill="var(--muted)">xiaohongshu.com/explore/…</text>
+  <text x="760" y="302" font-size="9" fill="var(--warning)">登录墙</text>
+  <rect x="876" y="290" width="60" height="20" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="888" y="304" font-size="9" fill="var(--muted)">重试</text>
+  <text x="472" y="328" font-size="9" fill="var(--muted)">douyin.com/video/…</text>
+  <text x="760" y="328" font-size="9" fill="var(--error)">验证码</text>
+  <rect x="876" y="316" width="60" height="20" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="888" y="330" font-size="9" fill="var(--muted)">重试</text>
+  <text x="472" y="360" font-size="9" fill="var(--muted)">不会自动破解验证码：此处只能由你处理后重试</text>
+
+  <line x1="472" y1="384" x2="948" y2="384" stroke="var(--border)"/>
+  <text x="472" y="410" font-size="11" font-weight="600" fill="var(--fg)">存储</text>
+  <text x="472" y="432" font-size="9" fill="var(--muted)">快照 1.2 GB · 保留 90 天 · data/snapshots</text>
+  <rect x="472" y="444" width="96" height="26" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="486" y="461" font-size="9" fill="var(--muted)">清理旧快照</text>
+  <text x="584" y="461" font-size="9" fill="var(--muted)">删除后引用仍保留文字，但无法再定位原文</text>
+</svg>

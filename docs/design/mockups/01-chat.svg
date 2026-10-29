@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="620" viewBox="0 0 980 620"
+     style="--fg:#18181b;--muted:#71717a;--border:#d4d4d8;--accent:#2563eb;--success:#15803d;--warning:#b45309;--error:#b91c1c;--c1:#0284c7;--c2:#7c3aed;--c4:#0f766e"
+     font-family="system-ui, -apple-system, sans-serif">
+  <rect width="980" height="620" fill="#ffffff"/>
+  <rect x="8" y="8" width="964" height="604" rx="12" fill="none" stroke="var(--border)"/>
+  <line x1="228" y1="8" x2="228" y2="604" stroke="var(--border)"/>
+  <line x1="712" y1="8" x2="712" y2="604" stroke="var(--border)"/>
+
+  <text x="28" y="42" font-size="15" font-weight="600" fill="var(--fg)">DemandX</text>
+  <text x="28" y="60" font-size="10" fill="var(--muted)">研究线程</text>
+  <rect x="20" y="72" width="188" height="32" rx="8" fill="none" stroke="var(--border)"/>
+  <text x="38" y="92" font-size="12" fill="var(--fg)">＋ 新建研究</text>
+
+  <rect x="16" y="124" width="196" height="46" rx="8" fill="none" stroke="var(--accent)"/>
+  <text x="28" y="144" font-size="11" fill="var(--fg)">跨境卖家库存同步</text>
+  <text x="28" y="160" font-size="9" fill="var(--muted)">run #42 · 进行中</text>
+
+  <text x="28" y="196" font-size="11" fill="var(--muted)">记账 App 机会</text>
+  <text x="28" y="222" font-size="11" fill="var(--muted)">宠物健康订阅</text>
+  <text x="28" y="248" font-size="11" fill="var(--muted)">独立开发者报表工具</text>
+
+  <text x="28" y="586" font-size="11" fill="var(--muted)">设置 · LLM 与采集</text>
+
+  <text x="248" y="40" font-size="13" font-weight="600" fill="var(--fg)">跨境卖家多平台库存同步</text>
+  <text x="248" y="58" font-size="10" fill="var(--muted)">run #42 · S3 聚类中 · 已用 22 分钟</text>
+  <rect x="556" y="30" width="66" height="26" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="568" y="47" font-size="10" fill="var(--muted)">导出报告</text>
+
+  <rect x="468" y="82" width="222" height="46" rx="10" fill="none" stroke="var(--border)"/>
+  <text x="482" y="102" font-size="11" fill="var(--fg)">我想做一个跨境卖家多平台</text>
+  <text x="482" y="118" font-size="11" fill="var(--fg)">库存同步工具</text>
+
+  <text x="248" y="156" font-size="11" fill="var(--fg)">先看证据：3 条付费信号里只有 1 条有价格页。</text>
+  <text x="248" y="174" font-size="11" fill="var(--fg)">其余两条只是「愿意付」，不能当成成交。</text>
+  <rect x="248" y="182" width="34" height="18" rx="4" fill="none" stroke="var(--accent)"/>
+  <text x="256" y="195" font-size="9" fill="var(--accent)">e12</text>
+  <rect x="288" y="182" width="34" height="18" rx="4" fill="none" stroke="var(--accent)"/>
+  <text x="296" y="195" font-size="9" fill="var(--accent)">e19</text>
+  <text x="330" y="195" font-size="9" fill="var(--muted)">点击查看原文</text>
+
+  <rect x="248" y="220" width="420" height="84" rx="10" fill="none" stroke="var(--border)"/>
+  <text x="264" y="244" font-size="11" font-weight="600" fill="var(--fg)">研究进行中 · S3 聚类</text>
+  <text x="264" y="262" font-size="10" fill="var(--muted)">已采集 24 条证据 · 12/40 来源 · 预计还需 13 分钟</text>
+  <rect x="264" y="276" width="388" height="6" rx="3" fill="none" stroke="var(--border)"/>
+  <line x1="264" y1="279" x2="380" y2="279" stroke="var(--accent)" stroke-width="6" stroke-linecap="round"/>
+  <text x="264" y="298" font-size="9" fill="var(--muted)">S1 采集 ✓ · S2 抽取 ✓ · S3 聚类 30%</text>
+
+  <rect x="248" y="316" width="420" height="54" rx="10" fill="none" stroke="var(--border)"/>
+  <text x="264" y="338" font-size="11" fill="var(--fg)">付费证据 3 条 · 其中 1 条含价格页（¥99/月）</text>
+  <rect x="264" y="346" width="34" height="16" rx="4" fill="none" stroke="var(--border)"/>
+  <text x="272" y="358" font-size="9" fill="var(--muted)">e12</text>
+  <rect x="302" y="346" width="34" height="16" rx="4" fill="none" stroke="var(--border)"/>
+  <text x="310" y="358" font-size="9" fill="var(--muted)">e19</text>
+  <rect x="340" y="346" width="34" height="16" rx="4" fill="none" stroke="var(--border)"/>
+  <text x="348" y="358" font-size="9" fill="var(--muted)">e21</text>
+
+  <rect x="248" y="384" width="420" height="76" rx="10" fill="none" stroke="var(--success)"/>
+  <text x="264" y="408" font-size="11" font-weight="600" fill="var(--fg)">开始研究？预计 35 分钟（本地推理）</text>
+  <text x="264" y="426" font-size="10" fill="var(--muted)">60 次检索 · 120 页抓取 · 质量链：本地 14b</text>
+  <rect x="264" y="432" width="82" height="22" rx="6" fill="none" stroke="var(--success)"/>
+  <text x="278" y="447" font-size="10" fill="var(--success)">开始研究</text>
+  <rect x="354" y="432" width="82" height="22" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="368" y="447" font-size="10" fill="var(--muted)">调整角度</text>
+
+  <rect x="240" y="486" width="436" height="56" rx="12" fill="none" stroke="var(--border)"/>
+  <text x="256" y="513" font-size="11" fill="var(--muted)">描述一个产品想法，或粘贴一段用户抱怨…</text>
+  <text x="256" y="530" font-size="9" fill="var(--muted)">Enter 发送 · Shift+Enter 换行</text>
+  <rect x="640" y="500" width="28" height="28" rx="8" fill="none" stroke="var(--accent)"/>
+  <text x="650" y="519" font-size="12" fill="var(--accent)">↑</text>
+
+  <text x="728" y="40" font-size="12" font-weight="600" fill="var(--fg)">运行详情</text>
+  <text x="728" y="58" font-size="9" fill="var(--muted)">S0–S6 阶段</text>
+  <circle cx="734" cy="84" r="4" fill="none" stroke="var(--success)"/>
+  <text x="748" y="88" font-size="10" fill="var(--muted)">S0 检索角度 · 完成</text>
+  <circle cx="734" cy="112" r="4" fill="none" stroke="var(--success)"/>
+  <text x="748" y="116" font-size="10" fill="var(--muted)">S1 采集 · 24/40 源</text>
+  <circle cx="734" cy="140" r="4" fill="none" stroke="var(--success)"/>
+  <text x="748" y="144" font-size="10" fill="var(--muted)">S2 抽取 · 18/24 可引用</text>
+  <circle cx="734" cy="168" r="4" fill="none" stroke="var(--accent)"/>
+  <text x="748" y="172" font-size="10" fill="var(--fg)">S3 聚类 · 进行中</text>
+  <circle cx="734" cy="196" r="4" fill="none" stroke="var(--border)"/>
+  <text x="748" y="200" font-size="10" fill="var(--muted)">S4 评级</text>
+  <circle cx="734" cy="224" r="4" fill="none" stroke="var(--border)"/>
+  <text x="748" y="228" font-size="10" fill="var(--muted)">S5 报告合成</text>
+  <circle cx="734" cy="252" r="4" fill="none" stroke="var(--border)"/>
+  <text x="748" y="256" font-size="10" fill="var(--muted)">S6 自检 + 决策</text>
+
+  <line x1="728" y1="286" x2="956" y2="286" stroke="var(--border)"/>
+  <text x="728" y="310" font-size="10" fill="var(--muted)">证据 24 · 付费 3 · 竞品 4</text>
+  <text x="728" y="334" font-size="10" fill="var(--warning)">配额：Exa 本月已用 70%</text>
+  <text x="728" y="358" font-size="10" fill="var(--accent)">打开证据库 →</text>
+
+  <text x="728" y="398" font-size="10" font-weight="600" fill="var(--fg)">待人工处理</text>
+  <rect x="724" y="410" width="236" height="52" rx="8" fill="none" stroke="var(--warning)"/>
+  <text x="736" y="430" font-size="10" fill="var(--fg)">小红书 · 需要登录</text>
+  <text x="736" y="448" font-size="9" fill="var(--muted)">点击扫码，完成后自动继续</text>
+</svg>
