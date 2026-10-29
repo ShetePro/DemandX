@@ -3,15 +3,23 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
-import { saveChains } from '@/lib/llm/chain-repository';
+import { getChain, saveChains } from '@/lib/llm/chain-repository';
 import { testProviderConnection, type ConnectionTestResult } from '@/lib/llm/connection';
+import {
+  addModel,
+  addModelInputSchema,
+  listAllModels,
+  refreshModels,
+} from '@/lib/llm/models-repository';
+import type { ChainItem, Profile } from '@/lib/llm/port';
 import {
   createProvider,
   deleteProvider,
   listProviders,
   updateProvider,
 } from '@/lib/llm/repository';
-import type { ProviderRow, Result } from '@/lib/llm/types';
+import type { ProviderModelRow, ProviderRow, ProviderUsageSummary, Result } from '@/lib/llm/types';
+import { getProviderUsage } from '@/lib/llm/usage-repository';
 
 import {
   PAYG_ISSUE_CODE,
@@ -113,6 +121,45 @@ export async function saveChainsAction(raw: unknown): Promise<Result<void>> {
   if (!parsed.ok) return parsed;
 
   const result = await saveChains(parsed.value);
+  if (result.ok) revalidatePath(SETTINGS_PATH);
+  return result;
+}
+
+export type ChainsForPage = Record<Profile, ChainItem[]>;
+
+/** Both profiles in one round trip; a failure in either one fails the page data. */
+export async function getChainsForPage(): Promise<Result<ChainsForPage>> {
+  const [bulk, quality] = await Promise.all([getChain('bulk'), getChain('quality')]);
+  if (!bulk.ok) return bulk;
+  if (!quality.ok) return quality;
+  return { ok: true, value: { bulk: bulk.value, quality: quality.value } };
+}
+
+export async function getModelsForPage(): Promise<Result<ProviderModelRow[]>> {
+  return listAllModels();
+}
+
+export async function getUsageAction(): Promise<Result<ProviderUsageSummary[]>> {
+  return getProviderUsage();
+}
+
+export async function refreshModelsAction(id: unknown): Promise<Result<ProviderModelRow[]>> {
+  const parsedId = parse(providerIdSchema, id);
+  if (!parsedId.ok) return parsedId;
+
+  const result = await refreshModels(parsedId.value);
+  if (result.ok) revalidatePath(SETTINGS_PATH);
+  return result;
+}
+
+export async function addModelAction(id: unknown, raw: unknown): Promise<Result<ProviderModelRow>> {
+  const parsedId = parse(providerIdSchema, id);
+  if (!parsedId.ok) return parsedId;
+
+  const parsed = parse(addModelInputSchema, raw);
+  if (!parsed.ok) return parsed;
+
+  const result = await addModel(parsedId.value, parsed.value);
   if (result.ok) revalidatePath(SETTINGS_PATH);
   return result;
 }

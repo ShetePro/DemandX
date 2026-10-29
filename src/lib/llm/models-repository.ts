@@ -1,0 +1,265 @@
+import { asc, eq, sql } from 'drizzle-orm';
+import { z } from 'zod';
+
+import { db } from '@/lib/db/client';
+import { providerModels, providers } from '@/lib/db/schema';
+
+import { asArray, asRecord, asString, trimBase } from './adapters/http';
+import { resolveApiKey } from './repository';
+import type { AppErrorCode, ProviderKind, ProviderModelRow, Result } from './types';
+
+const providerIdSchema = z
+  .number()
+  .int('provider id 必须是整数')
+  .positive('provider id 必须为正数');
+
+/** A discovery probe must answer while the operator waits. */
+const DISCOVERY_TIMEOUT_MS = 10_000;
+
+export const addModelInputSchema = z.object({
+  modelId: z.string().trim().min(1, 'modelId 不能为空').max(200, 'modelId 过长'),
+  displayName: z.string().trim().min(1, '显示名不能为空').optional(),
+  availableExternally: z.boolean().default(true),
+});
+
+export type AddModelInput = z.input<typeof addModelInputSchema>;
+
+type RemoteModel = { modelId: string; displayName: string | null };
+
+function fail<T>(code: AppErrorCode, message: string): Result<T> {
+  return { ok: false, code, message };
+}
+
+function formatIssues(error: z.ZodError): string {
+  return error.issues
+    .map((issue) => `${issue.path.length > 0 ? issue.path.join('.') : '(root)'}: ${issue.message}`)
+    .join('; ');
+}
+
+/** SQLSTATE only: postgres.js errors also carry query text and parameters. */
+function storageFailure<T>(action: string, error: unknown): Result<T> {
+  const state = (error as { code?: unknown } | null)?.code;
+  const detail = typeof state === 'string' ? ` (SQLSTATE ${state})` : '';
+  return { ok: false, code: 'STORAGE_FAILED', message: `${action}失败${detail}` };
+}
+
+async function getJson(url: string, headers: Record<string, string>): Promise<Result<unknown>> {
+  try {
+    const response = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      return fail('LLM_UNAVAILABLE', `拉取模型失败：HTTP ${response.status}`);
+    }
+    return { ok: true, value: (await response.json()) as unknown };
+  } catch {
+    return fail('LLM_UNAVAILABLE', '拉取模型失败：网络错误或超时');
+  }
+}
+
+/**
+ * Ollama's native tags endpoint lives at the daemon root, so the `/v1` suffix
+ * of the OpenAI-compatible spelling has to go first (same rule as the adapter).
+ */
+function ollamaTagsUrl(baseUrl: string): string {
+  const trimmed = trimBase(baseUrl);
+  const base = trimmed.endsWith('/v1') ? trimmed.slice(0, -'/v1'.length) : trimmed;
+  return `${trimBase(base)}/api/tags`;
+}
+
+/** `{ models: [{ name, model }] }` — `model` is the canonical tag when present. */
+function parseOllamaModels(body: unknown): RemoteModel[] {
+  return asArray(asRecord(body)?.models).flatMap((entry) => {
+    const record = asRecord(entry);
+    const modelId = asString(record?.model) ?? asString(record?.name);
+    if (modelId === undefined || modelId.trim() === '') return [];
+    return [{ modelId, displayName: asString(record?.name) ?? null }];
+  });
+}
+
+/** `{ data: [{ id }] }` — the OpenAI `/v1/models` envelope. */
+function parseOpenAiModels(body: unknown): RemoteModel[] {
+  return asArray(asRecord(body)?.data).flatMap((entry) => {
+    const modelId = asString(asRecord(entry)?.id);
+    if (modelId === undefined || modelId.trim() === '') return [];
+    return [{ modelId, displayName: null }];
+  });
+}
+
+/**
+ * Only providers with a real "list models" endpoint are discoverable. Anthropic
+ * and Google deliberately have none: their model families are curated in the
+ * vendor console, so the operator adds the ones they can call by hand.
+ */
+async function fetchRemoteModels(
+  kind: ProviderKind,
+  baseUrl: string,
+  headers: Record<string, string>,
+): Promise<Result<RemoteModel[]>> {
+  if (kind === 'anthropic-compatible' || kind === 'google') {
+    return fail('VALIDATION_FAILED', '该 provider 不支持自动拉取模型，请使用“手动添加”填写模型 ID');
+  }
+
+  if (kind === 'ollama') {
+    const response = await getJson(ollamaTagsUrl(baseUrl), headers);
+    if (!response.ok) return response;
+    return { ok: true, value: parseOllamaModels(response.value) };
+  }
+
+  const response = await getJson(`${trimBase(baseUrl)}/models`, headers);
+  if (!response.ok) return response;
+  return { ok: true, value: parseOpenAiModels(response.value) };
+}
+
+function toModelRow(row: typeof providerModels.$inferSelect): ProviderModelRow {
+  return {
+    providerId: row.providerId,
+    modelId: row.modelId,
+    displayName: row.displayName,
+    availableExternally: row.availableExternally === true,
+    source: row.source,
+  };
+}
+
+/** Every cached model, ordered so the settings page renders deterministically. */
+export async function listAllModels(): Promise<Result<ProviderModelRow[]>> {
+  try {
+    const rows = await db
+      .select()
+      .from(providerModels)
+      .orderBy(asc(providerModels.providerId), asc(providerModels.modelId));
+    return { ok: true, value: rows.map(toModelRow) };
+  } catch (error) {
+    return storageFailure('读取模型列表', error);
+  }
+}
+
+/**
+ * Ask the provider what it serves and cache the answer. Upserts never touch
+ * `available_externally`: the operator's manual judgement — a model that is
+ * visible to `/models` but only callable from the vendor's own client — must
+ * survive every refresh.
+ */
+export async function refreshModels(providerId: number): Promise<Result<ProviderModelRow[]>> {
+  const parsedId = providerIdSchema.safeParse(providerId);
+  if (!parsedId.success) {
+    return fail('VALIDATION_FAILED', formatIssues(parsedId.error));
+  }
+
+  let provider:
+    { kind: ProviderKind; baseUrl: string; headers: Record<string, string> } | undefined;
+  try {
+    const [row] = await db
+      .select({
+        kind: providers.kind,
+        baseUrl: providers.baseUrl,
+        headers: providers.headers,
+      })
+      .from(providers)
+      .where(eq(providers.id, parsedId.data))
+      .limit(1);
+    if (!row) return fail('PROVIDER_NOT_FOUND', `provider ${parsedId.data} 不存在`);
+    provider = {
+      kind: row.kind as ProviderKind,
+      baseUrl: row.baseUrl,
+      headers: (row.headers ?? {}) as Record<string, string>,
+    };
+  } catch (error) {
+    return storageFailure('读取 provider ', error);
+  }
+
+  const headers: Record<string, string> = { ...provider.headers };
+  const apiKey = await resolveApiKey(parsedId.data);
+  if (!apiKey.ok) return apiKey;
+  if (apiKey.value !== null && apiKey.value !== '' && headers.authorization === undefined) {
+    headers.authorization = `Bearer ${apiKey.value}`;
+  }
+
+  const discovered = await fetchRemoteModels(provider.kind, provider.baseUrl, headers);
+  if (!discovered.ok) return discovered;
+
+  const rows = discovered.value.map((model) => ({
+    providerId: parsedId.data,
+    modelId: model.modelId,
+    displayName: model.displayName,
+    source: provider.kind,
+  }));
+
+  try {
+    if (rows.length > 0) {
+      await db
+        .insert(providerModels)
+        .values(rows)
+        .onConflictDoUpdate({
+          target: [providerModels.providerId, providerModels.modelId],
+          // `available_externally` is intentionally absent from this set: a
+          // refresh only refreshes what the provider reports.
+          set: {
+            displayName: sql`coalesce(excluded.display_name, ${providerModels.displayName})`,
+            source: sql`excluded.source`,
+          },
+        });
+    }
+
+    const stored = await db
+      .select()
+      .from(providerModels)
+      .where(eq(providerModels.providerId, parsedId.data))
+      .orderBy(asc(providerModels.modelId));
+    return { ok: true, value: stored.map(toModelRow) };
+  } catch (error) {
+    return storageFailure('保存模型列表', error);
+  }
+}
+
+/**
+ * Manual entry for providers without a discovery endpoint (and for models the
+ * listing omits). An existing row is updated, so ticking the external-use box
+ * by hand is how a misclassified model is corrected.
+ */
+export async function addModel(
+  providerId: number,
+  input: unknown,
+): Promise<Result<ProviderModelRow>> {
+  const parsedId = providerIdSchema.safeParse(providerId);
+  if (!parsedId.success) return fail('VALIDATION_FAILED', formatIssues(parsedId.error));
+
+  const parsed = addModelInputSchema.safeParse(input);
+  if (!parsed.success) return fail('VALIDATION_FAILED', formatIssues(parsed.error));
+
+  const { modelId, displayName, availableExternally } = parsed.data;
+
+  try {
+    const [provider] = await db
+      .select({ id: providers.id })
+      .from(providers)
+      .where(eq(providers.id, parsedId.data))
+      .limit(1);
+    if (!provider) return fail('PROVIDER_NOT_FOUND', `provider ${parsedId.data} 不存在`);
+
+    const [row] = await db
+      .insert(providerModels)
+      .values({
+        providerId: parsedId.data,
+        modelId,
+        displayName: displayName ?? null,
+        source: 'manual',
+        availableExternally,
+      })
+      .onConflictDoUpdate({
+        target: [providerModels.providerId, providerModels.modelId],
+        set: {
+          displayName: sql`coalesce(excluded.display_name, ${providerModels.displayName})`,
+          availableExternally,
+          source: 'manual',
+        },
+      })
+      .returning();
+
+    if (!row) return fail('STORAGE_FAILED', '保存模型失败：数据库未返回记录');
+    return { ok: true, value: toModelRow(row) };
+  } catch (error) {
+    return storageFailure('保存模型', error);
+  }
+}

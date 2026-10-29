@@ -26,6 +26,31 @@ export type ProviderRow = {
   monthlyAllowanceUsd: number | null;
 };
 
+/**
+ * One cached `provider_models` row. `availableExternally: false` means the model
+ * only works through the vendor's own client (e.g. a subscription-only model),
+ * so the chain must never be able to pick it.
+ */
+export type ProviderModelRow = {
+  providerId: number;
+  modelId: string;
+  displayName: string | null;
+  availableExternally: boolean;
+  source: string | null;
+};
+
+/**
+ * Latest counter per quota window for one provider. Windows without a row read
+ * as 0; `monthlySpendUsd` is what the provider reported for its current month.
+ */
+export type ProviderUsageSummary = {
+  providerId: number;
+  fiveHourRequests: number;
+  weeklyRequests: number;
+  monthlyRequests: number;
+  monthlySpendUsd: number;
+};
+
 export type AppErrorCode =
   | 'VALIDATION_FAILED'
   | 'PAYG_NOT_ACKNOWLEDGED'
