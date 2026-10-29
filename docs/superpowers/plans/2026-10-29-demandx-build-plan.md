@@ -84,6 +84,10 @@ app/**            只做路由、数据装配、metadata
 
 ## P0 基础（2 天）
 
+**执行顺序调整（2026-10-30）**：T0.8（测试基建）先于 T0.3–T0.5 执行，否则 hook 与组件测试没有运行环境；其余顺序不变。
+
+**P0 状态：已完成（2026-10-30）** — 9/9 任务；分支 `feat/build` 共 22 个提交；`pnpm verify` 绿（76 单测）、`pnpm e2e` 绿、`next build` 通过；工作台页在 1440/390 两种宽度实测。后续从 P1 开始。
+
 ### T0.1 初始化工程与脚本
 
 **Files:** `package.json`、`tsconfig.json`、`next.config.ts`、`src/app/layout.tsx`、`src/app/page.tsx`、`.gitignore`、`.env.example`
