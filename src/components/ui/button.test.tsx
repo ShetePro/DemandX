@@ -31,4 +31,16 @@ describe('Button', () => {
 
     expect(onClick).toHaveBeenCalledOnce();
   });
+
+  it('defaults to type=button and keeps an explicit submit type', () => {
+    render(
+      <>
+        <Button>取消</Button>
+        <Button type="submit">提交</Button>
+      </>,
+    );
+
+    expect(screen.getByRole('button', { name: '取消' })).toHaveAttribute('type', 'button');
+    expect(screen.getByRole('button', { name: '提交' })).toHaveAttribute('type', 'submit');
+  });
 });

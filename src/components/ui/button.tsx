@@ -33,6 +33,8 @@ export type ButtonProps = ComponentProps<'button'> &
 
 export function Button({ className, variant, size, asChild = false, ...props }: ButtonProps) {
   const Comp = asChild ? Slot.Root : 'button';
+  // A bare <button> inside a form defaults to submit; only opt into submit explicitly.
+  const typeProps = asChild ? props : { type: 'button' as const, ...props };
 
-  return <Comp className={cn(buttonVariants({ variant, size }), className)} {...props} />;
+  return <Comp className={cn(buttonVariants({ variant, size }), className)} {...typeProps} />;
 }
