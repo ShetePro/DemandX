@@ -75,13 +75,14 @@ function maskSecret(plain: string): string {
 }
 
 /**
- * Read an existing key file, tightening permissions to 0600 if needed.
+ * Read an existing key file, stripping group/other access if present.
+ * Stricter owner modes (e.g. 0400) are left alone — this key is only ever read.
  *
  * @throws {SecretError} `SECRET_KEY_INVALID` when the file is not exactly 32 bytes.
  */
 function readKeyFile(filePath: string): Buffer {
   const stat = fs.statSync(filePath);
-  if ((stat.mode & 0o777) !== KEY_FILE_MODE) fs.chmodSync(filePath, KEY_FILE_MODE);
+  if (stat.mode & 0o077) fs.chmodSync(filePath, KEY_FILE_MODE);
 
   const key = fs.readFileSync(filePath);
   if (key.length !== KEY_BYTES) {

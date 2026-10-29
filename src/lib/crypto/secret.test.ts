@@ -114,6 +114,16 @@ describe('loadSecretBox', () => {
     expect(box.decrypt(box.encrypt(PLAIN))).toBe(PLAIN);
   });
 
+  it('leaves a stricter owner-only mode untouched', () => {
+    writeFileSync(keyPath, Buffer.alloc(32, 7));
+    chmodSync(keyPath, 0o400);
+
+    const box = loadSecretBox(keyPath);
+
+    expect(statSync(keyPath).mode & 0o777).toBe(0o400);
+    expect(box.decrypt(box.encrypt(PLAIN))).toBe(PLAIN);
+  });
+
   it('reuses the persisted key across loads', () => {
     const writer = loadSecretBox(keyPath);
     const ciphertext = writer.encrypt(PLAIN);
