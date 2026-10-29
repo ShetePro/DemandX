@@ -76,6 +76,25 @@ describe('ollama adapter', () => {
     ]);
   });
 
+  it('sends provider-configured headers', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: { role: 'assistant', content: 'ok' } })),
+    );
+
+    await complete({
+      baseUrl: 'http://127.0.0.1:11434',
+      apiKey: null,
+      modelId: 'qwen-test',
+      prompt: { system: 'sys', user: 'usr' },
+      headers: { 'x-opencode-session': 'session-1' },
+      structured: false,
+    });
+
+    const headers = (fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Record<string, string>;
+    expect(headers['x-opencode-session']).toBe('session-1');
+    expect(headers.authorization).toBeUndefined();
+  });
+
   it('reports an empty message as a failure', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ message: { content: '' } })));
 

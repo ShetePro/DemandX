@@ -37,6 +37,7 @@ export async function getChain(profile: Profile): Promise<Result<ChainItem[]>> {
         providerName: providers.name,
         kind: providers.kind,
         baseUrl: providers.baseUrl,
+        headers: providers.headers,
         modelId: llmChains.modelId,
       })
       .from(llmChains)
@@ -51,6 +52,7 @@ export async function getChain(profile: Profile): Promise<Result<ChainItem[]>> {
         providerName: row.providerName,
         kind: row.kind as ProviderKind,
         baseUrl: row.baseUrl,
+        headers: (row.headers ?? {}) as Record<string, string>,
         modelId: row.modelId,
       })),
     };

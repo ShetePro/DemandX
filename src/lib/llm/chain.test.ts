@@ -13,6 +13,7 @@ const A: ChainItem = {
   kind: 'openai-compatible',
   baseUrl: 'https://a.example/v1',
   modelId: 'a-model',
+  headers: {},
 };
 
 const B: ChainItem = {
@@ -21,6 +22,7 @@ const B: ChainItem = {
   kind: 'openai-compatible',
   baseUrl: 'https://b.example/v1',
   modelId: 'b-model',
+  headers: {},
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -75,6 +77,29 @@ describe('createLlmPort · text', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0]?.[0]).toBe('https://a.example/v1/chat/completions');
     expect(fetchMock.mock.calls[1]?.[0]).toBe('https://b.example/v1/chat/completions');
+  });
+
+  it('sends the provider-configured headers, with protocol headers taking precedence', async () => {
+    fetchMock.mockResolvedValueOnce(answer('ok'));
+
+    const port = makePort(
+      [
+        {
+          ...A,
+          headers: { 'x-opencode-session': 'session-1', authorization: 'Bearer injected' },
+        },
+      ],
+      { 1: 'sk-real-key' },
+    );
+    const result = await port.text(PROMPT, { profile: 'bulk' });
+
+    expect(result.ok).toBe(true);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers['x-opencode-session']).toBe('session-1');
+    // The stored header must not be able to replace the key-derived auth.
+    expect(headers.authorization).toBe('Bearer sk-real-key');
+    expect(headers['content-type']).toBe('application/json');
   });
 
   it('skips a provider that is still cooling down', async () => {

@@ -22,7 +22,7 @@ export async function complete(request: AdapterRequest): Promise<AdapterResult> 
     };
   }
 
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...request.headers };
   if (request.apiKey) headers.authorization = `Bearer ${request.apiKey}`;
 
   const outcome = await postJson(

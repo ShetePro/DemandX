@@ -76,6 +76,22 @@ describe('openai-compatible adapter', () => {
     expect(body.temperature).toBe(0);
   });
 
+  it('merges provider headers under the protocol auth header', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] })),
+    );
+
+    await complete({
+      ...REQUEST,
+      headers: { 'x-opencode-session': 'session-1', authorization: 'Bearer injected' },
+    });
+
+    const headers = (fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Record<string, string>;
+    expect(headers['x-opencode-session']).toBe('session-1');
+    expect(headers.authorization).toBe('Bearer sk-test-key');
+    expect(headers['content-type']).toBe('application/json');
+  });
+
   it('classifies an error status without reading the provider body', async () => {
     fetchMock.mockResolvedValueOnce(new Response('{"error":"prompt echoed"}', { status: 401 }));
 

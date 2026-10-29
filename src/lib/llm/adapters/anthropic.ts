@@ -11,7 +11,10 @@ function endpoint(baseUrl: string): string {
 }
 
 export async function complete(request: AdapterRequest): Promise<AdapterResult> {
-  const headers: Record<string, string> = { 'anthropic-version': API_VERSION };
+  const headers: Record<string, string> = {
+    ...request.headers,
+    'anthropic-version': API_VERSION,
+  };
   if (request.apiKey) headers['x-api-key'] = request.apiKey;
 
   const body = {

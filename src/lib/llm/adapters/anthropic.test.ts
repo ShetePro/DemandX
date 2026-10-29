@@ -86,6 +86,22 @@ describe('anthropic adapter', () => {
     expect(body.system).toBe('system text');
   });
 
+  it('sends provider headers but keeps protocol headers authoritative', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ content: [{ type: 'text', text: 'ok' }] })),
+    );
+
+    await complete({
+      ...REQUEST,
+      headers: { 'x-opencode-session': 'session-1', 'x-api-key': 'sk-injected' },
+    });
+
+    const headers = (fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Record<string, string>;
+    expect(headers['x-opencode-session']).toBe('session-1');
+    expect(headers['x-api-key']).toBe('sk-ant-test');
+    expect(headers['anthropic-version']).toBe('2023-06-01');
+  });
+
   it('rejects an empty content array as a failure', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ content: [] })));
 

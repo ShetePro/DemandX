@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 
 import { db } from '@/lib/db/client';
 import { providerModels, providers } from '@/lib/db/schema';
@@ -21,8 +21,6 @@ export type ConnectionTest = {
   latencyMs: number;
   model: string;
   status: number;
-  /** Dollars the provider says remain in the window; adapters do not report one yet. */
-  providerReportedAllowance?: number;
 };
 
 /**
@@ -81,35 +79,50 @@ function describe(reason: AdapterFailureReason, status: number): string {
 }
 
 /**
- * The provider's first model, by `model_id` ascending. `provider_models` is a
- * cache, so an empty one means "no model discovered yet" — the probe cannot pick
- * one on the operator's behalf.
+ * The provider's first model that outside clients may call, by `model_id`
+ * ascending. `provider_models` is a cache, so an empty result means "no usable
+ * model discovered yet" — the probe cannot pick one on the operator's behalf.
  */
 async function loadProbeTarget(
   id: number,
-): Promise<Result<{ kind: ProviderKind; baseUrl: string; modelId: string }>> {
+): Promise<
+  Result<{ kind: ProviderKind; baseUrl: string; headers: Record<string, string>; modelId: string }>
+> {
   try {
-    // A LEFT JOIN keeps "provider without models" distinguishable from "no such
-    // provider"; NULLS LAST ordering puts the smallest real model_id first.
+    // A LEFT JOIN keeps "provider without usable models" distinguishable from
+    // "no such provider"; NULLS LAST ordering puts the smallest real model_id
+    // first.
     const [row] = await db
       .select({
         kind: providers.kind,
         baseUrl: providers.baseUrl,
+        headers: providers.headers,
         modelId: providerModels.modelId,
       })
       .from(providers)
-      .leftJoin(providerModels, eq(providerModels.providerId, providers.id))
+      .leftJoin(
+        providerModels,
+        and(
+          eq(providerModels.providerId, providers.id),
+          eq(providerModels.availableExternally, true),
+        ),
+      )
       .where(eq(providers.id, id))
       .orderBy(asc(providerModels.modelId))
       .limit(1);
 
     if (!row) return { ok: false, code: 'PROVIDER_NOT_FOUND', message: `provider ${id} 不存在` };
     if (row.modelId === null) {
-      return { ok: false, code: 'VALIDATION_FAILED', message: 'no_models' };
+      return { ok: false, code: 'VALIDATION_FAILED', message: '该 provider 没有可用模型' };
     }
     return {
       ok: true,
-      value: { kind: row.kind as ProviderKind, baseUrl: row.baseUrl, modelId: row.modelId },
+      value: {
+        kind: row.kind as ProviderKind,
+        baseUrl: row.baseUrl,
+        headers: (row.headers ?? {}) as Record<string, string>,
+        modelId: row.modelId,
+      },
     };
   } catch (error) {
     return storageFailure('读取 provider ', error);
@@ -127,7 +140,7 @@ export async function testProviderConnection(id: number): Promise<ConnectionTest
   const apiKey = await resolveApiKey(id);
   if (!apiKey.ok) return failure(apiKey.code, apiKey.message);
 
-  const { kind, baseUrl, modelId } = target.value;
+  const { kind, baseUrl, headers, modelId } = target.value;
   const startedAt = performance.now();
 
   let outcome;
@@ -137,6 +150,7 @@ export async function testProviderConnection(id: number): Promise<ConnectionTest
       apiKey: apiKey.value,
       modelId,
       prompt: { system: '', user: PROBE_PROMPT },
+      headers,
       structured: false,
       timeoutMs: PROBE_TIMEOUT_MS,
     });

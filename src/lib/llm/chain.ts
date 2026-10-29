@@ -141,6 +141,7 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
         apiKey: apiKey.value,
         modelId: item.modelId,
         prompt,
+        headers: item.headers,
         structured,
         jsonSchema,
       });

@@ -19,7 +19,7 @@ export async function complete(request: AdapterRequest): Promise<AdapterResult> 
 
   const outcome = await postJson(
     endpoint(request.baseUrl, request.modelId, request.apiKey),
-    {},
+    { ...request.headers },
     body,
     request.timeoutMs,
   );

@@ -11,6 +11,12 @@ export type AdapterRequest = {
   modelId: string;
   prompt: Prompt;
   /**
+   * Extra headers configured on the provider (e.g. OpenCode's
+   * `x-opencode-session`). Adapters spread these first, so protocol headers
+   * still win: a stored header must not be able to fake auth or content type.
+   */
+  headers?: Record<string, string> | undefined;
+  /**
    * True for `LlmPort.structured` calls. Providers without native schema support
    * key their "answer with JSON only" instruction off this flag, not off
    * `jsonSchema`, so a schema with no JSON Schema form still means "structured".

@@ -39,7 +39,7 @@ export async function postJson(
   try {
     response = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...headers },
+      headers: { ...headers, 'content-type': 'application/json' },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });

@@ -27,7 +27,12 @@ export async function complete(request: AdapterRequest): Promise<AdapterResult> 
   // Ollama takes the JSON Schema itself in `format`, not a wrapper object.
   if (request.jsonSchema) body.format = request.jsonSchema;
 
-  const outcome = await postJson(endpoint(request.baseUrl), {}, body, request.timeoutMs);
+  const outcome = await postJson(
+    endpoint(request.baseUrl),
+    { ...request.headers },
+    body,
+    request.timeoutMs,
+  );
   if (!outcome.ok) return outcome;
 
   const root = asRecord(outcome.body);

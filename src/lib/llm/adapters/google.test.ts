@@ -86,6 +86,18 @@ describe('google adapter', () => {
     );
   });
 
+  it('sends provider-configured headers alongside the query-string key', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] })),
+    );
+
+    await complete({ ...REQUEST, headers: { 'x-opencode-session': 'session-1' } });
+
+    const headers = (fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Record<string, string>;
+    expect(headers['x-opencode-session']).toBe('session-1');
+    expect(headers['content-type']).toBe('application/json');
+  });
+
   it('classifies a provider error without echoing the request', async () => {
     fetchMock.mockResolvedValueOnce(new Response('{"error":{"message":"quota"}}', { status: 429 }));
 

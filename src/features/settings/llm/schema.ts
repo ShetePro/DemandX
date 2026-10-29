@@ -15,7 +15,11 @@ export const PAYG_ISSUE_CODE = 'PAYG_NOT_ACKNOWLEDGED';
 export const PAYG_CONFIRMATION_MESSAGE =
   '该端点是按量计费入口，每次调用都会真实扣费。请先勾选“我知道这是按量计费”，再保存该 provider。';
 
-/** Host + path, so `…/inference` matches while `…/inference/go` does not. */
+/**
+ * Host + decoded path, compared against `PAYG_HOSTS`. Equivalences that URL
+ * parsers accept — `%69nference`, `//inference`, `/INFERENCE`, a trailing dot on
+ * the host — must not become a way around the confirmation.
+ */
 export function isPaygBaseUrl(url: string): boolean {
   let parsed: URL;
   try {
@@ -23,9 +27,22 @@ export function isPaygBaseUrl(url: string): boolean {
   } catch {
     return false;
   }
-  // `host` is already lower-cased and port-less for the default schemes.
-  const target = `${parsed.host}${parsed.pathname}`.replace(/\/+$/, '');
-  return PAYG_HOSTS.includes(target);
+
+  const host = parsed.host.replace(/\.+$/, '').toLowerCase();
+
+  let path: string;
+  try {
+    path = decodeURIComponent(parsed.pathname);
+  } catch {
+    // A malformed escape is still a path; match it verbatim rather than throw.
+    path = parsed.pathname;
+  }
+  const normalizedPath = path
+    .replace(/\/{2,}/g, '/')
+    .replace(/\/+$/, '')
+    .toLowerCase();
+
+  return PAYG_HOSTS.includes(`${host}${normalizedPath}`);
 }
 
 function paygIssue(baseUrl: string, acknowledged: boolean, ctx: z.RefinementCtx): void {

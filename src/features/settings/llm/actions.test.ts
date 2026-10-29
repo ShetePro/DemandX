@@ -27,6 +27,15 @@ describe('isPaygBaseUrl', () => {
     expect(isPaygBaseUrl('https://opencode.ai/inference/go')).toBe(false);
   });
 
+  it('sees through URL spellings that mean the same endpoint', () => {
+    // Percent-encoding, doubled slash, upper case and a trailing host dot all
+    // reach the same metered host; none may dodge the confirmation.
+    expect(isPaygBaseUrl('https://opencode.ai/%69nference')).toBe(true);
+    expect(isPaygBaseUrl('https://opencode.ai//inference')).toBe(true);
+    expect(isPaygBaseUrl('https://opencode.ai/INFERENCE')).toBe(true);
+    expect(isPaygBaseUrl('https://opencode.ai./inference')).toBe(true);
+  });
+
   it('ignores unrelated endpoints and malformed URLs', () => {
     expect(isPaygBaseUrl('https://api.example.com')).toBe(false);
     expect(isPaygBaseUrl('not a url')).toBe(false);
@@ -60,6 +69,18 @@ describe('providerFormSchema pay-as-you-go guard', () => {
 
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.baseUrl).toBe('https://opencode.ai/inference');
+  });
+
+  it('rejects an encoded or re-spelled metered URL just the same', () => {
+    const result = providerFormSchema.safeParse({
+      ...PROVIDER,
+      baseUrl: 'https://opencode.ai/%69nference',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.message.includes('按量计费'))).toBe(true);
+    }
   });
 
   it('does not ask for confirmation on an ordinary endpoint', () => {

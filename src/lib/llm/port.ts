@@ -17,6 +17,8 @@ export type ChainItem = {
   kind: ProviderKind;
   baseUrl: string;
   modelId: string;
+  /** Operator-configured extra request headers; adapters send them first. */
+  headers: Record<string, string>;
 };
 
 /**
