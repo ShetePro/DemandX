@@ -31,7 +31,9 @@ export type AppErrorCode =
   | 'PROVIDER_NOT_FOUND'
   | 'PROVIDER_REFERENCED'
   | 'SECRET_FAILED'
-  | 'STORAGE_FAILED';
+  | 'STORAGE_FAILED'
+  | 'LLM_UNAVAILABLE'
+  | 'LLM_BAD_OUTPUT';
 
 /** A failure that crosses a layer boundary without throwing. */
 export type AppError = {

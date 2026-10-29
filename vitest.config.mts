@@ -12,9 +12,14 @@ const shared = {
   passWithNoTests: true,
 };
 
+// Integration suites point at one shared test database and TRUNCATE the same
+// tables, so they must not overlap. Only the DB-enabled run pays for this.
+const hasTestDatabase = (process.env.TEST_DATABASE_URL?.trim() ?? '') !== '';
+
 export default defineConfig({
   test: {
     ...shared,
+    fileParallelism: !hasTestDatabase,
     projects: [
       {
         resolve: { alias },
