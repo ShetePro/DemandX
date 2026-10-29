@@ -6,12 +6,12 @@ DemandX is a **prompt/specification repository** for an "AI 商业机会调查�
 
 Current state (verified 2026-10-29):
 
-| Aspect | Status |
-|---|---|
-| Source code | **None** — no source files, manifests, or entry points |
-| Build / lint / test tooling | **None** — no `package.json`, `tsconfig`, CI, or test runner |
-| Content | Single 748-line Chinese document, `README.md` |
-| Version control | One commit (`6650461 Initial commit`); the 746-line spec body is **uncommitted** (`git diff --stat` → `README.md | 746 +`) |
+| Aspect                      | Status                                                                                                           |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Source code                 | **None** — no source files, manifests, or entry points                                                           |
+| Build / lint / test tooling | **None** — no `package.json`, `tsconfig`, CI, or test runner                                                     |
+| Content                     | Single 748-line Chinese document, `README.md`                                                                    |
+| Version control             | One commit (`6650461 Initial commit`); the 746-line spec body is **uncommitted** (`git diff --stat` → `README.md | 746 +`) |
 
 The repository is therefore **documentation-first**: the deliverable is the prompt methodology in `README.md`, not an application. Treat the README as the product spec; the software it describes does not exist yet.
 
@@ -38,20 +38,20 @@ Output contract: the 8-part report in `README.md:484-589` (executive summary →
 
 ## Key Directories
 
-| Path | Purpose |
-|---|---|
-| `README.md` | Product spec: prompt, methodology, rubrics, output format. Line anchors in this file point here. |
-| `docs/superpowers/specs/` | Design specs: architecture, data model, scoring rules, UI architecture. |
-| `docs/superpowers/plans/` | Task-by-task build plan (P0–P7). |
-| `docs/design/` | Interactive prototype (`prototype/index.html`) and static wireframes (`mockups/`). |
-| `src/app/` | Routes only: layouts, pages, route handlers. `(workbench)` is the app shell. |
-| `src/features/` | Business components + server actions, one folder per domain; never import each other. |
-| `src/components/ui/` | Token-only primitives (Button/Card/Sheet/Dialog/…); no business copy. |
-| `src/components/shell/`, `src/components/common/` | App chrome and shared semantic badges. |
-| `src/lib/` | Pure logic: `db/`, `hooks/`, `utils/`, and (soon) `llm/`, `pipeline/`, `evidence/`, `scoring/`. |
-| `drizzle/` | Generated SQL migrations. Never edit by hand; change schema + `pnpm db:generate`. |
-| `tests/e2e/` | Playwright specs. |
-| `.worktrees/` | Git-ignored isolated worktrees. |
+| Path                                              | Purpose                                                                                          |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `README.md`                                       | Product spec: prompt, methodology, rubrics, output format. Line anchors in this file point here. |
+| `docs/superpowers/specs/`                         | Design specs: architecture, data model, scoring rules, UI architecture.                          |
+| `docs/superpowers/plans/`                         | Task-by-task build plan (P0–P7).                                                                 |
+| `docs/design/`                                    | Interactive prototype (`prototype/index.html`) and static wireframes (`mockups/`).               |
+| `src/app/`                                        | Routes only: layouts, pages, route handlers. `(workbench)` is the app shell.                     |
+| `src/features/`                                   | Business components + server actions, one folder per domain; never import each other.            |
+| `src/components/ui/`                              | Token-only primitives (Button/Card/Sheet/Dialog/…); no business copy.                            |
+| `src/components/shell/`, `src/components/common/` | App chrome and shared semantic badges.                                                           |
+| `src/lib/`                                        | Pure logic: `db/`, `hooks/`, `utils/`, and (soon) `llm/`, `pipeline/`, `evidence/`, `scoring/`.  |
+| `drizzle/`                                        | Generated SQL migrations. Never edit by hand; change schema + `pnpm db:generate`.                |
+| `tests/e2e/`                                      | Playwright specs.                                                                                |
+| `.worktrees/`                                     | Git-ignored isolated worktrees.                                                                  |
 
 ## Development Commands
 
@@ -85,7 +85,7 @@ Documentary discipline for any research output still applies — these are the s
 - **Separate fact, inference, unknown.** Preserve that three-way distinction in every claim.
 - **Never conflate signals.** Discussion volume ≠ market demand; demand ≠ willingness to pay; free users ≠ commercial value; downloads/views/likes ≠ paying users; an existing competitor ≠ proven market size.
 - **Every estimate ships its formula, assumptions, and uncertainty.** TAM/SAM/SOM must be bottom-up, never "billions of netizens therefore large market".
-- **Negative evidence is mandatory.** Ask why users do *not* buy, cancel, or stay on free alternatives.
+- **Negative evidence is mandatory.** Ask why users do _not_ buy, cancel, or stay on free alternatives.
 - **Decision is one of five** (`README.md:577-589`): 建议开发 / 建议先验证再开发 / 建议调整定位 / 建议暂缓 / 建议放弃.
 
 Editing conventions for `README.md` itself:
@@ -97,25 +97,25 @@ Editing conventions for `README.md` itself:
 
 ## Important Files
 
-| File | Role |
-|---|---|
-| `README.md:3-622` | The copy-paste prompt: role, founder constraints (solo/small team, ≤¥3000 budget, front-end dev), search strategy, evidence rules, 5 signals, competitor/business-model/market/cost/acquisition analysis, rubric, report format, 18 mandatory rules. |
-| `README.md:626-642` | Core thesis: search for problems users **already pay to solve**, not problems they merely complain about. |
-| `README.md:648-700` | 4-phase workflow: discover → validate commercial value → validate feasibility → validate real payment. |
-| `README.md:704-726` | Intended 3-agent decomposition + "persist raw evidence, not just reports". |
-| `README.md:730-748` | Final operating principle: paid demand first, better solution second; validate payment before building. |
-| `AGENTS.md` | This file — assistant orientation. |
-| `docs/superpowers/specs/2026-10-29-demandx-design.md` | Current design spec (draft, pending approval): zero-cost local stack, configurable LLM providers, data model, pipeline DAG, scoring rules, crawler design, 28-day delivery plan. Read it before any implementation work. |
-| `docs/superpowers/specs/2026-10-29-demandx-ui-design.md` | Page architecture: route inventory, per-page tech stack (AI SDK `useChat`, Streamdown, TanStack Table, recharts, dnd-kit, nuqs), alignment with vercel/chatbot, design tokens, perf budgets, page-level tests. |
-| `docs/superpowers/plans/2026-10-29-demandx-build-plan.md` | Task-by-task build plan P0–P7 (28 days): exact files, commands, acceptance, commits, plus the enforced engineering rules (token-only colors, boundary lint, hook encapsulation). |
-| `docs/design/prototype/` | Interactive high-fidelity prototype (open `index.html`): chat, report, evidence, settings, home, plus 2x screenshots. |
+| File                                                      | Role                                                                                                                                                                                                                                                 |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `README.md:3-622`                                         | The copy-paste prompt: role, founder constraints (solo/small team, ≤¥3000 budget, front-end dev), search strategy, evidence rules, 5 signals, competitor/business-model/market/cost/acquisition analysis, rubric, report format, 18 mandatory rules. |
+| `README.md:626-642`                                       | Core thesis: search for problems users **already pay to solve**, not problems they merely complain about.                                                                                                                                            |
+| `README.md:648-700`                                       | 4-phase workflow: discover → validate commercial value → validate feasibility → validate real payment.                                                                                                                                               |
+| `README.md:704-726`                                       | Intended 3-agent decomposition + "persist raw evidence, not just reports".                                                                                                                                                                           |
+| `README.md:730-748`                                       | Final operating principle: paid demand first, better solution second; validate payment before building.                                                                                                                                              |
+| `AGENTS.md`                                               | This file — assistant orientation.                                                                                                                                                                                                                   |
+| `docs/superpowers/specs/2026-10-29-demandx-design.md`     | Current design spec (draft, pending approval): zero-cost local stack, configurable LLM providers, data model, pipeline DAG, scoring rules, crawler design, 28-day delivery plan. Read it before any implementation work.                             |
+| `docs/superpowers/specs/2026-10-29-demandx-ui-design.md`  | Page architecture: route inventory, per-page tech stack (AI SDK `useChat`, Streamdown, TanStack Table, recharts, dnd-kit, nuqs), alignment with vercel/chatbot, design tokens, perf budgets, page-level tests.                                       |
+| `docs/superpowers/plans/2026-10-29-demandx-build-plan.md` | Task-by-task build plan P0–P7 (28 days): exact files, commands, acceptance, commits, plus the enforced engineering rules (token-only colors, boundary lint, hook encapsulation).                                                                     |
+| `docs/design/prototype/`                                  | Interactive high-fidelity prototype (open `index.html`): chat, report, evidence, settings, home, plus 2x screenshots.                                                                                                                                |
 
 ## Runtime/Tooling Preferences
 
 - **No runtime, package manager, or version pinning is declared.** Nothing to infer from; do not assume Node, Bun, Python, or Swift.
 - `.idea/swift-toolchain.xml` and `DemandX.iml` (`WEB_MODULE`) exist, but there is no `Package.swift` or Swift source — [INFERENCE] IDE configuration only, **not** evidence of a chosen stack. Do not present Swift as the project's language.
 - Editing is plain Markdown; UTF-8, Chinese text. Git is the only tool with a real convention here: work on `main`, commit messages in the existing terse style (`Initial commit`).
-- The spec's external dependencies are *research targets* (小红书, V2EX, Reddit, Hacker News, G2, App Store, official pricing pages), not services the repo calls. No API keys or env vars are defined anywhere.
+- The spec's external dependencies are _research targets_ (小红书, V2EX, Reddit, Hacker News, G2, App Store, official pricing pages), not services the repo calls. No API keys or env vars are defined anywhere.
 
 ## Testing & QA
 
@@ -126,7 +126,7 @@ Editing conventions for `README.md` itself:
 
 ## Working Agreements for AI Assistants
 
-1. **State present vs planned.** The 3-agent architecture and evidence database are *proposals* (`README.md:704-726`). Never describe them as implemented.
+1. **State present vs planned.** The 3-agent architecture and evidence database are _proposals_ (`README.md:704-726`). Never describe them as implemented.
 2. **Anchor every spec claim** to `README.md:<line>`; the document is the only source of truth.
 3. **Answer in the spec's register** when asked to run the methodology: Chinese output, evidence-first, explicit unknowns, one of the five decisions at the end.
 4. **Do not add scaffolding** (empty dirs, stub manifests, "MVP" code) to make the repo look like a software project. Code lands only when the user asks for implementation.
