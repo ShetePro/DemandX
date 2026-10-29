@@ -58,6 +58,12 @@ async function seedRun(threadId: number): Promise<number> {
   const runId = rows[0]?.id;
   if (runId === undefined) throw new Error(`thread ${threadId} 不存在，无法插入 run`);
 
+  // A message row makes the afterAll cascade assertion meaningful.
+  await client`
+    insert into messages (thread_id, role, parts)
+    values (${threadId}, 'user', ${JSON.stringify([{ type: 'text', text: IDEA }])}::jsonb)
+  `;
+
   await client`
     insert into run_events (run_id, seq, type, payload)
     values
