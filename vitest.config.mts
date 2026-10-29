@@ -23,7 +23,7 @@ export default defineConfig({
           name: 'unit-node',
           environment: 'node',
           include: ['src/lib/**/*.test.ts', 'scripts/**/*.test.ts'],
-          exclude: ['**/*.test.tsx'],
+          exclude: ['**/*.test.tsx', 'src/lib/hooks/**'],
         },
       },
       {
