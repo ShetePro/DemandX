@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { db, type Database } from '@/lib/db/client';
@@ -356,6 +356,37 @@ export type ThreadRecord = {
   title: string;
   createdAt: Date;
 };
+
+/**
+ * The newest run of a thread, which is what the chat page's rail follows.
+ * `createdAt` alone is not a stable order (two runs can share a timestamp), so
+ * `id` breaks the tie.
+ */
+export async function getLatestRunForThread(threadId: number): Promise<Result<RunRecord | null>> {
+  if (!Number.isInteger(threadId) || threadId <= 0)
+    return fail('NOT_FOUND', `thread ${threadId} 不存在`);
+
+  try {
+    const rows = await db
+      .select({
+        id: runs.id,
+        ideaId: runs.ideaId,
+        threadId: runs.threadId,
+        status: runs.status,
+        stage: runs.stage,
+        deadlineAt: runs.deadlineAt,
+        createdAt: runs.createdAt,
+      })
+      .from(runs)
+      .where(eq(runs.threadId, threadId))
+      .orderBy(desc(runs.createdAt), desc(runs.id))
+      .limit(1);
+
+    return ok(rows[0] ?? null);
+  } catch (error) {
+    return storageFailure('读取 run', error);
+  }
+}
 
 export async function getThread(threadId: number): Promise<Result<ThreadRecord | null>> {
   if (!Number.isInteger(threadId) || threadId <= 0)
