@@ -1,0 +1,6 @@
+docs/
+pnpm-lock.yaml
+.next/
+data/
+node_modules/
+playwright-report/
