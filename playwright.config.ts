@@ -8,6 +8,10 @@ const STUB_URL = `http://127.0.0.1:${STUB_PORT}`;
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
+  // The suites share one Postgres database, and `llm_chains` is keyed by
+  // (profile, position) rather than by provider. Two files saving chains at the
+  // same time would overwrite each other's rows, so files run one at a time.
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: 'list',
