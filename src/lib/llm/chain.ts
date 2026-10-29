@@ -6,14 +6,19 @@ import { complete as ollama } from './adapters/ollama';
 import { complete as openaiCompatible } from './adapters/openai-compatible';
 import type { Adapter, AdapterFailure, AdapterResult } from './adapters/types';
 import type { ChainItem, LlmPort, Profile, Prompt, Usage } from './port';
-import type { AppErrorCode, Result } from './types';
+import type { AppErrorCode, ProviderKind, Result } from './types';
 
-const ADAPTERS: Record<ChainItem['kind'], Adapter> = {
+const ADAPTERS: Record<ProviderKind, Adapter> = {
   'openai-compatible': openaiCompatible,
   'anthropic-compatible': anthropic,
   google,
   ollama,
 };
+
+/** The one adapter that speaks a provider kind's protocol. */
+export function adapterFor(kind: ProviderKind): Adapter {
+  return ADAPTERS[kind];
+}
 
 /** Long enough to ride out a quota window, short enough to notice recovery. */
 const DEFAULT_COOLDOWN_MS = 5 * 60_000;
@@ -131,7 +136,7 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
 
     let result: AdapterResult;
     try {
-      result = await ADAPTERS[item.kind]({
+      result = await adapterFor(item.kind)({
         baseUrl: item.baseUrl,
         apiKey: apiKey.value,
         modelId: item.modelId,

@@ -28,6 +28,7 @@ export type ProviderRow = {
 
 export type AppErrorCode =
   | 'VALIDATION_FAILED'
+  | 'PAYG_NOT_ACKNOWLEDGED'
   | 'PROVIDER_NOT_FOUND'
   | 'PROVIDER_REFERENCED'
   | 'SECRET_FAILED'

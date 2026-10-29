@@ -27,7 +27,11 @@ export default defineConfig({
           ...shared,
           name: 'unit-node',
           environment: 'node',
-          include: ['src/lib/**/*.test.ts', 'scripts/**/*.test.ts'],
+          include: [
+            'src/lib/**/*.test.ts',
+            'src/features/**/*.test.ts',
+            'scripts/**/*.test.ts',
+          ],
           exclude: [...configDefaults.exclude, '**/*.test.tsx', 'src/lib/hooks/**'],
         },
       },
