@@ -77,7 +77,16 @@ async function writeGzip(target: string, contents: string): Promise<number> {
     return compressed.length;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-    return (await stat(target)).size;
+    // A previously interrupted write can leave a truncated file in a
+    // content-addressed slot; verify it before trusting the stored bytes.
+    const existing = await readFile(target);
+    try {
+      if (gunzipSync(existing).equals(Buffer.from(contents, 'utf8'))) return existing.length;
+    } catch {
+      // Fall through: the slot is corrupt and gets rewritten below.
+    }
+    await writeFile(target, compressed, { flag: 'w' });
+    return compressed.length;
   }
 }
 
@@ -158,7 +167,13 @@ export async function pruneSnapshots(olderThanDays = 90, dir?: string): Promise<
       }
       if (!entry.isFile() || !entry.name.endsWith('.gz')) continue;
 
-      const info = await stat(target);
+      let info;
+      try {
+        info = await stat(target);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        continue;
+      }
       if (info.mtimeMs >= cutoff) continue;
       try {
         await unlink(target);

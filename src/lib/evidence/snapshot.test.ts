@@ -110,6 +110,25 @@ describe('writeSnapshot / readSnapshotText', () => {
       code: 'SNAPSHOT_MISSING',
     });
   });
+
+  it('repairs a truncated snapshot left by an interrupted write', async () => {
+    const first = await writeSnapshot({
+      text: '中断后重写的内容',
+      url: 'https://example.com/a',
+      dir,
+    });
+
+    writeFileSync(first.textPath, Buffer.from('not gzip'));
+
+    const second = await writeSnapshot({
+      text: '中断后重写的内容',
+      url: 'https://example.com/a',
+      dir,
+    });
+
+    expect(second.textPath).toBe(first.textPath);
+    await expect(readSnapshotText(second.hash, dir)).resolves.toBe('中断后重写的内容');
+  });
 });
 
 describe('pruneSnapshots', () => {
