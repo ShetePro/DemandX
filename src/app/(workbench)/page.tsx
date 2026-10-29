@@ -15,6 +15,9 @@ import {
 import { cn } from '@/lib/utils/cn';
 import { formatRelativeTime, formatScore } from '@/lib/utils/format';
 
+// Relative labels are computed per request; a static prerender would freeze them at build time.
+export const dynamic = 'force-dynamic';
+
 /** Status wording and tone; running is the only state with a live dot. */
 const STATUS_META: Record<
   RunStatus,

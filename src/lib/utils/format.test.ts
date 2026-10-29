@@ -31,6 +31,11 @@ describe('formatRelativeTime', () => {
     expect(formatRelativeTime(new Date(2025, 0, 5, 0, 0, 0), now)).toBe('2025-01-05');
   });
 
+  it('treats a future timestamp as just now', () => {
+    const now = new Date(2026, 9, 30, 12, 0, 0);
+    expect(formatRelativeTime(new Date(now.getTime() + 60_000), now)).toBe('刚刚');
+  });
+
   it('measures elapsed time, not calendar days, across midnight', () => {
     const lateNight = new Date(2026, 9, 29, 23, 59, 0);
     const afterMidnight = new Date(2026, 9, 30, 0, 1, 0);
