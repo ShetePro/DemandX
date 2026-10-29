@@ -75,6 +75,7 @@ export default async function ThreadPage({ params }: ThreadPageProps) {
 
   return (
     <ChatScreen
+      key={threadId}
       threadId={threadId}
       title={thread.value.title}
       initialMessages={toChatMessages(messages.value)}

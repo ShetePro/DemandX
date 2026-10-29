@@ -3,7 +3,7 @@
 import { Check, LoaderCircle, X } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
-import { useRunStream } from '@/lib/hooks/use-run-stream';
+import { MAX_RETRIES, useRunStream } from '@/lib/hooks/use-run-stream';
 import type { RunEvent, RunStatus, RunStreamState } from '@/lib/runs/event-reducer';
 import { cn } from '@/lib/utils/cn';
 
@@ -188,6 +188,7 @@ function summarize(payload: Record<string, unknown>): string {
 function connectionLabel(state: RunStreamState, connected: boolean, retries: number): string {
   if (state.terminal) return '已结束';
   if (connected) return '实时连接';
+  if (retries >= MAX_RETRIES) return '连接已断开，请刷新页面';
   if (retries > 0) return `重连中（第 ${retries} 次）`;
   return '未连接';
 }

@@ -1,7 +1,5 @@
 'use client';
 
-import Link from 'next/link';
-
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -54,10 +52,9 @@ export function CitationSheet({ citationId, evidenceHref, onClose }: CitationShe
             <p className="text-xs text-muted">研究尚未开始，证据库链接不可用。</p>
           </SheetFooter>
         ) : (
-          <SheetFooter>
-            <Button asChild>
-              <Link href={evidenceHref}>打开证据库</Link>
-            </Button>
+          <SheetFooter className="items-start gap-2 sm:flex-col sm:items-start">
+            <Button disabled>打开证据库</Button>
+            <p className="text-xs text-muted">证据库将在 P4 接入，路由暂未上线。</p>
           </SheetFooter>
         )}
       </SheetContent>

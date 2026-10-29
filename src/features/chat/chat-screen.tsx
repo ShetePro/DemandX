@@ -85,7 +85,7 @@ export function ChatScreen({
   const isStreaming = status === 'submitted' || status === 'streaming';
 
   async function handleStart(idea: string): Promise<void> {
-    if (starting) return;
+    if (starting || run.id !== null) return;
     setStarting(true);
 
     try {
@@ -133,7 +133,7 @@ export function ChatScreen({
                   <MessageParts
                     message={message}
                     onOpenCitation={setCitationId}
-                    onStart={starting ? undefined : handleStart}
+                    onStart={starting || run.id !== null ? undefined : handleStart}
                   />
                 </article>
               ))

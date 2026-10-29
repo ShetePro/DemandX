@@ -11,7 +11,7 @@ import {
 
 /** Wait before each reconnect: 1s, 2s, 4s, then 8s for the remaining tries. */
 const BACKOFF_MS = [1_000, 2_000, 4_000, 8_000] as const;
-const MAX_RETRIES = 5;
+export const MAX_RETRIES = 5;
 
 type StreamAction = { kind: 'event'; event: RunEvent } | { kind: 'snapshot'; events: RunEvent[] };
 
