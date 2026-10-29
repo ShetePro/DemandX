@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 const PORT = 3000;
 const baseURL = `http://127.0.0.1:${PORT}`;
+const STUB_URL = 'http://127.0.0.1:4010';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -22,10 +23,20 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
     },
   ],
-  webServer: {
-    command: 'pnpm dev',
-    url: baseURL,
-    reuseExistingServer: true, // CI starts clean; local shells often already run `pnpm dev`
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: 'pnpm dev',
+      url: baseURL,
+      reuseExistingServer: true, // CI starts clean; local shells often already run `pnpm dev`
+      timeout: 120_000,
+    },
+    {
+      // The settings spec talks to a real HTTP endpoint; only the provider is
+      // stubbed, so Server Actions, the database and the adapter stay in play.
+      command: 'node scripts/stub-provider.mjs',
+      url: `${STUB_URL}/__requests`,
+      reuseExistingServer: true,
+      timeout: 30_000,
+    },
+  ],
 });
