@@ -1,7 +1,10 @@
 'use client';
 
 import { cjk } from '@streamdown/cjk';
-import { useMemo } from 'react';
+import { useMemo, type ComponentProps } from 'react';
+import { harden } from 'rehype-harden';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
 import { Streamdown, type Components } from 'streamdown';
 
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +14,32 @@ import type { ChatMessage } from '@/lib/chat/types';
 import { useCodeHighlighter } from '@/lib/hooks/use-code-highlighter';
 
 import { CitationChip } from './citation-chip';
-import { citationRehypePlugin } from './citations';
+import { CITATION_TAG, citationRehypePlugin, citationSanitizeSchema } from './citations';
+
+/**
+ * Why the whole pipeline is spelled out: Streamdown starts from
+ * `rehypePlugins ?? DEFAULT`, so passing a plugin of our own *replaces*
+ * `rehype-raw` + `rehype-sanitize` + `rehype-harden` instead of extending it.
+ * Omitting the sanitize step would leave `javascript:` hrefs and `data:` images
+ * from model output live. The order is the library's and must stay: raw HTML is
+ * parsed first, citations are inserted second, and the inserted elements are
+ * then validated by the schema that declares them.
+ */
+const HARDEN_OPTIONS = {
+  allowedImagePrefixes: ['*'],
+  allowedLinkPrefixes: ['*'],
+  allowedProtocols: ['*'],
+  allowDataImages: true,
+};
+
+type RehypePlugins = NonNullable<ComponentProps<typeof Streamdown>['rehypePlugins']>;
+
+const REHYPE_PLUGINS: RehypePlugins = [
+  rehypeRaw,
+  citationRehypePlugin,
+  [rehypeSanitize, citationSanitizeSchema],
+  [harden, HARDEN_OPTIONS],
+];
 
 type ChatPart = ChatMessage['parts'][number];
 type StartResearchPart = Extract<ChatPart, { type: 'tool-start_research' }>;
@@ -92,7 +120,7 @@ function TextPart({
   const code = useCodeHighlighter(text);
   const components = useMemo<Components>(
     () => ({
-      'citation-chip': (props: Record<string, unknown>) => {
+      [CITATION_TAG]: (props: Record<string, unknown>) => {
         const id = typeof props['data-id'] === 'string' ? props['data-id'] : '';
         return <CitationChip id={id} onOpen={onOpenCitation} />;
       },
@@ -105,8 +133,7 @@ function TextPart({
       mode={state === 'streaming' ? 'streaming' : 'static'}
       className="text-sm leading-7 text-fg"
       plugins={code === undefined ? { cjk } : { cjk, code }}
-      rehypePlugins={[citationRehypePlugin]}
-      allowedTags={{ 'citation-chip': ['data-id'] }}
+      rehypePlugins={REHYPE_PLUGINS}
       components={components}
     >
       {text}

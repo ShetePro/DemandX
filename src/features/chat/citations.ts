@@ -1,8 +1,25 @@
+import { defaultSchema } from 'rehype-sanitize';
+
 /**
  * `[e12]` anchors in assistant text become chips. Streamdown renders markdown
  * from HAST (not an HTML string), so the replacement happens in the tree before
  * sanitization: the markdown source is untouched and no HTML is injected.
  */
+
+/** The element the citation plugin emits and `components` maps to a chip. */
+export const CITATION_TAG = 'citation-chip';
+
+/**
+ * The default GitHub schema plus our own element. Passing custom
+ * `rehypePlugins` replaces Streamdown's built-in pipeline entirely, so the
+ * sanitize step has to be reconfigured here — without this entry the tag (and
+ * any `data-*` on it) would be stripped right after being inserted.
+ */
+export const citationSanitizeSchema = {
+  ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames ?? []), CITATION_TAG],
+  attributes: { ...defaultSchema.attributes, [CITATION_TAG]: ['data-id'] },
+};
 
 /** Anchors carry their `e` prefix; the digits are only used to group matches. */
 const CITATION_PATTERN = /\[e(\d+)\]/g;
@@ -49,7 +66,7 @@ function citationNodes(text: string): HastNode[] {
       ? { type: 'text', value: segment.text }
       : {
           type: 'element',
-          tagName: 'citation-chip',
+          tagName: CITATION_TAG,
           // Declared in `allowedTags` so rehype-sanitize keeps the element and
           // its attribute; `components` maps it to the real chip button.
           properties: { 'data-id': segment.id },

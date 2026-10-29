@@ -101,6 +101,59 @@ describe('MessageParts', () => {
     expect(screen.getByText('卖家手工同步库存，旺季每天两小时')).toBeVisible();
   });
 
+  it('strips javascript: link targets coming from model output', () => {
+    const { container } = render(
+      <MessageParts
+        message={message([{ type: 'text', text: '看这里 [点击](javascript:alert(1)) 。' }])}
+      />,
+    );
+
+    expect(container.innerHTML).not.toContain('javascript:');
+    for (const anchor of container.querySelectorAll('a')) {
+      expect(anchor.getAttribute('href') ?? '').not.toContain('javascript:');
+    }
+    expect(container.textContent).toContain('[blocked]');
+  });
+
+  it('drops data: image sources coming from model output', () => {
+    const { container } = render(
+      <MessageParts
+        message={message([
+          { type: 'text', text: '![x](data:text/html,<script>alert(1)</script>)' },
+        ])}
+      />,
+    );
+
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.textContent).toContain('[Image blocked: x]');
+  });
+
+  it('keeps ordinary https links clickable', () => {
+    const { container } = render(
+      <MessageParts
+        message={message([{ type: 'text', text: '参考 [链接](https://example.com)。' }])}
+      />,
+    );
+
+    const link = container.querySelector('[data-streamdown="link"]');
+    expect(link).not.toBeNull();
+    expect(link?.textContent).toBe('链接');
+    expect(container.textContent).not.toContain('[blocked]');
+  });
+
+  it('leaves citations inside fenced code alone', () => {
+    render(
+      <MessageParts
+        message={message([
+          { type: 'text', text: '```ts\nconst a = "[e14]";\n```\n\n正文 [e15]', state: 'done' },
+        ])}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: '证据 e14' })).toBeNull();
+    expect(screen.getByRole('button', { name: '证据 e15' })).toBeVisible();
+  });
+
   it('skips an unknown part instead of throwing, warning once', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const unknown = message([{ type: 'reasoning', text: '先看付费证据' }]);

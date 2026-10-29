@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// The tools only prepare arguments; touching the database here would mean chat
-// had side effects before the operator confirms. Importing it fails the test.
+// The tools only prepare arguments; touching the database would mean chat had
+// side effects before the operator confirms. The factory records *whether the
+// import graph reached the db client at all* — a plain flag, not a mock, so
+// `clearMocks` between tests cannot erase the evidence.
+const dbClientImport = vi.hoisted(() => ({ reached: false }));
+
 vi.mock('@/lib/db/client', () => {
-  throw new Error('chat tools must not import the database client');
+  dbClientImport.reached = true;
+  return { db: {} };
 });
 
 import {
@@ -16,6 +21,10 @@ import {
 } from './tools';
 
 describe('chat tools', () => {
+  it('never imports the database client', () => {
+    expect(dbClientImport.reached).toBe(false);
+  });
+
   it('wires both tools for the model', () => {
     const tools = createChatTools();
 
