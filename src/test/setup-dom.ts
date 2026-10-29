@@ -24,10 +24,12 @@ function createMediaQueryList(query: string): MediaQueryList {
     },
     onchange: null as ((event: MediaQueryListEvent) => void) | null,
     addEventListener: (_type: string, listener: EventListenerOrEventListenerObject | null) => {
-      if (typeof listener === 'function') listeners.add(listener as (e: MediaQueryListEvent) => void);
+      if (typeof listener === 'function')
+        listeners.add(listener as (e: MediaQueryListEvent) => void);
     },
     removeEventListener: (_type: string, listener: EventListenerOrEventListenerObject | null) => {
-      if (typeof listener === 'function') listeners.delete(listener as (e: MediaQueryListEvent) => void);
+      if (typeof listener === 'function')
+        listeners.delete(listener as (e: MediaQueryListEvent) => void);
     },
     // Legacy Safari/`addListener` API still used by a few libraries.
     addListener: (listener: ((event: MediaQueryListEvent) => void) | null) => {

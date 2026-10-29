@@ -73,6 +73,14 @@ export default defineConfig([
     },
   },
 
+  // Boundaries describe shipped code. Tests may import from any layer to build
+  // fixtures — e.g. a `lib` hook test wrapping itself in the `component`-layer
+  // provider it is tested against.
+  {
+    files: ['src/**/*.test.{ts,tsx}'],
+    rules: { 'boundaries/element-types': 'off' },
+  },
+
   // No hard-coded colors in JSX attributes; use semantic tokens instead.
   {
     files: ['**/*.{js,jsx,ts,tsx}'],
