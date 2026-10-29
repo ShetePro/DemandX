@@ -71,9 +71,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
 ];
 
-/** Sidebar footer + command palette entry for `/settings`. */
+/** Sidebar footer + command palette entry for the settings tree. */
 export const SETTINGS_ITEM: NavItem = {
-  href: '/settings',
+  href: '/settings/llm',
   label: 'LLM 与采集',
   icon: SlidersHorizontal,
   keywords: ['设置', 'settings', 'llm', '采集'],

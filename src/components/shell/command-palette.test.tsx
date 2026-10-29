@@ -47,7 +47,7 @@ describe('CommandPalette', () => {
     expect(screen.getByRole('option', { name: 'LLM 与采集' })).toBeVisible();
 
     await user.keyboard('{Enter}');
-    expect(push).toHaveBeenCalledWith('/settings');
+    expect(push).toHaveBeenCalledWith('/settings/llm');
   });
 
   it('returns focus to the element focused before opening', async () => {

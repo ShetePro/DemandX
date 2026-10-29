@@ -45,7 +45,7 @@ describe('AppSidebar', () => {
     for (const name of ['工作台', '对话', '报告', '证据库']) {
       expect(navLink(name)).toBeVisible();
     }
-    expect(navLink('LLM 与采集')).toHaveAttribute('href', '/settings');
+    expect(navLink('LLM 与采集')).toHaveAttribute('href', '/settings/llm');
   });
 
   it('marks only 工作台 as current on the root path', () => {

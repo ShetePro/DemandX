@@ -56,6 +56,6 @@ describe('TestButton', () => {
 
     await user.click(screen.getByRole('button', { name: '测试 OpenCode' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('连接失败：HTTP 401 · HTTP 401');
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^连接失败：HTTP 401$/);
   });
 });

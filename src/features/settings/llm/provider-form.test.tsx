@@ -95,7 +95,9 @@ describe('ProviderForm', () => {
         acknowledgePayg: true,
       }),
     );
-    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(mocks.push).toHaveBeenCalledWith(`/settings/llm?provider=${PROVIDER.id}`),
+    );
     expect(mocks.success).toHaveBeenCalled();
   });
 

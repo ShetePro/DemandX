@@ -38,7 +38,11 @@ export function TestButton({ providerId, providerName }: TestButtonProps) {
       }
       setState({
         kind: 'error',
-        text: `${result.message}${result.status > 0 ? ` · HTTP ${result.status}` : ''}`,
+        // `describe()` already reports an HTTP failure as "HTTP 401"; only a
+        // status with no mention of it (e.g. storage errors) gets the suffix.
+        text: result.message.includes('HTTP')
+          ? result.message
+          : `${result.message}${result.status > 0 ? ` · HTTP ${result.status}` : ''}`,
       });
     } catch {
       setState({ kind: 'error', text: '测试失败：网络错误' });

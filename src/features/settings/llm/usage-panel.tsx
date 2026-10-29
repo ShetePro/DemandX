@@ -6,51 +6,18 @@ export type UsagePanelProps = {
   usage: ProviderUsageSummary;
 };
 
-function percentOf(count: number, total: number): number {
-  if (total <= 0) return 0;
-  return Math.min(100, Math.round((count / total) * 100));
-}
-
 /**
- * Rolling counters for one provider. The 5h/week bars compare against the
- * busiest window (there is no per-window request quota in the data model); the
- * month bar uses the declared USD allowance when there is one, which is the
- * number the operator actually budgets against.
+ * Rolling counters for one provider. Only the month has a real quota — the
+ * operator-declared USD allowance — so only the month gets a bar. 5h/week are
+ * plain counts, and without an allowance every row is just a count: a progress
+ * bar against an invented total would be a lie.
  */
 export function UsagePanel({ provider, usage }: UsagePanelProps) {
-  const busiest = Math.max(usage.fiveHourRequests, usage.weeklyRequests, 1);
   const allowance = provider.monthlyAllowanceUsd;
-  const monthlyPercent =
-    allowance !== null && allowance > 0
-      ? Math.min(100, Math.round((usage.monthlySpendUsd / allowance) * 100))
-      : percentOf(usage.monthlyRequests, busiest);
-
-  const rows = [
-    {
-      label: '5 小时',
-      value: usage.fiveHourRequests,
-      percent: percentOf(usage.fiveHourRequests, busiest),
-      detail: `${usage.fiveHourRequests} 次`,
-      tone: 'accent' as const,
-    },
-    {
-      label: '本周',
-      value: usage.weeklyRequests,
-      percent: percentOf(usage.weeklyRequests, busiest),
-      detail: `${usage.weeklyRequests} 次`,
-      tone: 'accent' as const,
-    },
-    {
-      label: '本月',
-      value: usage.monthlyRequests,
-      percent: monthlyPercent,
-      detail:
-        allowance !== null && allowance > 0
-          ? `$${usage.monthlySpendUsd.toFixed(2)} / $${allowance.toFixed(2)}`
-          : `${usage.monthlyRequests} 次`,
-      tone: monthlyPercent >= 90 ? ('warning' as const) : ('success' as const),
-    },
-  ];
+  const hasAllowance = allowance !== null && allowance > 0;
+  const monthlyPercent = hasAllowance
+    ? Math.min(100, Math.round((usage.monthlySpendUsd / allowance) * 100))
+    : 0;
 
   return (
     <section
@@ -64,25 +31,37 @@ export function UsagePanel({ provider, usage }: UsagePanelProps) {
         <p className="mt-0.5 text-[11px] text-faint">
           {provider.name} 最近窗口的计数，由 provider 上报
         </p>
+        {hasAllowance ? (
+          <p className="mt-0.5 text-[11px] text-faint">5 小时 / 本周为计数，相对最忙窗口，非配额</p>
+        ) : null}
       </div>
 
       <dl className="flex flex-col gap-2.5">
-        {rows.map((row) => (
-          <div
-            key={row.label}
-            className="grid grid-cols-[48px_minmax(0,1fr)_84px] items-center gap-2"
-          >
-            <dt className="text-[11px] text-muted">{row.label}</dt>
-            <dd className="min-w-0">
+        <div className="grid grid-cols-[48px_minmax(0,1fr)] items-center gap-2">
+          <dt className="text-[11px] text-muted">5 小时</dt>
+          <dd className="text-[11px] text-fg">{usage.fiveHourRequests} 次</dd>
+        </div>
+        <div className="grid grid-cols-[48px_minmax(0,1fr)] items-center gap-2">
+          <dt className="text-[11px] text-muted">本周</dt>
+          <dd className="text-[11px] text-fg">{usage.weeklyRequests} 次</dd>
+        </div>
+        <div className="grid grid-cols-[48px_minmax(0,1fr)] items-center gap-2">
+          <dt className="text-[11px] text-muted">本月</dt>
+          {hasAllowance ? (
+            <dd className="grid grid-cols-[minmax(0,1fr)_96px] items-center gap-2">
               <Progress
-                value={row.percent}
-                tone={row.tone}
-                aria-label={`${provider.name} ${row.label}用量`}
+                value={monthlyPercent}
+                tone={monthlyPercent >= 90 ? 'warning' : 'success'}
+                aria-label={`${provider.name} 本月额度用量`}
               />
+              <span className="text-right text-[11px] font-semibold text-fg">
+                ${usage.monthlySpendUsd.toFixed(2)} / ${allowance.toFixed(2)}
+              </span>
             </dd>
-            <dd className="text-right text-[11px] font-semibold text-fg">{row.detail}</dd>
-          </div>
-        ))}
+          ) : (
+            <dd className="text-[11px] text-fg">{usage.monthlyRequests} 次</dd>
+          )}
+        </div>
       </dl>
     </section>
   );

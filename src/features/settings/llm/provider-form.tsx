@@ -202,8 +202,15 @@ export function ProviderForm({ provider, onSaved, className }: ProviderFormProps
         return;
       }
 
-      toast.success(provider ? '已保存 provider 修改' : '已添加 provider');
-      router.refresh();
+      if (provider) {
+        toast.success('已保存 provider 修改');
+        router.refresh();
+      } else {
+        toast.success('已添加 provider');
+        // Land on the new provider: its models, usage and chain entry are all
+        // selected by id, so a bare refresh would keep the empty selection.
+        router.push(`/settings/llm?provider=${result.value.id}`);
+      }
       onSaved?.();
     },
     (formErrors) => {
