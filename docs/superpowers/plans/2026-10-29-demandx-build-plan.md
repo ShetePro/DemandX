@@ -96,6 +96,8 @@ app/**            只做路由、数据装配、metadata
 
 **P4 状态：已完成（2026-10-30）** — 5/5 任务，另加 S2 接线；Evidence schema/提示词、quote gate（仅精确+空白归一化，NFKC offset 映射）、S2 抽取（拒绝原因落库、失败策略、拒绝率告警）、`eval-extract`（12 页标注 + dry 模式）、证据库页（筛选/高亮/人工确认与复验恢复）、worker 现在真实跑 S1→S2。`docs/eval.md` 如实记录样本与未测项。
 
+**P5 状态：已完成（2026-10-30）** — 5/5 任务；聚合与七维 rubric（表驱动、总分恒 ≤100）、可信度 A–D（A/B 均要求独立来源 ≥3，0 来源直接 D）、五选一决策（按序求值）、S3 聚类（≥3 独立来源、幻觉 id 剔除、跨簇不复用证据）、S4 评级（序数缺失记 0 + unknown、`replaceScores` 幂等）、报告结构校验器。LLM 全程不能给分。
+
 ### T0.1 初始化工程与脚本
 
 **Files:** `package.json`、`tsconfig.json`、`next.config.ts`、`src/app/layout.tsx`、`src/app/page.tsx`、`.gitignore`、`.env.example`
