@@ -143,7 +143,7 @@ test.describe('Chat', () => {
     await chip.click();
 
     const sheet = page.getByRole('dialog', { name: '证据 e12' });
-    await expect(sheet).toContainText('证据 e12 尚未入库');
+    await expect(sheet).toContainText('证据 e12 的原文、快照高亮与状态在证据库中查看');
     await expect(sheet.getByRole('button', { name: '打开证据库' })).toBeDisabled();
 
     // Proof the answer was streamed: the adapter asked the stub for SSE.
