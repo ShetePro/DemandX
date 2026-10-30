@@ -157,14 +157,23 @@ export async function clusterS3(
 
   let opportunities = 0;
   let dropped = 0;
+  /**
+   * Evidence already spent on an earlier cluster. The prompt asks the model to
+   * file each id once; a model that repeats them would otherwise let the same
+   * three pages back two opportunities, doubling the result off one signal.
+   */
+  const claimedIds = new Set<number>();
 
   for (const cluster of asked.value.data.clusters.slice(0, MAX_CLUSTERS)) {
     // Unknown ids are dropped, not trusted: a wrong id would otherwise inflate
     // the source count with a page that does not exist in this run. Filtering
-    // the corpus (not the model's array) also dedupes repeated ids.
+    // the corpus (not the model's array) also dedupes repeated ids. Ids already
+    // claimed by an earlier cluster are removed before the source count, so the
+    // later cluster is judged on what is actually left to it.
     const citedIds = new Set(cluster.evidenceIds);
-    const cited = evidence.filter((item) => citedIds.has(item.id));
+    const cited = evidence.filter((item) => citedIds.has(item.id) && !claimedIds.has(item.id));
     const evidenceIds = cited.map((item) => item.id);
+    for (const id of evidenceIds) claimedIds.add(id);
     const independentSources = new Set(cited.map((item) => item.sourceId)).size;
 
     if (independentSources < MIN_INDEPENDENT_SOURCES) {

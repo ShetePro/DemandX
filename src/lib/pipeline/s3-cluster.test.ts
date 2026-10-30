@@ -313,6 +313,38 @@ describe('clusterS3', () => {
     });
   });
 
+  it('never lets the same evidence back two opportunities', async () => {
+    // Three independent pages, cited twice by the model: the second cluster has
+    // nothing left, so it must not become a second opportunity off one signal.
+    const evidence = [accepted(1, 10), accepted(2, 11), accepted(3, 12)];
+    const { deps, events, repo } = setup({
+      evidence,
+      reply: () => ({
+        clusters: [cluster('第一个机会', [1, 2, 3]), cluster('第二个机会', [1, 2, 3])],
+      }),
+    });
+
+    const summary = expectOk(await clusterS3(context(), deps));
+
+    expect(summary).toEqual({ opportunities: 1, dropped: 1 });
+    expect(repo.rows).toHaveLength(1);
+    expect(repo.rows[0]).toMatchObject({
+      name: '第一个机会',
+      independentSources: 3,
+      evidenceIds: [1, 2, 3],
+    });
+
+    expect(eventsOf(events, 'cluster.created')).toHaveLength(1);
+    expect(eventsOf(events, 'cluster.dropped')).toEqual([
+      expect.objectContaining({
+        name: '第二个机会',
+        independentSources: 0,
+        evidenceIds: [],
+        reason: 'insufficient_independence',
+      }),
+    ]);
+  });
+
   it('sends summaries with a truncated quote, never the full text or the URL', async () => {
     const longQuote = '库'.repeat(MAX_QUOTE_IN_PROMPT + 180);
     const evidence = [accepted(1, 10, { quote: longQuote })];
