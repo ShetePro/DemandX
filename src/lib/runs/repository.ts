@@ -183,6 +183,62 @@ export async function appendEvent(
   }
 }
 
+/** The chain is snapshotted outside the transaction so a slow read holds no locks. */
+async function qualityChainSnapshot(): Promise<unknown> {
+  const chain = await getChain('quality');
+  return chain.ok ? chain.value : {};
+}
+
+/** Drizzle's transaction handle exposes the same writes as the database. */
+type WriteExecutor = Pick<Database, 'insert' | 'execute'>;
+
+/**
+ * The rows every research start needs: a queued run, the pitch as the first
+ * user message, and `run.created`. `createRun` (existing thread) and
+ * `createResearch` (idea + thread + run) share this so both leave the chat page
+ * in a renderable state.
+ */
+async function insertRunWithPitch(
+  tx: WriteExecutor,
+  input: {
+    ideaId: number;
+    threadId: number;
+    idea: string;
+    angles?: string[] | undefined;
+    chainSnapshot: unknown;
+  },
+): Promise<number> {
+  const runRow = firstRow(
+    await tx
+      .insert(runs)
+      .values({
+        ideaId: input.ideaId,
+        threadId: input.threadId,
+        status: 'queued',
+        stage: 'S0',
+        deadlineAt: sql`now() + interval '${sql.raw(String(RUN_DEADLINE_MINUTES))} minutes'`,
+        chainSnapshot: input.chainSnapshot,
+      })
+      .returning({ id: runs.id }),
+  );
+
+  await tx.insert(messages).values({
+    threadId: input.threadId,
+    role: 'user',
+    parts: [{ type: 'text', text: input.idea }],
+  });
+
+  const appended = await appendEvent(
+    runRow.id,
+    'run.created',
+    { idea: input.idea, angles: input.angles ?? [] },
+    tx,
+  );
+  if (!appended.ok) throw new EventWriteError(appended);
+
+  return runRow.id;
+}
+
 /**
  * Create a run for a thread and record the user's pitch. Everything happens in
  * one transaction: a run without its message or `run.created` event would leave
@@ -196,8 +252,7 @@ export async function createRun(input: CreateRunInput): Promise<Result<CreateRun
 
   const { threadId: requestedThreadId, idea, angles } = parsed.data;
 
-  const chain = await getChain('quality');
-  const chainSnapshot: unknown = chain.ok ? chain.value : {};
+  const chainSnapshot = await qualityChainSnapshot();
 
   try {
     const created = await db.transaction(async (tx) => {
@@ -240,41 +295,74 @@ export async function createRun(input: CreateRunInput): Promise<Result<CreateRun
         threadId = threadRow.id;
       }
 
-      const runRow = firstRow(
-        await tx
-          .insert(runs)
-          .values({
-            ideaId,
-            threadId,
-            status: 'queued',
-            stage: 'S0',
-            deadlineAt: sql`now() + interval '${sql.raw(String(RUN_DEADLINE_MINUTES))} minutes'`,
-            chainSnapshot,
-          })
-          .returning({ id: runs.id }),
-      );
-
-      await tx.insert(messages).values({
+      const runId = await insertRunWithPitch(tx, {
+        ideaId,
         threadId,
-        role: 'user',
-        parts: [{ type: 'text', text: idea }],
+        idea,
+        angles,
+        chainSnapshot,
       });
 
-      const appended = await appendEvent(
-        runRow.id,
-        'run.created',
-        { idea, angles: angles ?? [] },
-        tx,
-      );
-      if (!appended.ok) throw new EventWriteError(appended);
-
-      return { runId: runRow.id, threadId };
+      return { runId, threadId };
     });
 
     return ok(created);
   } catch (error) {
     if (error instanceof EventWriteError) return error.failure;
     return storageFailure('创建 run', error);
+  }
+}
+
+export const createResearchInputSchema = z.strictObject({
+  idea: z.string().trim().min(8, '想法至少 8 个字符').max(4000, '想法最多 4000 个字符'),
+});
+
+export type CreateResearchInput = z.input<typeof createResearchInputSchema>;
+
+export type CreateResearchResult = { ideaId: number; threadId: number; runId: number };
+
+/**
+ * The first screen's "start research": idea, thread, first user message and run
+ * are one transaction, so a partial write can never leave a conversation with
+ * nothing to follow. The queue is separate — `startResearchAction` enqueues
+ * after the commit, exactly like `createRunAction`.
+ */
+export async function createResearch(
+  input: CreateResearchInput,
+): Promise<Result<CreateResearchResult>> {
+  const parsed = createResearchInputSchema.safeParse(input);
+  if (!parsed.success) return fail('VALIDATION_FAILED', formatIssues(parsed.error));
+
+  const { idea } = parsed.data;
+  const chainSnapshot = await qualityChainSnapshot();
+  const title = idea.replace(/\s+/g, ' ').trim().slice(0, 60);
+
+  try {
+    const created = await db.transaction(async (tx) => {
+      const ideaRow = firstRow(
+        await tx.insert(ideas).values({ title, rawInput: idea }).returning({ id: ideas.id }),
+      );
+      const threadRow = firstRow(
+        await tx
+          .insert(threads)
+          .values({ ideaId: ideaRow.id, title })
+          .returning({ id: threads.id }),
+      );
+
+      const runId = await insertRunWithPitch(tx, {
+        ideaId: ideaRow.id,
+        threadId: threadRow.id,
+        idea,
+        chainSnapshot,
+      });
+
+      return { ideaId: ideaRow.id, threadId: threadRow.id, runId };
+    });
+
+    return ok(created);
+  } catch (error) {
+    if (error instanceof EventWriteError) return error.failure;
+    return storageFailure('创建研究', error);
   }
 }
 
@@ -619,6 +707,34 @@ export type MessageRecord = {
   parts: unknown;
   createdAt: Date;
 };
+
+/** Rows created by the old two-step form kept an empty pitch; they are not ideas. */
+const RECENT_IDEA_LIMIT = 5;
+
+/**
+ * Titles of the newest real pitches, newest first. The new-research screen
+ * offers them as suggestion chips, so placeholders (`raw_input` empty) are
+ * filtered out instead of surfacing "新研究" as a direction.
+ */
+export async function listRecentIdeaTitles(limit = RECENT_IDEA_LIMIT): Promise<Result<string[]>> {
+  const safeLimit =
+    Number.isSafeInteger(limit) && limit > 0
+      ? Math.min(limit, RECENT_IDEA_LIMIT * 4)
+      : RECENT_IDEA_LIMIT;
+
+  try {
+    const rows = await db
+      .select({ title: ideas.title })
+      .from(ideas)
+      .where(sql`btrim(${ideas.rawInput}) <> ''`)
+      .orderBy(desc(ideas.createdAt), desc(ideas.id))
+      .limit(safeLimit);
+
+    return ok(rows.map((row) => row.title));
+  } catch (error) {
+    return storageFailure('读取最近想法', error);
+  }
+}
 
 /** Oldest first, with `id` as a tie-break for turns in the same millisecond. */
 export async function getMessages(threadId: number): Promise<Result<MessageRecord[]>> {

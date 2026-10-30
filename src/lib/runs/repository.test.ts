@@ -190,6 +190,32 @@ suite('run repository', () => {
     expect(thread?.title).toBe(IDEA);
   });
 
+  it('creates idea, thread, first message and run together for createResearch', async () => {
+    const created = unwrap(await repo.createResearch({ idea: IDEA }));
+
+    const thread = unwrap(await repo.getThread(created.threadId));
+    expect(thread).toMatchObject({ ideaId: created.ideaId, title: IDEA });
+
+    const ideaRows = await client.sql<
+      { raw_input: string }[]
+    >`select raw_input from ideas where id = ${created.ideaId}`;
+    expect(ideaRows[0]?.raw_input).toBe(IDEA);
+
+    const messages = unwrap(await repo.getMessages(created.threadId));
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({ threadId: created.threadId, role: 'user' });
+    expect(messages[0]?.parts).toEqual([{ type: 'text', text: IDEA }]);
+
+    const run = unwrap(await repo.getRun(created.runId));
+    expect(run).toMatchObject({ threadId: created.threadId, status: 'queued' });
+  });
+
+  it('rejects a createResearch idea shorter than 8 characters', async () => {
+    expect(expectFailure(await repo.createResearch({ idea: '太短' })).code).toBe(
+      'VALIDATION_FAILED',
+    );
+  });
+
   it('assigns unique consecutive seqs to concurrent appends', async () => {
     const { run } = await createThreadWithRun();
 

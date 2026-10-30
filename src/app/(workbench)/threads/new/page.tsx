@@ -1,34 +1,15 @@
-import { Plus } from 'lucide-react';
-import { redirect } from 'next/navigation';
+import { NewResearchScreen } from '@/features/chat/new-research-screen';
+import { listRecentIdeaTitles } from '@/lib/runs/repository';
 
-import { PageHeader } from '@/components/shell/page-header';
-import { Button } from '@/components/ui/button';
-import { createThreadAction } from '@/features/chat/actions';
+// Recent pitches are read per request; a build-time snapshot would go stale.
+export const dynamic = 'force-dynamic';
 
-/**
- * Opening a conversation is one click: a thread always hangs off an idea row,
- * and the pitch itself is captured by the first chat turn / run.
- */
-async function createThread(): Promise<void> {
-  'use server';
+/** The newest real pitches become suggestion chips on the first screen. */
+const RECENT_IDEA_LIMIT = 5;
 
-  const result = await createThreadAction({ title: '新研究' });
-  if (!result.ok) throw new Error(result.message);
+export default async function NewThreadPage() {
+  const recent = await listRecentIdeaTitles(RECENT_IDEA_LIMIT);
+  if (!recent.ok) throw new Error(recent.message);
 
-  redirect(`/threads/${result.value.threadId}`);
-}
-
-export default function NewThreadPage() {
-  return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6 md:px-6.5">
-      <PageHeader title="新建研究" description="先开一个会话，再在对话里描述产品想法或用户抱怨" />
-
-      <form action={createThread}>
-        <Button type="submit">
-          <Plus className="size-4" />
-          新建研究
-        </Button>
-      </form>
-    </div>
-  );
+  return <NewResearchScreen recentIdeas={recent.value} />;
 }

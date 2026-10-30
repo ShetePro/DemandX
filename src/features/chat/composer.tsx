@@ -6,6 +6,7 @@ import { useState, type KeyboardEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useAutoResize } from '@/lib/hooks/use-auto-resize';
+import { cn } from '@/lib/utils/cn';
 
 export type ComposerProps = {
   onSend: (text: string) => void;
@@ -13,6 +14,11 @@ export type ComposerProps = {
   /** A reply is being streamed: the send button becomes 停止. */
   isStreaming?: boolean;
   placeholder?: string;
+  /** `hero` is the new-research screen's larger first-paint composer. */
+  size?: 'default' | 'hero';
+  /** Controlled draft. Omit both to keep the original internal state. */
+  value?: string;
+  onValueChange?: (value: string) => void;
 };
 
 /**
@@ -25,15 +31,26 @@ export function Composer({
   onStop,
   isStreaming = false,
   placeholder = '描述一个产品想法，或粘贴一段用户抱怨…',
+  size = 'default',
+  value,
+  onValueChange,
 }: ComposerProps) {
-  const [value, setValue] = useState('');
-  const { ref } = useAutoResize({ value });
-  const text = value.trim();
+  const [draft, setDraft] = useState('');
+  const controlled = value !== undefined;
+  const current = value ?? draft;
+  const { ref } = useAutoResize({ value: current });
+  const text = current.trim();
+  const hero = size === 'hero';
+
+  function update(next: string): void {
+    if (!controlled) setDraft(next);
+    onValueChange?.(next);
+  }
 
   function send(): void {
     if (isStreaming || text === '') return;
     onSend(text);
-    setValue('');
+    update('');
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
@@ -46,19 +63,34 @@ export function Composer({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-2 shadow-sm">
+    <div
+      className={cn(
+        'border border-border bg-surface',
+        hero
+          ? 'rounded-2xl p-3 shadow-lg focus-within:border-border-strong'
+          : 'rounded-xl p-2 shadow-sm',
+      )}
+    >
       <Textarea
         ref={ref}
         rows={1}
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
+        value={current}
+        onChange={(event) => update(event.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         aria-label="输入消息"
-        className="max-h-[136px] min-h-9 resize-none border-0 bg-transparent px-2 py-1.5 shadow-none focus-visible:outline-none"
+        name="message"
+        className={cn(
+          'resize-none border-0 bg-transparent px-2 shadow-none focus-visible:outline-none',
+          hero
+            ? 'max-h-[220px] min-h-20 py-2 text-base leading-relaxed'
+            : 'max-h-[136px] min-h-9 py-1.5',
+        )}
       />
-      <div className="flex items-center justify-between gap-2 px-1 pt-1">
-        <span className="text-[11px] text-faint">Enter 发送 · Shift+Enter 换行</span>
+      <div className={cn('flex items-center justify-between gap-2 px-1', hero ? 'pt-2' : 'pt-1')}>
+        <span className={cn('text-faint', hero ? 'text-xs' : 'text-[11px]')}>
+          Enter 发送 · Shift+Enter 换行
+        </span>
         {isStreaming ? (
           <Button size="icon" variant="ghost" aria-label="停止" onClick={onStop}>
             <Square className="size-4" />

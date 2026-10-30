@@ -110,7 +110,14 @@ export function ChatScreen({
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_312px] max-lg:grid-cols-1 max-lg:grid-rows-[minmax(0,1fr)_auto]">
+    <div
+      className={cn(
+        'grid h-full min-h-0 transition-[grid-template-columns] duration-200 ease-out',
+        run.id === null
+          ? 'grid-cols-1'
+          : 'grid-cols-[minmax(0,1fr)_312px] max-lg:grid-cols-1 max-lg:grid-rows-[minmax(0,1fr)_auto]',
+      )}
+    >
       <section aria-label="对话" className="flex min-h-0 flex-col">
         <header className="flex h-12 shrink-0 items-center border-b border-border px-4">
           <h1 className="truncate text-sm font-semibold text-fg">{title}</h1>
@@ -152,12 +159,14 @@ export function ChatScreen({
         </div>
       </section>
 
-      <aside
-        aria-label="运行详情"
-        className="min-h-0 overflow-y-auto border-l border-border bg-surface px-3.5 py-4 max-lg:border-t max-lg:border-l-0"
-      >
-        <RunRail runId={run.id} initialEvents={run.events} />
-      </aside>
+      {run.id !== null && (
+        <aside
+          aria-label="运行详情"
+          className="min-h-0 overflow-y-auto border-l border-border bg-surface px-3.5 py-4 max-lg:border-t max-lg:border-l-0"
+        >
+          <RunRail runId={run.id} initialEvents={run.events} />
+        </aside>
+      )}
 
       <CitationSheet
         citationId={citationId}

@@ -97,6 +97,50 @@
   }
 }
 
+/* New-research first screen. `--dock-from` is the measured distance between
+   the centred composer and its docked bottom position, so the first frame is
+   exactly where the composer was; the fallback keeps the spec's 18vh slide.
+   The block is re-anchored to the bottom in layout, and this transform brings
+   it down from the reader's last-seen position. */
+@keyframes dock-down {
+  from {
+    transform: translateY(calc(var(--dock-from, 18vh) * -1)) scale(0.98);
+  }
+  70% {
+    transform: translateY(-1.2vh) scale(1.004);
+  }
+  to {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes research-fade-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* Reduced motion: the prompt disappears immediately and the composer changes
+   anchor without playing the slide. */
+[data-docking='true'] [data-research-fade] {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-docking='true'] {
+    animation: dock-down 380ms cubic-bezier(0.22, 1.2, 0.36, 1) both;
+  }
+
+  [data-docking='true'] [data-research-fade] {
+    animation: research-fade-out 180ms ease-out both;
+  }
+}
+
 :root {
   color-scheme: light;
   --bg: #f6f7f9;

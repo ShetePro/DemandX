@@ -76,7 +76,15 @@ describe('ChatScreen', () => {
     );
 
     expect(screen.getByText(/付费意愿集中在旺季/)).toBeVisible();
-    expect(screen.getByTestId('run-rail')).toHaveTextContent('尚未开始研究');
+  });
+
+  it('does not render the run rail before a run exists', () => {
+    const { container } = render(
+      <ChatScreen threadId={1} initialMessages={[TEXT_MESSAGE]} runId={null} evidenceHref={null} />,
+    );
+
+    expect(container.querySelector('aside[aria-label="运行详情"]')).toBeNull();
+    expect(screen.queryByTestId('run-rail')).not.toBeInTheDocument();
   });
 
   it('creates the run from the approval card and refreshes the page', async () => {
@@ -129,6 +137,6 @@ describe('ChatScreen', () => {
 
     await waitFor(() => expect(mocks.error).toHaveBeenCalledWith('创建 run 失败 (SQLSTATE 08006)'));
     expect(mocks.refresh).not.toHaveBeenCalled();
-    expect(screen.getByTestId('run-rail')).toHaveTextContent('尚未开始研究');
+    expect(document.querySelector('aside[aria-label="运行详情"]')).toBeNull();
   });
 });
