@@ -14,13 +14,25 @@ export interface RunContext {
 
 /** Failures a stage may return instead of throwing across the pipeline boundary. */
 export type AppErrorCode =
-  'DEADLINE_EXCEEDED' | 'QUOTA_EXCEEDED' | 'STORAGE_FAILED' | 'CRAWL_UNAVAILABLE' | 'INVALID_INPUT';
+  | 'DEADLINE_EXCEEDED'
+  | 'QUOTA_EXCEEDED'
+  | 'STORAGE_FAILED'
+  | 'CRAWL_UNAVAILABLE'
+  | 'LLM_UNAVAILABLE'
+  | 'INVALID_INPUT';
+
+/**
+ * What a stage that only reports numbers hands back: its summary, or a typed
+ * failure with the message the runner logs. A stage failure never throws; a
+ * programming error still does.
+ */
+export type StageOutcome<T> =
+  { ok: true; value: T } | { ok: false; code: AppErrorCode; message: string };
 
 /**
  * The shape a stage hands back to the runner: an updated context on success
  * (carrying whatever the stage learned), or a typed failure the runner turns
- * into a terminal event. A stage failure never throws; a programming error
- * still does.
+ * into a terminal event.
  */
 export type StageResult =
   { ok: true; context: RunContext } | { ok: false; code: AppErrorCode; detail?: unknown };

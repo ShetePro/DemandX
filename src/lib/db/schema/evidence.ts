@@ -92,5 +92,10 @@ export const evidence = pgTable(
     rejectedReason: text('rejected_reason'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index('evidence_run_id_signal_idx').on(t.runId, t.signal)],
+  (t) => [
+    index('evidence_run_id_signal_idx').on(t.runId, t.signal),
+    // Re-running extraction must not duplicate a verdict: the same quote from
+    // the same source is one fact, accepted or rejected.
+    uniqueIndex('evidence_run_id_source_id_quote_key').on(t.runId, t.sourceId, t.quote),
+  ],
 );

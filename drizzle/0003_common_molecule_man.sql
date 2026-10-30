@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "evidence_run_id_source_id_quote_key" ON "evidence" USING btree ("run_id","source_id","quote");
