@@ -350,6 +350,42 @@ export async function getRun(runId: number): Promise<Result<RunRecord | null>> {
   }
 }
 
+/** What a worker needs to start a stage: the pitch and the run's deadline. */
+export type RunContextRecord = {
+  id: number;
+  idea: string;
+  status: string;
+  stage: string | null;
+  deadlineAt: Date | null;
+};
+
+/**
+ * Join the run with its idea, so a worker never has to guess which `ideas.raw_input`
+ * belongs to the run it picked up.
+ */
+export async function getRunContext(runId: number): Promise<Result<RunContextRecord | null>> {
+  if (!Number.isInteger(runId) || runId <= 0) return fail('NOT_FOUND', `run ${runId} 不存在`);
+
+  try {
+    const rows = await db
+      .select({
+        id: runs.id,
+        idea: ideas.rawInput,
+        status: runs.status,
+        stage: runs.stage,
+        deadlineAt: runs.deadlineAt,
+      })
+      .from(runs)
+      .innerJoin(ideas, eq(runs.ideaId, ideas.id))
+      .where(eq(runs.id, runId))
+      .limit(1);
+
+    return ok(rows[0] ?? null);
+  } catch (error) {
+    return storageFailure('读取 run 上下文', error);
+  }
+}
+
 export type ThreadRecord = {
   id: number;
   ideaId: number;
