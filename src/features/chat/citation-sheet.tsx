@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -19,9 +21,9 @@ export type CitationSheetProps = {
 };
 
 /**
- * Evidence drawer for one `[eN]` anchor. The evidence store arrives in P4, so
- * the drawer states that the row is not available yet instead of inventing a
- * quote; the link to the real evidence page is the only thing it can offer.
+ * Evidence drawer for one `[eN]` anchor. The drawer itself only knows the
+ * anchor, not which row it points at, so it links to the evidence page where
+ * the quote, snapshot highlight and status are shown; it never invents a quote.
  */
 export function CitationSheet({ citationId, evidenceHref, onClose }: CitationSheetProps) {
   const label = citationId ?? '';
@@ -40,9 +42,9 @@ export function CitationSheet({ citationId, evidenceHref, onClose }: CitationShe
         </SheetHeader>
 
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-fg">证据 {label} 尚未入库（P4 接入）</p>
+          <p className="text-sm text-fg">证据 {label} 的原文、快照高亮与状态在证据库中查看</p>
           <p className="text-xs text-muted">
-            采集与抽取管线完成后，这里会显示原文、平台和抓取时间；目前不展示任何未经引用的内容。
+            对话只保留引用锚点；未经快照校验的内容不会在这里展示。
           </p>
         </div>
 
@@ -53,8 +55,10 @@ export function CitationSheet({ citationId, evidenceHref, onClose }: CitationShe
           </SheetFooter>
         ) : (
           <SheetFooter className="items-start gap-2 sm:flex-col sm:items-start">
-            <Button disabled>打开证据库</Button>
-            <p className="text-xs text-muted">证据库将在 P4 接入，路由暂未上线。</p>
+            <Button asChild>
+              <Link href={evidenceHref}>打开证据库</Link>
+            </Button>
+            <p className="text-xs text-muted">证据库可核对引文、快照与人工驳回状态。</p>
           </SheetFooter>
         )}
       </SheetContent>

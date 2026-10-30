@@ -38,8 +38,9 @@ export default defineConfig([
     rules: jsxA11y.flatConfigs.recommended.rules,
   },
 
-  // Architectural boundaries: app → feature/ui/lib, feature → ui/lib (no cross-feature),
-  // ui → lib, lib → lib. Everything else is disallowed.
+  // Architectural boundaries: app → feature/common/ui/lib, feature → common/ui/lib
+  // (no cross-feature), component → common/ui/lib, ui → lib, lib → lib. Everything
+  // else is disallowed.
   {
     files: ['src/**/*.{ts,tsx}'],
     plugins: { boundaries },
@@ -48,6 +49,8 @@ export default defineConfig([
         { type: 'app', pattern: 'src/app/**', mode: 'full' },
         { type: 'feature', pattern: 'src/features/*/**', capture: ['feature'], mode: 'full' },
         { type: 'ui', pattern: 'src/components/ui/**', mode: 'full' },
+        // Semantic, cross-page pieces (SignalBadge, …) are shared with features.
+        { type: 'common', pattern: 'src/components/common/**', mode: 'full' },
         { type: 'component', pattern: 'src/components/**', mode: 'full' },
         { type: 'lib', pattern: 'src/lib/**', mode: 'full' },
       ],
@@ -58,14 +61,15 @@ export default defineConfig([
         {
           default: 'disallow',
           rules: [
-            { from: 'app', allow: ['app', 'component', 'feature', 'ui', 'lib'] },
-            { from: 'component', allow: ['component', 'ui', 'lib'] },
+            { from: 'app', allow: ['app', 'component', 'common', 'feature', 'ui', 'lib'] },
+            { from: 'component', allow: ['component', 'common', 'ui', 'lib'] },
             {
               from: 'feature',
-              allow: [['feature', { feature: '${from.feature}' }], 'ui', 'lib'],
+              allow: [['feature', { feature: '${from.feature}' }], 'common', 'ui', 'lib'],
               disallow: [['feature', { feature: '!${from.feature}' }]],
             },
             { from: 'ui', allow: ['ui', 'lib'] },
+            { from: 'common', allow: ['common', 'ui', 'lib'] },
             { from: 'lib', allow: ['lib'] },
           ],
         },

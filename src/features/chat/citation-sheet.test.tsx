@@ -1,16 +1,28 @@
 import { render, screen } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CitationSheet } from './citation-sheet';
 
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...props }: ComponentProps<'a'> & { href: string }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}));
+
 describe('CitationSheet', () => {
-  it('keeps the evidence link disabled until the route exists', () => {
+  it('links to the evidence page once the run exists', () => {
     render(<CitationSheet citationId="e12" evidenceHref="/runs/7/evidence" onClose={vi.fn()} />);
 
     expect(screen.getByRole('heading', { name: '证据 e12' })).toBeVisible();
-    expect(screen.getByText('证据 e12 尚未入库（P4 接入）')).toBeVisible();
-    expect(screen.getByRole('button', { name: '打开证据库' })).toBeDisabled();
-    expect(screen.getByText('证据库将在 P4 接入，路由暂未上线。')).toBeVisible();
+    expect(screen.getByText('证据 e12 的原文、快照高亮与状态在证据库中查看')).toBeVisible();
+    expect(screen.getByRole('link', { name: '打开证据库' })).toHaveAttribute(
+      'href',
+      '/runs/7/evidence',
+    );
+    expect(screen.queryByRole('button', { name: '打开证据库' })).not.toBeInTheDocument();
   });
 
   it('disables the link and says why before a run exists', () => {
