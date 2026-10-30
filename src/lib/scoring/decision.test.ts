@@ -85,6 +85,15 @@ describe('decide — ④ 建议开发', () => {
   it('develops a grade B report without a price at the top of the payment band', () => {
     expect(decisionOf({ total: 85, credibility: 'B', payment: 8 })).toBe('建议开发');
   });
+
+  it('develops needs 13 / payment 17 / total 75 at grade B', () => {
+    // The 11–15 needs band with strong payment is B, and B is enough to build.
+    const result = decide(
+      input({ total: 75, credibility: 'B', needs: 13, payment: 17, feasibility: 10 }),
+    );
+    expect(result.decision).toBe('建议开发');
+    expect(result.reason).toContain('总分 75');
+  });
 });
 
 describe('decide — ⑤ 建议先验证，再开发', () => {

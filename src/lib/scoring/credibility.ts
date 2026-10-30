@@ -32,19 +32,23 @@ const WEAK_NEEDS_MIN = 6;
 const WEAK_NEEDS_MAX = 10;
 const CROSS_CHECK_SOURCES = 2;
 
-/** Junk input (NaN, ±Infinity, negative) reads as "nothing gathered", never as a pass. */
+/**
+ * Junk input (NaN, ±Infinity, negative) reads as "nothing gathered", never as a
+ * pass; a fractional score floors to the rubric's whole points, so no value can
+ * slip between two integer bands.
+ */
 function count(value: number): number {
-  return Number.isFinite(value) ? Math.max(0, value) : 0;
+  return Number.isFinite(value) ? Math.floor(Math.max(0, value)) : 0;
 }
 
 /**
  * §9 可信度, evaluated A → B → C → D so an input that satisfies two rows takes
- * the first one the table offers. `sources = 0` is the one exception the rows
- * themselves force: D names "no traceable source at all", so the C source floor
- * covers 1–2 rather than 0–2 and a sourceless report can never come out as C.
- * Everything no row above admits (11–15 needs with payment ≥13, or a high score
- * whose claims carry no citation) also falls through to D: the ordered table
- * has no permissive branch for it, and a guess must not be promoted to C.
+ * the first one the table offers. A is a strict subset of B: B asks only for
+ * needs ≥11 plus citations, so payment strength never decides between them in
+ * the wrong direction — needs 11–15 with strong payment evidence is a B, not an
+ * abandonment. `sources = 0` is the one exception the rows themselves force:
+ * D names "no traceable source at all", so the C source floor covers 1–2 rather
+ * than 0–2 and a sourceless report can never come out as C.
  */
 export function credibility({
   needs,
@@ -54,7 +58,7 @@ export function credibility({
 }: CredibilityInput): Credibility {
   const needPoints = count(needs);
   const paymentPoints = count(payment);
-  const sources = Math.floor(count(independentSources));
+  const sources = count(independentSources);
 
   if (needPoints >= TOP_NEEDS && paymentPoints >= TOP_PAYMENT && allClaimsCited) {
     return {
@@ -63,10 +67,10 @@ export function credibility({
     };
   }
 
-  if (needPoints >= CITABLE_NEEDS && allClaimsCited && paymentPoints < TOP_PAYMENT) {
+  if (needPoints >= CITABLE_NEEDS && allClaimsCited) {
     return {
       grade: 'B',
-      reason: `需求 ${needPoints} 分且论断有引用，但付费仅 ${paymentPoints} 分（<${TOP_PAYMENT}）`,
+      reason: `需求 ${needPoints} 分且论断有引用，但未同时满足 A 级门槛（需求 ≥${TOP_NEEDS} 且付费 ≥${TOP_PAYMENT}）`,
     };
   }
 
@@ -96,17 +100,10 @@ export function credibility({
     };
   }
 
-  if (needPoints < WEAK_NEEDS_MIN) {
-    return {
-      grade: 'D',
-      reason: `需求仅 ${needPoints} 分（<${WEAK_NEEDS_MIN}），不足以证明需求存在`,
-    };
-  }
-
-  // Reached only by inputs the table leaves uncovered (e.g. needs 11–15 with
-  // payment ≥13); the ordered rules give no permissive branch, so stay at D.
+  // Every row above missed, so the needs band is the only thing left: with
+  // integer scores it can only be below 6 here.
   return {
     grade: 'D',
-    reason: `需求 ${needPoints} 分、付费 ${paymentPoints} 分，不满足任何更高等级的条件`,
+    reason: `需求仅 ${needPoints} 分（<${WEAK_NEEDS_MIN}），不足以证明需求存在`,
   };
 }

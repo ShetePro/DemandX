@@ -49,11 +49,13 @@ describe('credibility — grade C', () => {
     );
   });
 
-  it('caps cross-validation at C when only two sources back a strong score', () => {
-    // needs 13 blocks A and payment 20 blocks B, so the source floor decides.
-    expect(grade({ needs: 13, payment: 20, allClaimsCited: true, independentSources: 2 })).toBe(
-      'C',
+  it('caps cross-validation at C when only two sources back an uncited score', () => {
+    // B would claim any cited needs ≥11, so the source floor only decides here.
+    const result = credibility(
+      input({ needs: 20, payment: 20, allClaimsCited: false, independentSources: 2 }),
     );
+    expect(result.grade).toBe('C');
+    expect(result.reason).toContain('来源');
   });
 });
 
@@ -71,11 +73,14 @@ describe('credibility — grade D', () => {
 
 describe('credibility — boundaries', () => {
   const cases: [number, number, boolean, number, CredibilityGrade][] = [
-    // needs 16 vs 15 with top payment: only 16 reaches A; 15 hits the table's gap.
+    // needs 16 vs 15 with top payment: only 16 reaches A.
     [16, 13, true, 5, 'A'],
-    [15, 13, true, 5, 'D'],
-    // 15 with payment below 13 is a normal B.
+    // 15 is B, whatever the payment evidence says — A is a strict subset of B.
+    [15, 13, true, 5, 'B'],
     [15, 12, true, 5, 'B'],
+    // The 11–15 band with top payment is still B, not D.
+    [13, 17, true, 4, 'B'],
+    [15, 20, true, 5, 'B'],
     // needs 11 vs 10: B needs 11, C owns 6–10.
     [11, 12, true, 3, 'B'],
     [10, 12, true, 3, 'C'],
@@ -83,8 +88,8 @@ describe('credibility — boundaries', () => {
     [6, 8, true, 3, 'C'],
     [5, 8, true, 3, 'D'],
     // sources 2 vs 3: the C floor is exactly 1–2 once no higher row matched.
-    [13, 20, true, 2, 'C'],
-    [13, 20, true, 3, 'D'],
+    [20, 20, false, 2, 'C'],
+    [20, 20, false, 3, 'D'],
     // Uncited claims disqualify A and B alike.
     [20, 20, false, 5, 'D'],
     [20, 12, false, 5, 'D'],
