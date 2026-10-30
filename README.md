@@ -1,5 +1,11 @@
 # DemandX
 市场调研agents 帮我寻找和判断好项目
+## 开发运行
+
+前置 Node 22、pnpm、Docker（本地 PostgreSQL）与可选的本机 Ollama；复制 `.env.example` 为 `.env` 后执行 `docker compose up -d && pnpm install && pnpm db:migrate`。
+开两个终端分别运行 `pnpm dev`（`http://127.0.0.1:3000`）与 `pnpm worker`，在 `/settings/llm` 配置 provider 后即可从 `/threads/new` 发起研究。
+从零启动、常见错误与验收命令见 [docs/runbook.md](docs/runbook.md)。
+
 ## 一、完整提示词：AI 商业机会调查与验证 Agent
 
 这份提示词不仅要求 AI 搜索互联网，还要求它尽可能收集原始用户证据、交叉验证信息，并明确区分事实、推断与未知信息。

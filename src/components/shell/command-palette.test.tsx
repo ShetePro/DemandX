@@ -33,7 +33,7 @@ describe('CommandPalette', () => {
 
     await user.keyboard('{Enter}');
 
-    expect(push).toHaveBeenCalledWith('/runs/latest/evidence');
+    expect(push).toHaveBeenCalledWith('/runs');
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 

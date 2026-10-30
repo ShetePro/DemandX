@@ -27,12 +27,10 @@ function normalize(pathname: string): string {
 }
 
 /**
- * Report and evidence library live under the same `/runs` tree, so they cannot
- * both match on a bare prefix: `/runs/:id` (and `/runs/:id/report`) is the
- * report, only `/runs/:id/evidence` is the evidence library.
- *
- * The links point at `/runs/latest/*` because there is no run yet — the
- * concrete run routes arrive with the run pages (T0.9+).
+ * Report and evidence library live under the same `/runs` tree. There is no
+ * cross-run evidence index, so both nav entries open the run list; the active
+ * state still separates them: the list, `/runs/:id` and `/runs/:id/report` are
+ * 报告, while only `/runs/:id/evidence` is 证据库.
  */
 const REPORT_PATH = /^\/runs(?:\/[^/]+(?:\/report)?)?$/;
 const EVIDENCE_PATH = /^\/runs\/[^/]+\/evidence$/;
@@ -56,14 +54,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     },
   },
   {
-    href: '/runs/latest/report',
+    href: '/runs',
     label: '报告',
     icon: FileText,
     keywords: ['report', 'runs'],
     isActive: (pathname) => REPORT_PATH.test(normalize(pathname)),
   },
   {
-    href: '/runs/latest/evidence',
+    href: '/runs',
     label: '证据库',
     icon: Database,
     keywords: ['evidence', 'runs'],

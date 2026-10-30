@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { db, type Database } from '@/lib/db/client';
-import { ideas, messages, runEvents, runs, threads } from '@/lib/db/schema';
+import { ideas, messages, reports, runEvents, runs, threads } from '@/lib/db/schema';
 import { getChain } from '@/lib/llm/chain-repository';
 
 /** Run states after which no further events are expected. */
@@ -449,6 +449,67 @@ export async function getRun(runId: number): Promise<Result<RunRecord | null>> {
     return ok(rows[0] ?? null);
   } catch (error) {
     return storageFailure('读取 run', error);
+  }
+}
+
+/** Newest runs first, for the workbench table and the `/runs` index. */
+export type RunSummaryRecord = {
+  id: number;
+  ideaTitle: string;
+  status: string;
+  stage: string | null;
+  hasReport: boolean;
+  /** 0–100 rubric total from the published report; `null` before S5. */
+  rubricTotal: number | null;
+  credibilityGrade: string | null;
+  /** The report's final decision (one of the five), in Chinese; `null` before S5. */
+  decision: string | null;
+  /** Last meaningful moment: finish, start, or creation when neither happened. */
+  updatedAt: Date;
+};
+
+const RUN_LIST_LIMIT = 50;
+const RUN_LIST_MAX = 200;
+
+/**
+ * The most recent runs with the bits both index pages show. `reports` is LEFT
+ * JOINed (it is unique per run) so "does this run have a report?" costs no
+ * second query per row.
+ */
+export async function listRuns(limit = RUN_LIST_LIMIT): Promise<Result<RunSummaryRecord[]>> {
+  const capped =
+    Number.isInteger(limit) && limit > 0 ? Math.min(limit, RUN_LIST_MAX) : RUN_LIST_LIMIT;
+
+  try {
+    const rows = await db
+      .select({
+        id: runs.id,
+        ideaTitle: ideas.title,
+        status: runs.status,
+        stage: runs.stage,
+        reportId: reports.id,
+        rubricTotal: reports.rubricTotal,
+        credibilityGrade: reports.credibilityGrade,
+        decision: reports.decision,
+        finishedAt: runs.finishedAt,
+        startedAt: runs.startedAt,
+        createdAt: runs.createdAt,
+      })
+      .from(runs)
+      .innerJoin(ideas, eq(runs.ideaId, ideas.id))
+      .leftJoin(reports, eq(reports.runId, runs.id))
+      .orderBy(desc(runs.createdAt), desc(runs.id))
+      .limit(capped);
+
+    return ok(
+      rows.map(({ reportId, finishedAt, startedAt, createdAt, ...row }) => ({
+        ...row,
+        hasReport: reportId !== null,
+        updatedAt: finishedAt ?? startedAt ?? createdAt,
+      })),
+    );
+  } catch (error) {
+    return storageFailure('读取运行列表', error);
   }
 }
 

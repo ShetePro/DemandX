@@ -20,6 +20,8 @@
     "db:migrate": "tsx src/lib/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "crawl:login": "tsx scripts/crawl-login.ts",
+    "acceptance": "tsx scripts/acceptance.ts",
+    "eval:extract": "tsx scripts/eval-extract.ts",
     "verify": "pnpm typecheck && pnpm lint && pnpm test",
     "tokens:check": "node scripts/check-tokens.mjs"
   },

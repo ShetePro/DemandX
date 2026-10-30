@@ -52,7 +52,7 @@ export function NavLinks({ pathname, onNavigate }: NavLinksProps) {
     <nav aria-label="主导航" className="flex flex-col gap-0.5">
       {NAV_ITEMS.map((item) => (
         <NavLink
-          key={item.href}
+          key={item.label}
           item={item}
           active={item.isActive(pathname)}
           onNavigate={onNavigate}

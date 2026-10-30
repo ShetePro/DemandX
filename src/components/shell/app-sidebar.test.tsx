@@ -45,6 +45,8 @@ describe('AppSidebar', () => {
     for (const name of ['工作台', '对话', '报告', '证据库']) {
       expect(navLink(name)).toBeVisible();
     }
+    expect(navLink('报告')).toHaveAttribute('href', '/runs');
+    expect(navLink('证据库')).toHaveAttribute('href', '/runs');
     expect(navLink('LLM 与采集')).toHaveAttribute('href', '/settings/llm');
   });
 
@@ -55,6 +57,14 @@ describe('AppSidebar', () => {
     for (const name of ['对话', '报告', '证据库']) {
       expect(navLink(name)).not.toHaveAttribute('aria-current');
     }
+  });
+
+  it('marks 报告 as current on the run list', () => {
+    pathname.current = '/runs';
+    renderSidebar();
+
+    expect(navLink('报告')).toHaveAttribute('aria-current', 'page');
+    expect(navLink('证据库')).not.toHaveAttribute('aria-current');
   });
 
   it('marks 报告 as current on a run route', () => {

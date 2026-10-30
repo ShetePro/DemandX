@@ -73,7 +73,7 @@ export function CommandPalette() {
           const Icon = item.icon;
           return (
             <Command.Item
-              key={item.href}
+              key={item.label}
               value={item.label}
               keywords={item.keywords}
               onSelect={() => handleSelect(item.href)}

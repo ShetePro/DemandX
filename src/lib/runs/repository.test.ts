@@ -338,4 +338,33 @@ suite('run repository', () => {
       'NOT_FOUND',
     );
   });
+
+  it('lists the newest runs first with the idea title and report summary', async () => {
+    const first = await createThreadWithRun();
+    await client.sql`update ideas set title = '第一个方向' where id = ${first.thread.ideaId}`;
+    const second = await createThreadWithRun();
+    await client.sql`update ideas set title = '第二个方向' where id = ${second.thread.ideaId}`;
+    await client.sql`insert into reports (run_id, sections, rubric_total, credibility_grade, decision) values (${second.run.runId}, '{}'::jsonb, 78, 'B', '建议先验证，再开发')`;
+
+    const rows = unwrap(await repo.listRuns(4));
+
+    expect(rows.map((row) => row.id)).toEqual([second.run.runId, first.run.runId]);
+    expect(rows[0]).toMatchObject({
+      ideaTitle: '第二个方向',
+      status: 'queued',
+      hasReport: true,
+      rubricTotal: 78,
+      credibilityGrade: 'B',
+      decision: '建议先验证，再开发',
+    });
+    expect(rows[1]).toMatchObject({
+      ideaTitle: '第一个方向',
+      hasReport: false,
+      rubricTotal: null,
+      credibilityGrade: null,
+      decision: null,
+    });
+    expect(rows[1]?.updatedAt).toBeInstanceOf(Date);
+    expect(unwrap(await repo.listRuns(1))).toHaveLength(1);
+  });
 });

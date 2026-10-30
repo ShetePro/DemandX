@@ -2,69 +2,109 @@
 
 ## Project Overview
 
-DemandX is a **prompt/specification repository** for an "AI 商业机会调查与验证 Agent" — a market-research agent that finds product opportunities, collects first-hand user evidence, cross-validates it, and decides whether an idea is worth building.
+DemandX is a **local-first AI 商业机会研究 Agent**. A user describes a product idea or a
+complaint in chat; a worker then runs a six-stage pipeline — S1 采集 → S2 抽取 → S3 聚类 →
+S4 评分 → S5 报告 → S6 自检 — and stores the raw evidence, the rubric scores, and a report
+whose every claim must cite a stored evidence row.
 
-Current state (verified 2026-10-29):
+Stack: Next.js 16 App Router (Server Components by default), React 19, TypeScript 5.6,
+PostgreSQL 16 in Docker (host port **5433**), Drizzle ORM, pg-boss for the worker queue,
+AI SDK for OpenAI-compatible/Ollama chat. The app and worker run on the host; only the
+database runs in Docker so local Ollama is reachable.
 
-| Aspect                      | Status                                                                                                           |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Source code                 | **None** — no source files, manifests, or entry points                                                           |
-| Build / lint / test tooling | **None** — no `package.json`, `tsconfig`, CI, or test runner                                                     |
-| Content                     | Single 748-line Chinese document, `README.md`                                                                    |
-| Version control             | One commit (`6650461 Initial commit`); the 746-line spec body is **uncommitted** (`git diff --stat` → `README.md | 746 +`) |
-
-The repository is therefore **documentation-first**: the deliverable is the prompt methodology in `README.md`, not an application. Treat the README as the product spec; the software it describes does not exist yet.
+Everything runs on `localhost` with no accounts. LLM providers are configured in the UI
+and stored in Postgres, not in environment variables. `README.md` remains the product spec;
+this file only orients assistants to the code.
 
 ## Architecture & Data Flow
 
-No implemented architecture exists. The README describes an **intended** pipeline (`README.md:648-700`):
-
-```mermaid
-flowchart LR
-  A[数据采集 Agent<br/>collect raw posts, comments, pricing] --> B[商业分析 Agent<br/>classify needs, payment signals, competitor gaps]
-  B --> C[决策评估 Agent<br/>cross-validate, score, propose experiments]
-  A --> D[(Evidence store<br/>raw evidence persisted, not just reports)]
-  B --> D
-  C --> D
+```text
+chat UI ──createRun──▶ runs + run_events (seq) ──SSE──▶ monitor / chat rail
+   │                         │
+   └──enqueue S1──▶ pg-boss ─┘
+                              ▼
+worker: S1 sources → S2 evidence (quote gate) → S3 opportunities → S4 scores
+        → S5 report + citations (evidence whitelist) → S6 self-check
+                              ▼
+        /runs/<id>/report · /runs/<id>/evidence · /runs/<id>/plan
 ```
 
-Three concepts the spec treats as hard interfaces — reuse these names and shapes if you implement it:
+Hard invariants:
 
-1. **Evidence unit** (`README.md:211-236`): link, platform, publish date, expressed problem, explicit need, products mentioned, price/payment mentions, whether first-hand, what it supports, what it does **not** prove.
-2. **Five signal classes** (`README.md:238-288`): problem exists → actively seeking a solution → already paying → willing to switch → able to keep paying. Must be graded separately; never merged.
-3. **Scoring** (`README.md:450-482`): 100-point rubric (needs 20 / payment 20 / differentiation 15 / acquisition 15 / profit 15 / feasibility 10 / longevity 5) plus an independent evidence-credibility grade **A–D**; every score must cite evidence.
-
-Output contract: the 8-part report in `README.md:484-589` (executive summary → evidence → competitors → ranking → best direction → financial model → 14-day validation plan → final decision).
+1. **Evidence unit**: link, platform, published date, quote + offset, signal class,
+   first-hand flag, what it supports, what it does **not** prove. A quote that is not in the
+   stored snapshot is rejected by `src/lib/evidence/quote-gate.ts`.
+2. **Five signal classes** stay separate: problem → seeking → paying → switching →
+   recurring. Never merge them into "demand".
+3. **Scoring is code, not the model**: the 100-point rubric and the A–D credibility grade
+   live in `src/lib/scoring/`; a report may not invent a score.
+4. **Report claims are whitelisted**: every `evidenceIds` entry must belong to the same
+   run. Uncited claims are moved to `unknowns`, never rendered as conclusions.
+5. **Stage events do not end a run.** Only `runs.status` (`finished` / `failed` /
+   `cancelled`) closes the SSE stream; `stage.started` / `stage.finished` are progress.
 
 ## Key Directories
 
-| Path                                              | Purpose                                                                                          |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `README.md`                                       | Product spec: prompt, methodology, rubrics, output format. Line anchors in this file point here. |
-| `docs/superpowers/specs/`                         | Design specs: architecture, data model, scoring rules, UI architecture.                          |
-| `docs/superpowers/plans/`                         | Task-by-task build plan (P0–P7).                                                                 |
-| `docs/design/`                                    | Interactive prototype (`prototype/index.html`) and static wireframes (`mockups/`).               |
-| `src/app/`                                        | Routes only: layouts, pages, route handlers. `(workbench)` is the app shell.                     |
-| `src/features/`                                   | Business components + server actions, one folder per domain; never import each other.            |
-| `src/components/ui/`                              | Token-only primitives (Button/Card/Sheet/Dialog/…); no business copy.                            |
-| `src/components/shell/`, `src/components/common/` | App chrome and shared semantic badges.                                                           |
-| `src/lib/`                                        | Pure logic: `db/`, `hooks/`, `utils/`, and (soon) `llm/`, `pipeline/`, `evidence/`, `scoring/`.  |
-| `drizzle/`                                        | Generated SQL migrations. Never edit by hand; change schema + `pnpm db:generate`.                |
-| `tests/e2e/`                                      | Playwright specs.                                                                                |
-| `.worktrees/`                                     | Git-ignored isolated worktrees.                                                                  |
+| Path                                              | Purpose                                                                                                                                                                      |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/app/`                                        | Routes only: layouts, pages, route handlers. `(workbench)` is the app shell.                                                                                                 |
+| `src/app/(workbench)/runs/`                       | `/runs` index plus `/runs/[runId]/{,report,evidence,plan}`.                                                                                                                  |
+| `src/features/`                                   | Business components + server actions, one folder per domain (`chat`, `runs`, `report`, `evidence`, `validation`, `settings`, `workbench`); features never import each other. |
+| `src/components/ui/`                              | Token-only primitives (Button/Card/Sheet/Dialog/…); no business copy.                                                                                                        |
+| `src/components/shell/`, `src/components/common/` | App chrome, nav, shared semantic badges.                                                                                                                                     |
+| `src/lib/chat/`                                   | Chat model resolution and tool definitions.                                                                                                                                  |
+| `src/lib/crawl/`                                  | Static/Playwright fetch, robots, login profiles, extraction.                                                                                                                 |
+| `src/lib/crypto/`                                 | AES-256-GCM provider-key encryption.                                                                                                                                         |
+| `src/lib/db/`                                     | Drizzle client, `.env` loader, migration runner, `schema/`.                                                                                                                  |
+| `src/lib/eval/`                                   | Extraction metrics (recall/precision) used by `scripts/eval-extract.ts`.                                                                                                     |
+| `src/lib/evidence/`                               | Evidence schemas, quote gate, canonical URLs, snapshots, queries.                                                                                                            |
+| `src/lib/hooks/`                                  | Shared React hooks.                                                                                                                                                          |
+| `src/lib/llm/`                                    | Provider/model/chain repositories, adapters (openai-compatible, ollama, anthropic, google), quotas.                                                                          |
+| `src/lib/pipeline/`                               | S1–S6 stages, run orchestration, stage context.                                                                                                                              |
+| `src/lib/quota/`                                  | Per-provider request/allowance guards.                                                                                                                                       |
+| `src/lib/report/`                                 | Report assembly, citation validation, persistence, read model, Markdown export.                                                                                              |
+| `src/lib/runs/`                                   | Run/thread/event repository, queue producer, SSE helpers, stage vocabulary.                                                                                                  |
+| `src/lib/scoring/`                                | Rubric dimensions, aggregation, credibility grade, five-way decision.                                                                                                        |
+| `src/lib/search/`                                 | Search adapters (DDG, Bing, HN, GitHub, App Store).                                                                                                                          |
+| `src/lib/settings/`                               | Operator settings stored in the database.                                                                                                                                    |
+| `src/lib/testing/`                                | Deterministic stub LLM and acceptance summary used by `scripts/acceptance.ts`.                                                                                               |
+| `src/lib/validation/`                             | 14-day validation-plan repository and template.                                                                                                                              |
+| `src/worker/main.ts`                              | pg-boss consumer that executes the pipeline.                                                                                                                                 |
+| `scripts/`                                        | `acceptance.ts`, `eval-extract.ts`, `crawl-login.ts`, `check-tokens.mjs`, `stub-provider.mjs`.                                                                               |
+| `tests/e2e/`                                      | Playwright specs and DB/seed helpers.                                                                                                                                        |
+| `tests/fixtures/`                                 | Crawl, extract-label and search fixtures.                                                                                                                                    |
+| `drizzle/`                                        | Generated SQL migrations. Never edit by hand; change schema + `pnpm db:generate`.                                                                                            |
+| `docs/`                                           | `runbook.md`, `acceptance.md`, `eval.md`, `superpowers/specs/`, `superpowers/plans/`, `design/`.                                                                             |
+| `.worktrees/`                                     | Git-ignored isolated worktrees.                                                                                                                                              |
 
 ## Development Commands
 
 ```bash
+cp .env.example .env        # DATABASE_URL points at 127.0.0.1:5433
+docker compose up -d        # Postgres 16 (5432 is commonly taken, hence 5433)
 pnpm install
-docker compose up -d        # Postgres 16 on 127.0.0.1:5433 (5432 is occupied on this machine)
 pnpm db:generate            # schema -> drizzle/*.sql
 pnpm db:migrate             # apply migrations (idempotent)
 pnpm dev                    # http://127.0.0.1:3000
-pnpm verify                 # typecheck + lint + unit tests, must stay green
-pnpm test                   # vitest (unit-node + unit-dom projects)
-pnpm e2e                    # Playwright (starts dev server automatically)
+pnpm worker                 # pg-boss consumer for pipeline/s1
+pnpm verify                 # typecheck + lint + vitest, must stay green
+pnpm test                   # vitest (unit-node + unit-dom)
+pnpm e2e                    # Playwright; starts dev server + stub provider
+pnpm acceptance             # S2–S6 contract check with a deterministic stub model
+pnpm eval:extract --dry     # label-set self-check + metric logic (no DB/model)
+pnpm crawl:login <platform> # seed a browser profile for logged-in crawling
 pnpm tokens:check           # fails on hard-coded colours outside globals.css
+```
+
+Full prerequisites, provider setup (Ollama / OpenCode Go / any OpenAI-compatible endpoint),
+common failures and expected exit codes: `docs/runbook.md`.
+
+Database-backed unit tests need a separate `_test` database and are skipped otherwise:
+
+```bash
+docker compose exec db psql -U demandx -d demandx -c 'CREATE DATABASE demandx_test'
+DATABASE_URL=postgres://demandx:demandx@127.0.0.1:5433/demandx_test pnpm db:migrate
+TEST_DATABASE_URL=postgres://demandx:demandx@127.0.0.1:5433/demandx_test pnpm test
 ```
 
 ## Code Conventions & Common Patterns
@@ -77,61 +117,74 @@ Enforced by tooling (see `eslint.config.mjs`, `scripts/check-tokens.mjs`):
 - **External input is parsed with zod** before it reaches typed code; fallible operations return a discriminated `Result` rather than throwing across layers.
 - **Server Components by default**; `'use client'` only for stateful islands (palette, tables, forms, charts).
 - **No global state library.** Reads go through RSC + Drizzle, mutations through Server Actions, live progress through SSE with `after_seq` resume.
+- **No new dependencies** without a concrete need; prefer the existing adapters and utilities.
 
-Documentary discipline for any research output still applies — these are the spec's mandatory rules (`README.md:591-610`):
+Research-output rules that also constrain UI copy and fixtures:
 
-- **Never fabricate evidence.** No invented posts, comments, user counts, sales, prices, revenues, or statistics. Missing data is marked `未知` (unknown), not estimated silently.
-- **First-hand over second-hand.** Cite reachable original threads/pages; a search summary is not a verified source. State when a platform could not be fully accessed.
-- **Separate fact, inference, unknown.** Preserve that three-way distinction in every claim.
-- **Never conflate signals.** Discussion volume ≠ market demand; demand ≠ willingness to pay; free users ≠ commercial value; downloads/views/likes ≠ paying users; an existing competitor ≠ proven market size.
-- **Every estimate ships its formula, assumptions, and uncertainty.** TAM/SAM/SOM must be bottom-up, never "billions of netizens therefore large market".
-- **Negative evidence is mandatory.** Ask why users do _not_ buy, cancel, or stay on free alternatives.
-- **Decision is one of five** (`README.md:577-589`): 建议开发 / 建议先验证再开发 / 建议调整定位 / 建议暂缓 / 建议放弃.
+- **Never fabricate results.** No placeholder runs, scores, evidence, posts or prices in
+  pages or seed data. Empty state means empty; a missing report says why and links to
+  evidence instead of rendering an estimated conclusion.
+- **Every score cites evidence.** Scores are read back from `scores`, never recomputed in
+  the render path; a report claim may only reference evidence ids from the same run.
+- **Preserve fact / inference / unknown.** Missing data is `未知`, not an estimate.
+- **Separate signals and negative evidence.** Discussion volume ≠ demand; demand ≠
+  willingness to pay; include why users do _not_ buy.
+- **Nightly/old runs are read-only.** Pages query the database per request
+  (`export const dynamic = 'force-dynamic'`); no build-time snapshot of mutable data.
 
-Editing conventions for `README.md` itself:
+Operational conventions:
 
-- **Chinese prose**, Markdown headings; the top-level prompt uses numbered Chinese sections 一→十三, then commentary restarts at 二→五 — keep numbering consistent if you insert sections.
-- Preserve the structure: `#` for prompt sections, `##`/`###` for sub-points, `***` as inter-part separators, tables for rubrics and comparisons.
-- Code-fence nothing but commands/JSON; the document is prose, not executable.
-- Keep the strength of modal language: 必须 / 不得 are load-bearing rules, 建议 is advisory. Downgrading 必须 to 建议 changes the spec.
+- **Migrations**: change `src/lib/db/schema/*`, run `pnpm db:generate`, apply to the
+  development database first, then to `demandx_test`. Never hand-edit generated SQL.
+- **Reports and evidence survive deletion of their originals** where the schema says so
+  (`citations.evidence_id` is historical, `runs.thread_id` is `SET NULL`); do not add
+  cascades that would erase an audit trail.
+- **Provider keys** are encrypted at rest and masked in the UI; never log plaintext keys,
+  `.env`, or full request payloads.
+- **The worker owns `runs.status`.** Pages and client code must not flip a run to a terminal
+  state on a stage event alone.
 
 ## Important Files
 
-| File                                                      | Role                                                                                                                                                                                                                                                 |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `README.md:3-622`                                         | The copy-paste prompt: role, founder constraints (solo/small team, ≤¥3000 budget, front-end dev), search strategy, evidence rules, 5 signals, competitor/business-model/market/cost/acquisition analysis, rubric, report format, 18 mandatory rules. |
-| `README.md:626-642`                                       | Core thesis: search for problems users **already pay to solve**, not problems they merely complain about.                                                                                                                                            |
-| `README.md:648-700`                                       | 4-phase workflow: discover → validate commercial value → validate feasibility → validate real payment.                                                                                                                                               |
-| `README.md:704-726`                                       | Intended 3-agent decomposition + "persist raw evidence, not just reports".                                                                                                                                                                           |
-| `README.md:730-748`                                       | Final operating principle: paid demand first, better solution second; validate payment before building.                                                                                                                                              |
-| `AGENTS.md`                                               | This file — assistant orientation.                                                                                                                                                                                                                   |
-| `docs/superpowers/specs/2026-10-29-demandx-design.md`     | Current design spec (draft, pending approval): zero-cost local stack, configurable LLM providers, data model, pipeline DAG, scoring rules, crawler design, 28-day delivery plan. Read it before any implementation work.                             |
-| `docs/superpowers/specs/2026-10-29-demandx-ui-design.md`  | Page architecture: route inventory, per-page tech stack (AI SDK `useChat`, Streamdown, TanStack Table, recharts, dnd-kit, nuqs), alignment with vercel/chatbot, design tokens, perf budgets, page-level tests.                                       |
-| `docs/superpowers/plans/2026-10-29-demandx-build-plan.md` | Task-by-task build plan P0–P7 (28 days): exact files, commands, acceptance, commits, plus the enforced engineering rules (token-only colors, boundary lint, hook encapsulation).                                                                     |
-| `docs/design/prototype/`                                  | Interactive high-fidelity prototype (open `index.html`): chat, report, evidence, settings, home, plus 2x screenshots.                                                                                                                                |
-
-## Runtime/Tooling Preferences
-
-- **No runtime, package manager, or version pinning is declared.** Nothing to infer from; do not assume Node, Bun, Python, or Swift.
-- `.idea/swift-toolchain.xml` and `DemandX.iml` (`WEB_MODULE`) exist, but there is no `Package.swift` or Swift source — [INFERENCE] IDE configuration only, **not** evidence of a chosen stack. Do not present Swift as the project's language.
-- Editing is plain Markdown; UTF-8, Chinese text. Git is the only tool with a real convention here: work on `main`, commit messages in the existing terse style (`Initial commit`).
-- The spec's external dependencies are _research targets_ (小红书, V2EX, Reddit, Hacker News, G2, App Store, official pricing pages), not services the repo calls. No API keys or env vars are defined anywhere.
+| File                                                      | Role                                                                                                                                                 |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `README.md`                                               | Product spec: prompt, methodology, rubrics, report format. Only the `## 开发运行` section at the top is developer-facing; keep the spec body intact. |
+| `docs/runbook.md`                                         | How to run everything from zero, provider setup, common errors, acceptance commands.                                                                 |
+| `docs/acceptance.md`                                      | What `scripts/acceptance.ts` proves (contract) and what it does not (quality).                                                                       |
+| `docs/eval.md`                                            | Extraction-eval scope, measured results and gaps.                                                                                                    |
+| `docs/superpowers/specs/2026-10-29-demandx-design.md`     | Architecture, data model, pipeline DAG, scoring rules, crawler design.                                                                               |
+| `docs/superpowers/specs/2026-10-29-demandx-ui-design.md`  | Route inventory, per-page stack, tokens, perf budgets.                                                                                               |
+| `docs/superpowers/plans/2026-10-29-demandx-build-plan.md` | Task-by-task build plan P0–P7 and enforced engineering rules.                                                                                        |
+| `docs/design/prototype/`                                  | Interactive high-fidelity prototype (`index.html`).                                                                                                  |
 
 ## Testing & QA
 
-- **No test framework, coverage config, or CI workflow exists.** `README.md` uses "测试" only in the market sense (price testing, `README.md:560-576`), never software QA.
-- QA for this repo is **editorial**: the spec must remain internally consistent — signal definitions, rubric weights (must total 100), report sections, and the 18 mandatory rules must not contradict each other or the commentary parts.
-- Before claiming a change is done, verify the claim against the file: re-read the edited range and cite `README.md:<line>` for assertions about the spec. Do not claim tests ran; there are none.
-- If code is introduced, this section must gain the actual runner command, test layout, and coverage expectation in the same change.
-- 抽取质量评估的当前范围、已跑结果与已知缺口见 `docs/eval.md`。
+- **Unit**: `pnpm test` (vitest projects `unit-node` + `unit-dom`).
+- **Database integration**: only with `TEST_DATABASE_URL` whose database name ends in
+  `_test`; suites TRUNCATE their tables, so never point this at `demandx`.
+- **E2E**: `pnpm e2e` (Playwright, 11 tests) drives the real UI against the shared
+  `demandx` database and cleans up the rows it seeds.
+- **Contract**: `pnpm acceptance` runs S2–S6 with a deterministic stub LLM; it proves the
+  stages agree with each other, not that a real model extracts well.
+- **Quality**: `pnpm eval:extract` (real `bulk` chain, exit code 2 when no provider is
+  configured) and `--dry` (metric logic only). "Not measured" is never reported as a score.
+- Before claiming completion, run `pnpm verify` (plus `pnpm e2e` when UI/routes changed)
+  and report the observed exit codes. Do not claim a command ran when it did not.
 
 ## Working Agreements for AI Assistants
 
-1. **State present vs planned.** The 3-agent architecture and evidence database are _proposals_ (`README.md:704-726`). Never describe them as implemented.
-2. **Anchor every spec claim** to `README.md:<line>`; the document is the only source of truth.
-3. **Answer in the spec's register** when asked to run the methodology: Chinese output, evidence-first, explicit unknowns, one of the five decisions at the end.
-4. **Do not add scaffolding** (empty dirs, stub manifests, "MVP" code) to make the repo look like a software project. Code lands only when the user asks for implementation.
-5. **The uncommitted README is intentional user work** — adapt to it, never revert or reflow it to match `HEAD`.
+1. **Read `docs/runbook.md` first** when asked to run, debug startup, or configure a
+   provider; it records the commands that actually work on this machine.
+2. **Ground claims in code.** When describing behaviour, cite the file and the path that
+   implements it; do not present planned work as implemented.
+3. **State present vs planned.** Specs under `docs/superpowers/specs/` may be ahead of the
+   code; check the source before repeating them.
+4. **Do not add scaffolding** (empty dirs, stub manifests, placeholder pages) to make the
+   repo look complete. Ship a working slice or state the blocker.
+5. **Keep docs in sync with code** in the same change: routes, commands, env vars and
+   acceptance numbers. `docs/runbook.md`, this file and `README.md` are the entry points.
+6. **Never write secrets** (API keys, `.env` contents) into code, tests, logs or docs.
+7. **Commit style**: terse, scoped (`feat(runs): …`, `docs: runbook and final navigation fixes`).
 
 <!-- BEGIN:nextjs-agent-rules -->
 
