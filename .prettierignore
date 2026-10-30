@@ -5,3 +5,5 @@ data/
 drizzle/
 node_modules/
 playwright-report/
+# Raw HTTP responses saved verbatim for parser tests; some are not valid HTML.
+tests/fixtures/
