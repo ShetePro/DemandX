@@ -62,7 +62,7 @@ const MAX_TOTAL = 100;
  * strings would otherwise "leak" into every claim, because `includes('')` is
  * always true.
  */
-function collectUnknowns(sections: Record<string, ReportSectionBody>): string[] {
+export function collectUnknowns(sections: Record<string, ReportSectionBody>): string[] {
   const unknowns: string[] = [];
 
   for (const section of REPORT_SECTIONS) {

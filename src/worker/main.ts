@@ -15,9 +15,20 @@ import { buildAngles } from '@/lib/pipeline/angles';
 import { runPipeline } from '@/lib/pipeline/run';
 import { createQuotaGuard } from '@/lib/quota/guard';
 import { DEFAULT_QUOTA } from '@/lib/quota/policy';
-import { insertEvidence, listSourcesForExtraction } from '@/lib/runs/evidence-repository';
+import { saveReport } from '@/lib/report/persist';
+import {
+  insertEvidence,
+  listEvidenceByIds,
+  listSourcesForExtraction,
+} from '@/lib/runs/evidence-repository';
+import {
+  insertOpportunity,
+  listAcceptedEvidence,
+  listOpportunities,
+} from '@/lib/runs/opportunities-repository';
 import { appendEvent, getRunContext, setRunState } from '@/lib/runs/repository';
 import { S1_EXPIRE_SECONDS, S1_QUEUE, S1_RETRY_LIMIT } from '@/lib/runs/queue';
+import { listScores, replaceScores } from '@/lib/runs/scores-repository';
 import { insertSource, listSourceUrls, recordQuery } from '@/lib/runs/sources-repository';
 import { createAppStoreSearch } from '@/lib/search/appstore';
 import { createBingSearch } from '@/lib/search/bing';
@@ -176,9 +187,10 @@ async function runStages(runId: number): Promise<void> {
   };
 
   // The runner announces each stage through `stage.started`; remembering the
-  // last one lets a failure record the stage that actually died. S2 failing
-  // still leaves S1's sources in the store, which `runPipeline` reports back.
-  let stage: 'S1' | 'S2' = 'S1';
+  // last one lets a failure record the stage that actually died. A later stage
+  // failing still leaves the earlier rows in the store, which `runPipeline`
+  // reports back.
+  let stage: 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6' = 'S1';
 
   const crawler = createRunCrawler(settings);
   let outcome;
@@ -201,8 +213,28 @@ async function runStages(runId: number): Promise<void> {
         readSnapshot: (source) =>
           readSnapshotText(source.contentHash, SNAPSHOT_DIR === '' ? undefined : SNAPSHOT_DIR),
       },
+      s3: {
+        llm,
+        repo: { listAcceptedEvidence, insertOpportunity },
+      },
+      s4: {
+        llm,
+        repo: { listOpportunities, listEvidenceByIds, replaceScores },
+      },
+      s5: {
+        llm,
+        repo: { listOpportunities, listScores, listEvidenceByIds, saveReport },
+      },
       onEvent: (type, payload) => {
-        if (type === 'stage.started' && (payload.stage === 'S1' || payload.stage === 'S2')) {
+        if (
+          type === 'stage.started' &&
+          (payload.stage === 'S1' ||
+            payload.stage === 'S2' ||
+            payload.stage === 'S3' ||
+            payload.stage === 'S4' ||
+            payload.stage === 'S5' ||
+            payload.stage === 'S6')
+        ) {
           stage = payload.stage;
         }
         return writeEvent(runId, type, payload);
@@ -229,13 +261,14 @@ async function runStages(runId: number): Promise<void> {
       code: outcome.code,
       message: outcome.message,
       ...outcome.summary,
+      ...(outcome.issues === undefined ? {} : { issues: outcome.issues }),
     });
     return;
   }
 
-  await setRunState(runId, { status: 'finished', stage: 'S2', finishedAt: new Date() });
+  await setRunState(runId, { status: 'finished', stage: 'S6', finishedAt: new Date() });
   await writeEvent(runId, 'run.finished', {
-    stage: 'S2',
+    stage: 'S6',
     status: 'finished',
     ...outcome.value,
   });

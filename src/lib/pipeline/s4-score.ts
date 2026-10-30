@@ -6,10 +6,9 @@ import { ok, type Result } from '@/lib/quota/types';
 import type { ScoringEvidenceRow } from '@/lib/runs/evidence-repository';
 import type { OpportunityRow } from '@/lib/runs/opportunities-repository';
 import { aggregateEvidence } from '@/lib/scoring/aggregate';
-import { credibility } from '@/lib/scoring/credibility';
-import { decide } from '@/lib/scoring/decision';
 import { scoreOpportunity, type OrdinalSelections } from '@/lib/scoring/rubric';
-import type { Dimension, DimensionScore } from '@/lib/scoring/types';
+import type { DimensionScore } from '@/lib/scoring/types';
+import { deriveVerdict } from '@/lib/scoring/verdict';
 
 import type { RunContext, StageOutcome } from './context';
 
@@ -203,10 +202,6 @@ function toStoredScore(
   };
 }
 
-function pointsOf(scores: readonly DimensionScore[], dimension: Dimension): number {
-  return scores.find((score) => score.dimension === dimension)?.points ?? 0;
-}
-
 /**
  * S4: opportunities → seven-dimension rubric → `scores`, with credibility and
  * the five-way decision computed in code. The model answers only three ordinals;
@@ -262,36 +257,19 @@ export async function scoreS4(ctx: RunContext, deps: ScoreDeps): Promise<StageOu
     });
     const scores = scored.scores.map((score) => toStoredScore(score, accepted));
 
-    const needs = pointsOf(scores, 'needs');
-    const payment = pointsOf(scores, 'payment');
-    const feasibility = pointsOf(scores, 'feasibility');
-    const grade = credibility({
-      needs,
-      payment,
-      // Ordinal dimensions score 0 without a citation, and the counted ones are
-      // cited above, so this rejects exactly the scores that lost their grounds.
-      allClaimsCited: scores.every((score) => score.points === 0 || score.evidenceIds.length > 0),
-      independentSources: aggregate.n,
-    });
-    const call = decide({
-      total: scored.total,
-      credibility: grade.grade,
-      needs,
-      payment,
-      feasibility,
-    });
+    const verdict = deriveVerdict(scores, aggregate.n);
 
     const stored = await deps.repo.replaceScores(opportunity.id, scores);
     if (!stored.ok) return stored;
 
     opportunities += 1;
-    decisions[call.decision] = (decisions[call.decision] ?? 0) + 1;
+    decisions[verdict.decision.decision] = (decisions[verdict.decision.decision] ?? 0) + 1;
 
     await emit(deps, 'opportunity.scored', {
       opportunityId: opportunity.id,
-      total: scored.total,
-      grade: grade.grade,
-      decision: call.decision,
+      total: verdict.total,
+      grade: verdict.credibility.grade,
+      decision: verdict.decision.decision,
     });
   }
 

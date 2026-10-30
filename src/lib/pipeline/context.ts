@@ -19,15 +19,20 @@ export type AppErrorCode =
   | 'STORAGE_FAILED'
   | 'CRAWL_UNAVAILABLE'
   | 'LLM_UNAVAILABLE'
-  | 'INVALID_INPUT';
+  | 'INVALID_INPUT'
+  | 'REPORT_INVALID';
 
 /**
  * What a stage that only reports numbers hands back: its summary, or a typed
  * failure with the message the runner logs. A stage failure never throws; a
  * programming error still does.
+ *
+ * `issues` carries structured detail the message cannot: S6 attaches the
+ * validator's issue list so the operator sees every reason a report was
+ * refused instead of one string.
  */
 export type StageOutcome<T> =
-  { ok: true; value: T } | { ok: false; code: AppErrorCode; message: string };
+  { ok: true; value: T } | { ok: false; code: AppErrorCode; message: string; issues?: unknown };
 
 /**
  * The shape a stage hands back to the runner: an updated context on success

@@ -180,6 +180,8 @@ export interface ScoringEvidenceRow {
   quote: string;
   priceMentioned: PriceMention | null;
   rejectedReason: string | null;
+  /** What the quote supports, when the report prompt shows it; S4 ignores it. */
+  supports?: string | null;
 }
 
 /**
@@ -202,6 +204,7 @@ export async function listEvidenceByIds(
         quote: evidence.quote,
         priceMentioned: evidence.priceMentioned,
         rejectedReason: evidence.rejectedReason,
+        supports: evidence.supports,
       })
       .from(evidence)
       .where(inArray(evidence.id, [...ids]))

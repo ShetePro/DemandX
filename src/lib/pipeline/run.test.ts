@@ -6,20 +6,36 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ZodType } from 'zod';
 
 import type { CrawlPort } from '@/lib/crawl/port';
-import type { EvidenceExtraction, EvidenceDraft } from '@/lib/evidence/schema';
+import {
+  evidenceExtractionSchema,
+  type EvidenceExtraction,
+  type EvidenceDraft,
+} from '@/lib/evidence/schema';
 import type { ChainItem, LlmPort, Profile, Prompt, Usage } from '@/lib/llm/port';
 import type { Result as LlmResult } from '@/lib/llm/types';
 import { fail, ok, type Result } from '@/lib/quota/types';
+import { reportSectionsSchema } from '@/lib/report/assemble';
+import type { SaveReportInput } from '@/lib/report/persist';
+import { REPORT_SECTIONS } from '@/lib/report/validate';
 import type {
   ExtractionSource,
   InsertEvidenceInput,
   InsertEvidenceOutcome,
+  ScoringEvidenceRow,
 } from '@/lib/runs/evidence-repository';
+import type {
+  AcceptedEvidence,
+  InsertOpportunityInput,
+  OpportunityRow,
+} from '@/lib/runs/opportunities-repository';
 import type { InsertSourceInput } from '@/lib/runs/sources-repository';
+import type { DimensionScore } from '@/lib/scoring/types';
 import type { SearchHit, SearchPort } from '@/lib/search/port';
 
 import type { RunContext } from './context';
 import { runPipeline, type PipelineDeps } from './run';
+import { clusteringSchema } from './s3-cluster';
+import { ordinalsSchema } from './s4-score';
 
 const SNAPSHOT_TEXT = '多平台库存不同步导致超卖，卖家因此损失订单。人工改库存又容易出错。';
 const QUOTE = '多平台库存不同步导致超卖';
@@ -55,6 +71,16 @@ function draft(quote: string, overrides: Partial<EvidenceDraft> = {}): EvidenceD
   };
 }
 
+/** A valid eight-part answer; S5 only asks for it when an opportunity exists. */
+function reportAnswer(ids: readonly number[]): unknown {
+  const cited = [ids[0] ?? 1];
+  const sections: Record<string, unknown> = {};
+  for (const key of REPORT_SECTIONS) {
+    sections[key] = { claims: [{ text: '卖家在手工同步库存', evidenceIds: cited }], unknowns: [] };
+  }
+  return { sections };
+}
+
 interface Event {
   type: string;
   payload: Record<string, unknown>;
@@ -65,6 +91,8 @@ interface Harness {
   events: Event[];
   s1Rows: InsertSourceInput[];
   s2Rows: InsertEvidenceInput[];
+  opportunities: OpportunityRow[];
+  reportSaves: SaveReportInput[];
   profiles: Profile[];
   llmCalls: number;
 }
@@ -72,6 +100,8 @@ interface Harness {
 interface HarnessOptions {
   /** The first `listSourceUrls` call fails, which is how S1 dies before searching. */
   failListSourceUrls?: boolean;
+  /** S3 cannot list accepted evidence, so the run must stop before S4. */
+  failS3?: boolean;
   /** Sources the S2 repository reports; defaults to what S1 inserted. */
   extractionSources?: ExtractionSource[];
   /** Answers the n-th extraction call; `fail` reports LLM_UNAVAILABLE. */
@@ -82,10 +112,28 @@ function createHarness(options: HarnessOptions = {}): Harness {
   const events: Event[] = [];
   const s1Rows: InsertSourceInput[] = [];
   const s2Rows: InsertEvidenceInput[] = [];
+  const opportunities: OpportunityRow[] = [];
+  const scoresByOpportunity = new Map<number, DimensionScore[]>();
+  const reportSaves: SaveReportInput[] = [];
   const urlsByRun = new Map<number, string[]>();
   const profiles: Profile[] = [];
   let nextSourceId = 1;
+  let nextOpportunityId = 1;
   let llmCalls = 0;
+
+  /** What S2 stored, as later stages read it back. */
+  function evidenceRows(): ScoringEvidenceRow[] {
+    return s2Rows.map((row, index) => ({
+      id: index + 1,
+      sourceId: row.sourceId,
+      signal: row.signal,
+      platform: row.platform,
+      quote: row.quote,
+      priceMentioned: row.priceMentioned,
+      rejectedReason: row.rejectedReason,
+      supports: row.supports,
+    }));
+  }
 
   const search: SearchPort = {
     id: 'fake-search',
@@ -113,21 +161,45 @@ function createHarness(options: HarnessOptions = {}): Harness {
 
   const llm: LlmPort = {
     async structured<T>(
-      _schema: ZodType<T>,
+      schema: ZodType<T>,
       prompt: Prompt,
       callOptions: { profile: Profile },
     ): Promise<LlmResult<{ data: T; used: ChainItem; usage: Usage }>> {
       llmCalls += 1;
       if (prompt.user.length === 0) throw new Error('prompt body is empty');
       profiles.push(callOptions.profile);
-      const answer = (options.reply ?? (() => ({ items: [draft(QUOTE)] })))(llmCalls - 1);
-      if ('fail' in answer) {
-        return { ok: false, code: 'LLM_UNAVAILABLE', message: answer.fail };
-      }
-      return {
+
+      const reply = (answer: unknown): LlmResult<{ data: T; used: ChainItem; usage: Usage }> => ({
         ok: true,
-        value: { data: answer as unknown as T, used: USED, usage: { in: 0, out: 0 } },
-      };
+        value: { data: answer as T, used: USED, usage: { in: 0, out: 0 } },
+      });
+
+      if ((schema as unknown) === evidenceExtractionSchema) {
+        const answer = (options.reply ?? (() => ({ items: [draft(QUOTE)] })))(llmCalls - 1);
+        if ('fail' in answer) {
+          return { ok: false, code: 'LLM_UNAVAILABLE', message: answer.fail };
+        }
+        return reply(answer);
+      }
+
+      if ((schema as unknown) === clusteringSchema) {
+        const ids = evidenceRows()
+          .filter((row) => row.rejectedReason === null)
+          .map((row) => row.id);
+        return reply({
+          clusters: [{ name: '库存同步', positioning: '多平台库存同步', evidenceIds: ids }],
+        });
+      }
+
+      // S4's ordinal answer: no tier chosen, so every ordinal dimension is 0.
+      if ((schema as unknown) === ordinalsSchema) return reply({});
+
+      if ((schema as unknown) === reportSectionsSchema) {
+        const ids = opportunities.flatMap((opportunity) => opportunity.evidenceIds);
+        return reply(reportAnswer(ids));
+      }
+
+      throw new Error('unexpected structured() schema');
     },
     async text(): Promise<never> {
       throw new Error('pipeline stages never call text()');
@@ -186,6 +258,73 @@ function createHarness(options: HarnessOptions = {}): Harness {
         return SNAPSHOT_TEXT;
       },
     },
+    s3: {
+      llm,
+      repo: {
+        async listAcceptedEvidence(): Promise<Result<AcceptedEvidence[]>> {
+          if (options.failS3 === true) return fail('STORAGE_FAILED', '读取已接受证据失败');
+          return ok(
+            evidenceRows()
+              .filter((row) => row.rejectedReason === null)
+              .map((row) => ({
+                id: row.id,
+                signal: row.signal,
+                platform: row.platform,
+                supports: row.supports ?? null,
+                quote: row.quote,
+                sourceId: row.sourceId,
+                canonicalUrl: `https://example.com/${row.sourceId}`,
+              })),
+          );
+        },
+        async insertOpportunity(input: InsertOpportunityInput): Promise<Result<{ id: number }>> {
+          const id = nextOpportunityId;
+          nextOpportunityId += 1;
+          opportunities.push({
+            id,
+            runId: input.runId,
+            name: input.name,
+            positioning: input.positioning,
+            independentSources: input.independentSources,
+            evidenceIds: input.evidenceIds,
+          });
+          return ok({ id });
+        },
+      },
+    },
+    s4: {
+      llm,
+      repo: {
+        async listOpportunities(): Promise<Result<OpportunityRow[]>> {
+          return ok([...opportunities]);
+        },
+        async listEvidenceByIds(ids): Promise<Result<ScoringEvidenceRow[]>> {
+          return ok(evidenceRows().filter((row) => ids.includes(row.id)));
+        },
+        async replaceScores(opportunityId, scores): Promise<Result<void>> {
+          scoresByOpportunity.set(opportunityId, [...scores]);
+          return ok(undefined);
+        },
+      },
+    },
+    s5: {
+      llm,
+      repo: {
+        async listOpportunities(): Promise<Result<OpportunityRow[]>> {
+          return ok([...opportunities]);
+        },
+        async listScores(opportunityId): Promise<Result<DimensionScore[]>> {
+          return ok([...(scoresByOpportunity.get(opportunityId) ?? [])]);
+        },
+        async listEvidenceByIds(ids): Promise<Result<ScoringEvidenceRow[]>> {
+          return ok(evidenceRows().filter((row) => ids.includes(row.id)));
+        },
+        async saveReport(input): Promise<Result<{ reportId: number }>> {
+          reportSaves.push(input);
+          return ok({ reportId: 42 });
+        },
+      },
+    },
     onEvent: async (type, payload) => {
       events.push({ type, payload });
     },
@@ -196,6 +335,8 @@ function createHarness(options: HarnessOptions = {}): Harness {
     events,
     s1Rows,
     s2Rows,
+    opportunities,
+    reportSaves,
     profiles,
     get llmCalls() {
       return llmCalls;
@@ -233,11 +374,19 @@ describe('runPipeline', () => {
 
     expect(outcome).toEqual({
       ok: true,
-      value: { sources: 1, skipped: 0, accepted: 1, rejected: 0 },
+      value: {
+        sources: 1,
+        skipped: 0,
+        accepted: 1,
+        rejected: 0,
+        opportunities: 0,
+        scored: 0,
+        reportId: 42,
+      },
     });
     expect(fake.s2Rows).toHaveLength(1);
     expect(fake.s2Rows[0]?.rejectedReason).toBeNull();
-    expect(fake.profiles).toEqual(['bulk']);
+    expect(fake.profiles).toEqual(['bulk', 'quality']);
   });
 
   it('does not start S2 when S1 fails', async () => {
@@ -276,6 +425,9 @@ describe('runPipeline', () => {
       skipped: 0,
       accepted: 0,
       rejected: 0,
+      opportunities: 0,
+      scored: 0,
+      reportId: null,
     });
     expect(outcome.message).toContain('sources=1');
     expect(fake.llmCalls).toBe(5);
@@ -286,7 +438,7 @@ describe('runPipeline', () => {
     expect(finished?.payload).toMatchObject({ status: 'failed', code: 'LLM_UNAVAILABLE' });
   });
 
-  it('emits one ordered started/finished pair per stage', async () => {
+  it('emits one ordered started/finished pair per stage, S1 through S6', async () => {
     const fake = harness();
 
     await runPipeline(CTX, fake.deps);
@@ -296,6 +448,68 @@ describe('runPipeline', () => {
       'stage.finished:S1',
       'stage.started:S2',
       'stage.finished:S2',
+      'stage.started:S3',
+      'stage.finished:S3',
+      'stage.started:S4',
+      'stage.finished:S4',
+      'stage.started:S5',
+      'stage.finished:S5',
+      'stage.started:S6',
+      'stage.finished:S6',
     ]);
+    expect(fake.events.at(-1)?.type).toBe('report.ready');
+  });
+
+  it('runs clustering, scoring and the report into one stored report', async () => {
+    const fake = harness({
+      extractionSources: [1, 2, 3].map((id) => ({
+        id,
+        canonicalUrl: `https://example.com/${id}`,
+        platform: 'web',
+        snapshotPath: null,
+        contentHash: String(id).padStart(64, 'a'),
+      })),
+    });
+
+    const outcome = await runPipeline(CTX, fake.deps);
+
+    expect(outcome).toEqual({
+      ok: true,
+      value: {
+        sources: 1,
+        skipped: 0,
+        accepted: 3,
+        rejected: 0,
+        opportunities: 1,
+        scored: 1,
+        reportId: 42,
+      },
+    });
+    expect(fake.opportunities).toHaveLength(1);
+    expect(fake.opportunities[0]?.independentSources).toBe(3);
+    expect(fake.reportSaves).toHaveLength(1);
+    // needs=11 (3 sources), every ordinal 0: S4's total, not the model's.
+    expect(fake.reportSaves[0]?.total).toBe(11);
+    expect(fake.reportSaves[0]?.sections.summary?.claims).toHaveLength(1);
+  });
+
+  it('stops before S4 when S3 fails', async () => {
+    const fake = harness({ failS3: true });
+
+    const outcome = await runPipeline(CTX, fake.deps);
+
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.code).toBe('STORAGE_FAILED');
+    expect(stageEvents(fake.events)).toEqual([
+      'stage.started:S1',
+      'stage.finished:S1',
+      'stage.started:S2',
+      'stage.finished:S2',
+      'stage.started:S3',
+      'stage.finished:S3',
+    ]);
+    expect(fake.reportSaves).toEqual([]);
+    expect(fake.opportunities).toEqual([]);
   });
 });
