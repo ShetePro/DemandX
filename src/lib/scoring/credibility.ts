@@ -30,6 +30,9 @@ const TOP_PAYMENT = 13;
 const CITABLE_NEEDS = 11;
 const WEAK_NEEDS_MIN = 6;
 const WEAK_NEEDS_MAX = 10;
+/** Cross-validation floor: below this the sources are one loud thread, not a market. */
+const MIN_B_SOURCES = 3;
+/** The C source floor: 1–2 sources are traceable but too thin for a B. */
 const CROSS_CHECK_SOURCES = 2;
 
 /**
@@ -43,12 +46,12 @@ function count(value: number): number {
 
 /**
  * §9 可信度, evaluated A → B → C → D so an input that satisfies two rows takes
- * the first one the table offers. A is a strict subset of B: B asks only for
- * needs ≥11 plus citations, so payment strength never decides between them in
- * the wrong direction — needs 11–15 with strong payment evidence is a B, not an
- * abandonment. `sources = 0` is the one exception the rows themselves force:
- * D names "no traceable source at all", so the C source floor covers 1–2 rather
- * than 0–2 and a sourceless report can never come out as C.
+ * the first one the table offers. A is a strict subset of B: B asks for needs
+ * ≥11, citations and ≥3 sources, so payment strength never decides between them
+ * in the wrong direction — needs 11–15 with strong payment evidence is a B, not
+ * an abandonment. The source floor is what stops a high needs score resting on
+ * two threads from reaching the development gate: 1–2 sources fall to C, and 0
+ * falls to D, because D names "no traceable source at all".
  */
 export function credibility({
   needs,
@@ -67,10 +70,10 @@ export function credibility({
     };
   }
 
-  if (needPoints >= CITABLE_NEEDS && allClaimsCited) {
+  if (needPoints >= CITABLE_NEEDS && allClaimsCited && sources >= MIN_B_SOURCES) {
     return {
       grade: 'B',
-      reason: `需求 ${needPoints} 分且论断有引用，但未同时满足 A 级门槛（需求 ≥${TOP_NEEDS} 且付费 ≥${TOP_PAYMENT}）`,
+      reason: `需求 ${needPoints} 分、论断有引用、独立来源 ${sources} 个，但未同时满足 A 级门槛（需求 ≥${TOP_NEEDS} 且付费 ≥${TOP_PAYMENT}）`,
     };
   }
 

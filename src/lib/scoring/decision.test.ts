@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { credibility } from './credibility';
 import { decide, type Decision, type DecisionInput } from './decision';
 
 /** A mid-scoring report; each test overrides only the numbers its rule reads. */
@@ -93,6 +94,24 @@ describe('decide — ④ 建议开发', () => {
     );
     expect(result.decision).toBe('建议开发');
     expect(result.reason).toContain('总分 75');
+  });
+});
+
+describe('decide — the §9 可信度 gate', () => {
+  const opportunity = { total: 75, needs: 13, payment: 17, feasibility: 10 } as const;
+
+  it('develops a 75-point opportunity once three sources back it', () => {
+    const { grade } = credibility({ ...opportunity, allClaimsCited: true, independentSources: 3 });
+    expect(grade).toBe('B');
+    expect(decide(input({ ...opportunity, credibility: grade })).decision).toBe('建议开发');
+  });
+
+  it('verifies the same 75-point opportunity when only two sources back it', () => {
+    const { grade } = credibility({ ...opportunity, allClaimsCited: true, independentSources: 2 });
+    expect(grade).toBe('C');
+    expect(decide(input({ ...opportunity, credibility: grade })).decision).toBe(
+      '建议先验证，再开发',
+    );
   });
 });
 

@@ -49,13 +49,28 @@ describe('credibility — grade C', () => {
     );
   });
 
-  it('caps cross-validation at C when only two sources back an uncited score', () => {
-    // B would claim any cited needs ≥11, so the source floor only decides here.
+  it('caps cross-validation at C when only two sources back a cited score', () => {
+    // Citations are complete, but two sources are one thread, not a market.
     const result = credibility(
-      input({ needs: 20, payment: 20, allClaimsCited: false, independentSources: 2 }),
+      input({ needs: 13, payment: 17, allClaimsCited: true, independentSources: 2 }),
     );
     expect(result.grade).toBe('C');
     expect(result.reason).toContain('来源');
+  });
+
+  it('reaches C through either row', () => {
+    // Weak needs band with plenty of sources.
+    expect(grade({ needs: 8, payment: 17, allClaimsCited: true, independentSources: 5 })).toBe('C');
+    // Strong needs band with a two-source floor.
+    expect(grade({ needs: 13, payment: 17, allClaimsCited: true, independentSources: 2 })).toBe(
+      'C',
+    );
+  });
+
+  it('does not need a citation to cap at C on two sources', () => {
+    expect(grade({ needs: 20, payment: 20, allClaimsCited: false, independentSources: 2 })).toBe(
+      'C',
+    );
   });
 });
 
@@ -80,7 +95,11 @@ describe('credibility — boundaries', () => {
     [15, 12, true, 5, 'B'],
     // The 11–15 band with top payment is still B, not D.
     [13, 17, true, 4, 'B'],
-    [15, 20, true, 5, 'B'],
+    [15, 20, true, 4, 'B'],
+    // B needs a third source: two cited sources stay at C.
+    [13, 17, true, 3, 'B'],
+    [13, 17, true, 2, 'C'],
+    [12, 0, true, 2, 'C'],
     // needs 11 vs 10: B needs 11, C owns 6–10.
     [11, 12, true, 3, 'B'],
     [10, 12, true, 3, 'C'],
