@@ -8,6 +8,13 @@
       "when": 1793300196708,
       "tag": "0000_easy_thunderbolt",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793320450098,
+      "tag": "0001_deep_silvermane",
+      "breakpoints": true
     }
   ]
 }
