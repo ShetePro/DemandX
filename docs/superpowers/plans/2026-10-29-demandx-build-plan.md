@@ -100,6 +100,8 @@ app/**            只做路由、数据装配、metadata
 
 **P6 状态：已完成（2026-10-30）** — 4/4 任务；S1–S6 串进 worker、报告装配与引用白名单（越界 claim 移入 unknowns）、报告页（三栏/引用栏/懒加载雷达/打印）、Markdown 导出、报告 E2E（八节/引用/导出/打印）。另修 `stage.finished` 被误判为 run 终态导致 SSE 提前关闭。
 
+**P7 状态：已完成（2026-10-30）** — 4/4 任务；14 天验证板、运行监控页（七段 stepper + 降级横幅 + 人工队列）、`/runs` 列表与真实工作台（无死链）、契约验收脚本（确定性假模型跑 S2–S6，13 条断言）、runbook/AGENTS/package scripts 定稿。全仓无 `runs/latest` 死链。
+
 ### T0.1 初始化工程与脚本
 
 **Files:** `package.json`、`tsconfig.json`、`next.config.ts`、`src/app/layout.tsx`、`src/app/page.tsx`、`.gitignore`、`.env.example`
