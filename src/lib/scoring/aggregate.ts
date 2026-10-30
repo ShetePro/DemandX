@@ -61,8 +61,12 @@ export function aggregateEvidence(rows: readonly AggregateEvidenceRow[]): Aggreg
   };
 }
 
-/** `jsonb` is `unknown`; a malformed price is "no price", never a crash. */
-function toPrice(value: unknown): PriceMention | null {
+/**
+ * `jsonb` is `unknown`; a malformed price is "no price", never a crash. Exported
+ * because the scoring stage reads the same column and must read it identically:
+ * two parsers would let a price count as verifiable in one path and not the other.
+ */
+export function parsePriceMention(value: unknown): PriceMention | null {
   if (typeof value !== 'object' || value === null) return null;
   const { amount, currency } = value as { amount?: unknown; currency?: unknown };
   if (typeof amount !== 'number' || !Number.isFinite(amount)) return null;
@@ -106,7 +110,7 @@ const fromDatabase: AggregateSource = {
     return rows.map((row) => ({
       sourceId: row.sourceId,
       signal: row.signal,
-      priceMentioned: toPrice(row.priceMentioned),
+      priceMentioned: parsePriceMention(row.priceMentioned),
       rejectedReason: row.rejectedReason,
     }));
   },

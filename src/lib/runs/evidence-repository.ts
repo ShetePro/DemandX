@@ -1,9 +1,10 @@
-import { and, asc, count, eq, isNotNull, isNull, notExists } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNotNull, isNull, notExists } from 'drizzle-orm';
 
 import { db } from '@/lib/db/client';
 import { evidence, sources } from '@/lib/db/schema';
 import type { Signal } from '@/lib/evidence/schema';
 import { fail, ok, type Result } from '@/lib/quota/types';
+import { parsePriceMention, type PriceMention } from '@/lib/scoring/aggregate';
 
 /** What the extraction stage persists for one candidate quote. */
 export interface InsertEvidenceInput {
@@ -163,5 +164,57 @@ export async function listSourcesForExtraction(
     return ok(rows);
   } catch (error) {
     return storageFailure('读取待抽取来源', error);
+  }
+}
+
+/**
+ * One evidence row as the scoring stage needs it: the aggregate counts plus the
+ * quote and platform the ordinal prompt shows the model. `rejectedReason` stays
+ * in the shape so the stage, not the query, owns what "accepted" means.
+ */
+export interface ScoringEvidenceRow {
+  id: number;
+  sourceId: number;
+  signal: Signal;
+  platform: string;
+  quote: string;
+  priceMentioned: PriceMention | null;
+  rejectedReason: string | null;
+}
+
+/**
+ * Evidence rows by id, oldest first so the ordinal prompt is reproducible. An
+ * empty list is a valid answer (no query, no rows): an opportunity whose
+ * evidence was deleted is scored from nothing rather than failing the stage.
+ */
+export async function listEvidenceByIds(
+  ids: readonly number[],
+): Promise<Result<ScoringEvidenceRow[]>> {
+  if (ids.length === 0) return ok([]);
+
+  try {
+    const rows = await db
+      .select({
+        id: evidence.id,
+        sourceId: evidence.sourceId,
+        signal: evidence.signal,
+        platform: evidence.platform,
+        quote: evidence.quote,
+        priceMentioned: evidence.priceMentioned,
+        rejectedReason: evidence.rejectedReason,
+      })
+      .from(evidence)
+      .where(inArray(evidence.id, [...ids]))
+      .orderBy(asc(evidence.id));
+
+    return ok(
+      rows.map((row) => ({
+        ...row,
+        signal: row.signal as Signal,
+        priceMentioned: parsePriceMention(row.priceMentioned),
+      })),
+    );
+  } catch (error) {
+    return storageFailure('读取证据', error);
   }
 }
