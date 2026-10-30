@@ -92,7 +92,9 @@ app/**            只做路由、数据装配、metadata
 
 **P2 状态：已完成（2026-10-30）** — 6/6 任务；run 事件与 SSE、`useRunStream`、`/api/chat`、对话页与右栏、Composer、Chat E2E。
 
-**P3 状态：已完成（2026-10-30）** — 7/7 任务；URL 归一化/SimHash、gzip 快照、5 个搜索适配器（离线 fixture）、静态+Playwright 抓取（robots/挑战检测/平台 profile 路由）、按源名配额（并发不超发）、S1 采集阶段与 pg-boss worker（真实 run：sources 落库、run 终态回写、SSE 收到 `run.finished`）、`/settings/crawl` 会话/限速/人工队列。
+**P3 状态：已完成（2026-10-30）** — 7/7 任务；采集基座与 S1（真实 run 落库 sources、终态回写）、`/settings/crawl`。
+
+**P4 状态：已完成（2026-10-30）** — 5/5 任务，另加 S2 接线；Evidence schema/提示词、quote gate（仅精确+空白归一化，NFKC offset 映射）、S2 抽取（拒绝原因落库、失败策略、拒绝率告警）、`eval-extract`（12 页标注 + dry 模式）、证据库页（筛选/高亮/人工确认与复验恢复）、worker 现在真实跑 S1→S2。`docs/eval.md` 如实记录样本与未测项。
 
 ### T0.1 初始化工程与脚本
 
