@@ -98,6 +98,8 @@ app/**            只做路由、数据装配、metadata
 
 **P5 状态：已完成（2026-10-30）** — 5/5 任务；聚合与七维 rubric（表驱动、总分恒 ≤100）、可信度 A–D（A/B 均要求独立来源 ≥3，0 来源直接 D）、五选一决策（按序求值）、S3 聚类（≥3 独立来源、幻觉 id 剔除、跨簇不复用证据）、S4 评级（序数缺失记 0 + unknown、`replaceScores` 幂等）、报告结构校验器。LLM 全程不能给分。
 
+**P6 状态：已完成（2026-10-30）** — 4/4 任务；S1–S6 串进 worker、报告装配与引用白名单（越界 claim 移入 unknowns）、报告页（三栏/引用栏/懒加载雷达/打印）、Markdown 导出、报告 E2E（八节/引用/导出/打印）。另修 `stage.finished` 被误判为 run 终态导致 SSE 提前关闭。
+
 ### T0.1 初始化工程与脚本
 
 **Files:** `package.json`、`tsconfig.json`、`next.config.ts`、`src/app/layout.tsx`、`src/app/page.tsx`、`.gitignore`、`.env.example`
