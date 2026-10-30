@@ -2,6 +2,7 @@
 
 import { ChevronDown, Download, Printer } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -262,6 +263,12 @@ export function ReportView({ runId, ideaTitle, report, scores, evidenceMap }: Re
         </div>
 
         <div className="no-print flex items-center gap-2">
+          <Button variant="ghost" size="sm" asChild>
+            <Link href={`/runs/${runId}`}>运行监控</Link>
+          </Button>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href={`/runs/${runId}/plan`}>验证计划</Link>
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => window.print()}>
             <Printer className="size-3.5" aria-hidden />
             打印

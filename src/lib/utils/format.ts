@@ -27,6 +27,28 @@ export function formatRelativeTime(date: Date, now: Date = new Date()): string {
 }
 
 /**
+ * Human duration for run timings: seconds under a minute, minutes under an
+ * hour, then hours with the remaining minutes. Negative or non-finite input
+ * renders `—` rather than a made-up number.
+ */
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+
+  const totalSeconds = Math.round(ms / 1000);
+  if (totalSeconds < 60) return `${totalSeconds} 秒`;
+
+  const minutes = Math.floor(totalSeconds / 60);
+  if (minutes < 60) {
+    const seconds = totalSeconds % 60;
+    return seconds === 0 ? `${minutes} 分钟` : `${minutes} 分 ${seconds} 秒`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours} 小时` : `${hours} 小时 ${rest} 分钟`;
+}
+
+/**
  * Render a 0–100 rubric score as an integer string.
  *
  * @throws {RangeError} when the score is outside 0–100 or not a finite number.

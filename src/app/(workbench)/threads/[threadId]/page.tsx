@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 
 import { ChatScreen } from '@/features/chat/chat-screen';
 import type { ChatMessage } from '@/lib/chat/types';
-import type { RunEvent } from '@/lib/runs/event-reducer';
+import { toRunEvents, type RunEvent } from '@/lib/runs/event-reducer';
 import {
   getLatestRunForThread,
   getMessages,
@@ -34,20 +34,6 @@ function toChatMessages(records: MessageRecord[]): ChatMessage[] {
   }
 
   return messages;
-}
-
-function toRunEvents(records: { seq: number; type: string; payload: unknown }[]): RunEvent[] {
-  return records.map((record) => {
-    const payload = record.payload;
-    return {
-      seq: record.seq,
-      type: record.type,
-      payload:
-        typeof payload === 'object' && payload !== null && !Array.isArray(payload)
-          ? (payload as Record<string, unknown>)
-          : {},
-    };
-  });
 }
 
 export default async function ThreadPage({ params }: ThreadPageProps) {

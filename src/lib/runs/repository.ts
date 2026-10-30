@@ -316,6 +316,39 @@ export async function readEvents(
   }
 }
 
+/**
+ * The newest page of a run's log, oldest first. The monitor page starts from
+ * the tail so its first paint shows the latest stage and failures; the SSE
+ * cursor then continues from the last seq without replaying history.
+ */
+export async function readRecentEvents(
+  runId: number,
+  limit = EVENT_PAGE_SIZE,
+): Promise<Result<RunEventRecord[]>> {
+  if (!Number.isInteger(runId) || runId <= 0) return fail('NOT_FOUND', `run ${runId} 不存在`);
+  const capped =
+    Number.isInteger(limit) && limit > 0 ? Math.min(limit, EVENT_PAGE_SIZE) : EVENT_PAGE_SIZE;
+
+  try {
+    const rows = await db
+      .select({
+        id: runEvents.id,
+        seq: runEvents.seq,
+        type: runEvents.type,
+        payload: runEvents.payload,
+        createdAt: runEvents.createdAt,
+      })
+      .from(runEvents)
+      .where(eq(runEvents.runId, runId))
+      .orderBy(desc(runEvents.seq))
+      .limit(capped);
+
+    return ok([...rows].reverse());
+  } catch (error) {
+    return storageFailure('读取运行事件', error);
+  }
+}
+
 /** Statuses a run may be moved into by a worker. */
 const RUN_STATUSES: readonly string[] = [
   'queued',
@@ -385,6 +418,10 @@ export type RunRecord = {
   status: string;
   stage: string | null;
   deadlineAt: Date | null;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  /** Structured failure written by the worker; `null` until a run fails. */
+  error: unknown;
   createdAt: Date;
 };
 
@@ -400,6 +437,9 @@ export async function getRun(runId: number): Promise<Result<RunRecord | null>> {
         status: runs.status,
         stage: runs.stage,
         deadlineAt: runs.deadlineAt,
+        startedAt: runs.startedAt,
+        finishedAt: runs.finishedAt,
+        error: runs.error,
         createdAt: runs.createdAt,
       })
       .from(runs)
@@ -473,6 +513,9 @@ export async function getLatestRunForThread(threadId: number): Promise<Result<Ru
         status: runs.status,
         stage: runs.stage,
         deadlineAt: runs.deadlineAt,
+        startedAt: runs.startedAt,
+        finishedAt: runs.finishedAt,
+        error: runs.error,
         createdAt: runs.createdAt,
       })
       .from(runs)

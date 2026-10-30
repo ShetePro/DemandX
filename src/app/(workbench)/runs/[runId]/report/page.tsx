@@ -50,6 +50,9 @@ function MissingReport({ data, title }: { data: ReportPageData; title: string })
               <Link href={`/runs/${data.runId}/evidence`}>查看已采集证据</Link>
             </Button>
             <Button variant="ghost" asChild>
+              <Link href={`/runs/${data.runId}`}>运行监控</Link>
+            </Button>
+            <Button variant="ghost" asChild>
               <Link href={backHref}>{backLabel}</Link>
             </Button>
           </div>

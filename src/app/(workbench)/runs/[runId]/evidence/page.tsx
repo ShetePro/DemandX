@@ -1,6 +1,8 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { PageHeader } from '@/components/shell/page-header';
+import { Button } from '@/components/ui/button';
 import { EvidenceTable } from '@/features/evidence/evidence-table';
 import { parseEvidenceFilters } from '@/features/evidence/filters';
 import type { EvidenceViewItem } from '@/features/evidence/types';
@@ -85,6 +87,16 @@ export default async function EvidencePage({ params, searchParams }: EvidencePag
       <PageHeader
         title="证据库"
         description={`run ${runId} · 逐条核对引文与快照；筛选条件保存在地址栏，刷新后保持。`}
+        actions={
+          <>
+            <Button variant="ghost" size="sm" asChild>
+              <Link href={`/runs/${runId}`}>运行监控</Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild>
+              <Link href={`/runs/${runId}/report`}>查看报告</Link>
+            </Button>
+          </>
+        }
       />
       <EvidenceTable
         items={items}

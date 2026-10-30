@@ -1,7 +1,8 @@
-import { and, count, eq } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { z } from 'zod';
 
 import { db } from '@/lib/db/client';
-import { queries, sources } from '@/lib/db/schema';
+import { queries, runEvents, sources } from '@/lib/db/schema';
 import { fail, ok, type Result } from '@/lib/quota/types';
 
 /** Everything S1 knows about a fetched page at insert time. */
@@ -127,5 +128,179 @@ export async function recordQuery(input: RecordQueryInput): Promise<Result<{ id:
     return ok({ id: row.id });
   } catch (error) {
     return storageFailure('写入查询', error);
+  }
+}
+
+/** One audit row of S1's search log, as the monitor page renders it. */
+export interface QueryRecord {
+  id: number;
+  angle: string | null;
+  provider: string | null;
+  text: string | null;
+  resultCount: number;
+  createdAt: Date;
+}
+
+/** Every query the run issued, oldest first. */
+export async function listQueries(runId: number): Promise<Result<QueryRecord[]>> {
+  if (!Number.isInteger(runId) || runId <= 0) return ok([]);
+
+  try {
+    const rows = await db
+      .select({
+        id: queries.id,
+        angle: queries.angle,
+        provider: queries.provider,
+        text: queries.text,
+        resultCount: queries.resultCount,
+        createdAt: queries.createdAt,
+      })
+      .from(queries)
+      .where(eq(queries.runId, runId))
+      .orderBy(queries.id);
+
+    return ok(rows);
+  } catch (error) {
+    return storageFailure('读取查询记录', error);
+  }
+}
+
+const SOURCE_EVENT_TYPES = ['source.needs_human', 'source.failed', 'source.skipped'] as const;
+
+export interface SourceReasonCount {
+  reason: string;
+  count: number;
+}
+
+/**
+ * How much of S1 did not land, counted over the whole event log. The monitor
+ * needs a total, not "whatever fits in one page of events", so the database
+ * groups them; the client only adds the events that arrive after first paint.
+ */
+export interface SourceEventSummary {
+  needsHuman: number;
+  failed: number;
+  skipped: number;
+  capped: boolean;
+  /** The page budget S1 hit, when it hit one. */
+  cappedMaxPages: number | null;
+  /** Skip reasons, most frequent first. */
+  reasons: SourceReasonCount[];
+}
+
+export function emptySourceEventSummary(): SourceEventSummary {
+  return {
+    needsHuman: 0,
+    failed: 0,
+    skipped: 0,
+    capped: false,
+    cappedMaxPages: null,
+    reasons: [],
+  };
+}
+
+export async function summarizeSourceEvents(runId: number): Promise<Result<SourceEventSummary>> {
+  if (!Number.isInteger(runId) || runId <= 0) return ok(emptySourceEventSummary());
+
+  try {
+    const rows = await db.execute<{ type: string; reason: string | null; count: number }>(sql`
+      select type,
+             coalesce(payload->>'reason', payload->>'code') as reason,
+             count(*)::int as count
+      from run_events
+      where run_id = ${runId}
+        and type in ('source.needs_human', 'source.failed', 'source.skipped')
+      group by type, reason
+      order by count desc, reason asc
+    `);
+
+    const summary = emptySourceEventSummary();
+    const reasons = new Map<string, number>();
+
+    for (const row of rows) {
+      if (row.type === 'source.needs_human') {
+        summary.needsHuman += row.count;
+      } else if (row.type === 'source.failed') {
+        summary.failed += row.count;
+      } else if (row.type === 'source.skipped') {
+        summary.skipped += row.count;
+        const reason = row.reason ?? 'unknown';
+        reasons.set(reason, (reasons.get(reason) ?? 0) + row.count);
+      }
+    }
+
+    summary.reasons = [...reasons.entries()]
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((left, right) => right.count - left.count || left.reason.localeCompare(right.reason));
+
+    const capped = await db.execute<{ count: number; max_pages: number | null }>(sql`
+      select count(*)::int as count,
+             max((payload->>'maxPages')::int) as max_pages
+      from run_events
+      where run_id = ${runId} and type = 'stage.capped'
+    `);
+    const cappedRow = capped[0];
+    summary.capped = (cappedRow?.count ?? 0) > 0;
+    summary.cappedMaxPages = cappedRow?.max_pages ?? null;
+
+    return ok(summary);
+  } catch (error) {
+    return storageFailure('统计采集事件', error);
+  }
+}
+
+const sourceEventPayloadSchema = z.object({
+  url: z.string().optional(),
+  platform: z.string().optional(),
+  reason: z.string().optional(),
+  code: z.string().optional(),
+});
+
+/** One failed/skipped/queued page, newest first. */
+export interface RecentSourceEvent {
+  eventId: number;
+  type: string;
+  url: string | null;
+  platform: string | null;
+  reason: string | null;
+  createdAt: Date;
+}
+
+export async function listRecentSourceEvents(
+  runId: number,
+  limit = 10,
+): Promise<Result<RecentSourceEvent[]>> {
+  if (!Number.isInteger(runId) || runId <= 0) return ok([]);
+  const capped = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 50) : 10;
+
+  try {
+    const rows = await db
+      .select({
+        eventId: runEvents.id,
+        type: runEvents.type,
+        payload: runEvents.payload,
+        createdAt: runEvents.createdAt,
+      })
+      .from(runEvents)
+      .where(and(eq(runEvents.runId, runId), inArray(runEvents.type, [...SOURCE_EVENT_TYPES])))
+      .orderBy(desc(runEvents.id))
+      .limit(capped);
+
+    return ok(
+      rows.map((row) => {
+        const parsed = sourceEventPayloadSchema.safeParse(row.payload);
+        const fields = parsed.success ? parsed.data : {};
+        return {
+          eventId: row.eventId,
+          type: row.type,
+          url: fields.url ?? null,
+          platform: fields.platform ?? null,
+          reason: fields.reason ?? fields.code ?? null,
+          createdAt: row.createdAt,
+        };
+      }),
+    );
+  } catch (error) {
+    return storageFailure('读取采集事件', error);
   }
 }

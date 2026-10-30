@@ -6,18 +6,20 @@ import {
   initialRunState,
   reduce,
   type RunEvent,
+  type RunStateSeed,
   type RunStreamState,
 } from '@/lib/runs/event-reducer';
+import { MAX_RETRIES } from '@/lib/runs/stages';
 
 /** Wait before each reconnect: 1s, 2s, 4s, then 8s for the remaining tries. */
 const BACKOFF_MS = [1_000, 2_000, 4_000, 8_000] as const;
-export const MAX_RETRIES = 5;
 
-type StreamAction = { kind: 'event'; event: RunEvent } | { kind: 'snapshot'; events: RunEvent[] };
+type StreamAction =
+  { kind: 'event'; event: RunEvent } | { kind: 'snapshot'; events: RunEvent[]; seed: RunStateSeed };
 
 function streamReducer(state: RunStreamState, action: StreamAction): RunStreamState {
   if (action.kind === 'event') return reduce(state, action.event);
-  return initialRunState(action.events);
+  return initialRunState(action.events, action.seed);
 }
 
 /**
@@ -71,8 +73,14 @@ export type RunStreamResult = {
  * state and reconnects from the start of the new log, but keying the component
  * by run is the cheaper way to switch runs.
  */
-export function useRunStream(runId: number, initialEvents: RunEvent[] = []): RunStreamResult {
-  const [state, dispatch] = useReducer(streamReducer, initialEvents, initialRunState);
+export function useRunStream(
+  runId: number,
+  initialEvents: RunEvent[] = [],
+  seed: RunStateSeed = {},
+): RunStreamResult {
+  const [state, dispatch] = useReducer(streamReducer, { events: initialEvents, seed }, (input) =>
+    initialRunState(input.events, input.seed),
+  );
   const [connected, setConnected] = useState(false);
   const [retries, setRetries] = useState(0);
 
@@ -81,17 +89,23 @@ export function useRunStream(runId: number, initialEvents: RunEvent[] = []): Run
   const stateRef = useRef(state);
   const runIdRef = useRef(runId);
   const initialEventsRef = useRef(initialEvents);
+  const seedRef = useRef(seed);
 
   useEffect(() => {
     initialEventsRef.current = initialEvents;
+    seedRef.current = seed;
   });
 
   useEffect(() => {
     if (runIdRef.current !== runId) {
       runIdRef.current = runId;
-      const snapshot = initialRunState(initialEventsRef.current);
+      const snapshot = initialRunState(initialEventsRef.current, seedRef.current);
       stateRef.current = snapshot;
-      dispatch({ kind: 'snapshot', events: initialEventsRef.current });
+      dispatch({
+        kind: 'snapshot',
+        events: initialEventsRef.current,
+        seed: seedRef.current,
+      });
       setConnected(false);
       setRetries(0);
     }

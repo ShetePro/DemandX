@@ -226,6 +226,32 @@ describe('initialRunState', () => {
     expect(state.terminal).toBe(true);
   });
 
+  it('lets the database seed override a stale terminal event after a retry', () => {
+    const state = initialRunState(
+      [
+        event(1, 'run.created'),
+        event(2, 'run.finished', { status: 'finished' }),
+        event(3, 'stage.started', { stage: 'S2' }),
+      ],
+      { status: 'running', stage: 'S2' },
+    );
+
+    expect(state.status).toBe('running');
+    expect(state.terminal).toBe(false);
+    expect(state.stage).toBe('S2');
+  });
+
+  it('uses the seeded terminal verdict when the log has no terminal event', () => {
+    const state = initialRunState([event(1, 'run.created')], {
+      status: 'failed',
+      stage: 'S2',
+    });
+
+    expect(state.status).toBe('failed');
+    expect(state.terminal).toBe(true);
+    expect(state.stage).toBe('S2');
+  });
+
   it('trims an oversized snapshot to the retained window', () => {
     const total = MAX_RETAINED_EVENTS + 10;
     const state = initialRunState(

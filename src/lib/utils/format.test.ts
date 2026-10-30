@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatCurrency, formatRelativeTime, formatScore } from './format';
+import { formatCurrency, formatDuration, formatRelativeTime, formatScore } from './format';
 
 describe('formatRelativeTime', () => {
   const now = new Date(2026, 9, 30, 12, 0, 0);
@@ -41,6 +41,23 @@ describe('formatRelativeTime', () => {
     const afterMidnight = new Date(2026, 9, 30, 0, 1, 0);
 
     expect(formatRelativeTime(lateNight, afterMidnight)).toBe('2 分钟前');
+  });
+});
+
+describe('formatDuration', () => {
+  it('renders seconds, minutes and hours', () => {
+    expect(formatDuration(0)).toBe('0 秒');
+    expect(formatDuration(45_000)).toBe('45 秒');
+    expect(formatDuration(60_000)).toBe('1 分钟');
+    expect(formatDuration(95_000)).toBe('1 分 35 秒');
+    expect(formatDuration(90 * 60_000)).toBe('1 小时 30 分钟');
+    expect(formatDuration(2 * 60 * 60_000)).toBe('2 小时');
+  });
+
+  it('refuses negative or non-finite input', () => {
+    expect(formatDuration(-1)).toBe('—');
+    expect(formatDuration(Number.NaN)).toBe('—');
+    expect(formatDuration(Number.POSITIVE_INFINITY)).toBe('—');
   });
 });
 

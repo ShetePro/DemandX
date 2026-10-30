@@ -58,11 +58,31 @@ function emptyState(): RunStreamState {
   };
 }
 
-function isRunStatus(value: unknown): value is RunStatus {
+/**
+ * Coerce persisted `jsonb` payloads into the reducer's shape. A payload that
+ * is not an object (hand-edited row, older format) becomes `{}` rather than
+ * poisoning the whole snapshot.
+ */
+export function toRunEvents(
+  records: readonly { seq: number; type: string; payload: unknown }[],
+): RunEvent[] {
+  return records.map((record) => ({
+    seq: record.seq,
+    type: record.type,
+    payload:
+      typeof record.payload === 'object' &&
+      record.payload !== null &&
+      !Array.isArray(record.payload)
+        ? (record.payload as Record<string, unknown>)
+        : {},
+  }));
+}
+
+export function isRunStatus(value: unknown): value is RunStatus {
   return typeof value === 'string' && (RUN_STATUSES as readonly string[]).includes(value);
 }
 
-function isTerminalStatus(value: unknown): value is RunStatus {
+export function isTerminalStatus(value: unknown): value is RunStatus {
   return isRunStatus(value) && TERMINAL_STATUSES[value] === true;
 }
 
@@ -128,10 +148,35 @@ export function reduce(state: RunStreamState, event: RunEvent): RunStreamState {
 }
 
 /**
+ * What the RSC knows about the run before any event is folded. The database
+ * row is the source of truth: a retried run keeps its old terminal event in
+ * the log, and folding that alone would freeze the UI at the previous verdict.
+ */
+export type RunStateSeed = { status?: string; stage?: string | null };
+
+/**
  * Project one server snapshot (oldest first) into state. The input is copied
  * and sorted because a snapshot assembled with an unstable order must still
- * fold in `seq` order.
+ * fold in `seq` order. When a seed is given, its status/stage win over the
+ * fold, so the live stream can still reconnect and move a retried run forward.
  */
-export function initialRunState(initial: readonly RunEvent[] = []): RunStreamState {
-  return [...initial].sort((left, right) => left.seq - right.seq).reduce(reduce, emptyState());
+export function initialRunState(
+  initial: readonly RunEvent[] = [],
+  seed: RunStateSeed = {},
+): RunStreamState {
+  const folded = [...initial]
+    .sort((left, right) => left.seq - right.seq)
+    .reduce(reduce, emptyState());
+
+  const status = isRunStatus(seed.status) ? seed.status : folded.status;
+  const terminal = isTerminalStatus(status);
+
+  return {
+    ...folded,
+    status,
+    stage: seed.stage === undefined ? folded.stage : seed.stage,
+    terminal,
+    // A stale failure from the previous attempt must not leak into a retry.
+    error: terminal ? folded.error : null,
+  };
 }

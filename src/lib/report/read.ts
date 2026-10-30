@@ -148,6 +148,22 @@ async function readRun(runId: number): Promise<RunRow | null> {
   return rows[0] ?? null;
 }
 
+/** Whether the run has published a report; used to decide if the monitor links to it. */
+export async function hasReport(runId: number): Promise<Result<boolean>> {
+  if (!Number.isSafeInteger(runId) || runId <= 0) return ok(false);
+
+  try {
+    const rows = await db
+      .select({ id: reports.id })
+      .from(reports)
+      .where(eq(reports.runId, runId))
+      .limit(1);
+    return ok(rows.length > 0);
+  } catch (error) {
+    return storageFailure('读取报告', error);
+  }
+}
+
 async function readReport(runId: number): Promise<ReportRecord | null> {
   const rows = await db
     .select({
