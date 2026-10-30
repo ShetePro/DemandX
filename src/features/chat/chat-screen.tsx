@@ -118,13 +118,16 @@ export function ChatScreen({
           : 'grid-cols-[minmax(0,1fr)_312px] max-lg:grid-cols-1 max-lg:grid-rows-[minmax(0,1fr)_auto]',
       )}
     >
-      <section aria-label="对话" className="flex min-h-0 flex-col">
+      <section aria-label="对话" className="relative flex min-h-0 flex-col">
         <header className="flex h-12 shrink-0 items-center border-b border-border px-4">
           <h1 className="truncate text-sm font-semibold text-fg">{title}</h1>
         </header>
 
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-          <div ref={contentRef} className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6">
+          <div
+            ref={contentRef}
+            className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 pt-6 pb-32"
+          >
             {messages.length === 0 ? (
               <EmptyConversation />
             ) : (
@@ -148,8 +151,9 @@ export function ChatScreen({
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-border bg-surface px-4 py-3">
-          <div className="mx-auto w-full max-w-3xl">
+        {/* Floats over the transcript: no footer band, the thread keeps the page colour. */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-4 pb-4">
+          <div className="pointer-events-auto mx-auto w-full max-w-3xl">
             <Composer
               onSend={(text) => void sendMessage({ text })}
               onStop={stop}

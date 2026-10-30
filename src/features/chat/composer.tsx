@@ -68,7 +68,7 @@ export function Composer({
         'border border-border bg-surface',
         hero
           ? 'rounded-2xl p-3 shadow-lg focus-within:border-border-strong'
-          : 'rounded-xl p-2 shadow-sm',
+          : 'rounded-xl border-border/80 bg-surface/95 p-2 shadow-lg backdrop-blur-md focus-within:border-border-strong',
       )}
     >
       <Textarea
