@@ -31,8 +31,8 @@ const CITABLE_NEEDS = 11;
 const WEAK_NEEDS_MIN = 6;
 const WEAK_NEEDS_MAX = 10;
 /** Cross-validation floor: below this the sources are one loud thread, not a market. */
-const MIN_B_SOURCES = 3;
-/** The C source floor: 1–2 sources are traceable but too thin for a B. */
+const MIN_GRADED_SOURCES = 3;
+/** The C source floor: 1–2 sources are traceable but too thin for an A or a B. */
 const CROSS_CHECK_SOURCES = 2;
 
 /**
@@ -46,12 +46,11 @@ function count(value: number): number {
 
 /**
  * §9 可信度, evaluated A → B → C → D so an input that satisfies two rows takes
- * the first one the table offers. A is a strict subset of B: B asks for needs
- * ≥11, citations and ≥3 sources, so payment strength never decides between them
- * in the wrong direction — needs 11–15 with strong payment evidence is a B, not
- * an abandonment. The source floor is what stops a high needs score resting on
- * two threads from reaching the development gate: 1–2 sources fall to C, and 0
- * falls to D, because D names "no traceable source at all".
+ * the first one the table offers, with one gate in front: no traceable source is
+ * D whatever the bands say. A is then a strict subset of B — both require ≥3
+ * sources, A adds top needs and top payment — so payment strength never decides
+ * between them in the wrong direction, and a high needs score resting on two
+ * threads falls to C instead of reaching the development gate.
  */
 export function credibility({
   needs,
@@ -63,14 +62,24 @@ export function credibility({
   const paymentPoints = count(payment);
   const sources = count(independentSources);
 
-  if (needPoints >= TOP_NEEDS && paymentPoints >= TOP_PAYMENT && allClaimsCited) {
+  // Nothing to check: a score with no source is a guess, not a B or a C.
+  if (sources === 0) {
+    return { grade: 'D', reason: '无任何可追溯来源' };
+  }
+
+  if (
+    needPoints >= TOP_NEEDS &&
+    paymentPoints >= TOP_PAYMENT &&
+    allClaimsCited &&
+    sources >= MIN_GRADED_SOURCES
+  ) {
     return {
       grade: 'A',
-      reason: `需求 ${needPoints} 分、付费 ${paymentPoints} 分，且全部论断有引用`,
+      reason: `需求 ${needPoints} 分、付费 ${paymentPoints} 分、独立来源 ${sources} 个，且全部论断有引用`,
     };
   }
 
-  if (needPoints >= CITABLE_NEEDS && allClaimsCited && sources >= MIN_B_SOURCES) {
+  if (needPoints >= CITABLE_NEEDS && allClaimsCited && sources >= MIN_GRADED_SOURCES) {
     return {
       grade: 'B',
       reason: `需求 ${needPoints} 分、论断有引用、独立来源 ${sources} 个，但未同时满足 A 级门槛（需求 ≥${TOP_NEEDS} 且付费 ≥${TOP_PAYMENT}）`,
@@ -84,16 +93,12 @@ export function credibility({
     };
   }
 
-  // 1–2 sources: thin, but traceable. Zero is not C — nothing can be checked.
-  if (sources >= 1 && sources <= CROSS_CHECK_SOURCES) {
+  // 1–2 sources: traceable but thin, so C caps the grade here.
+  if (sources <= CROSS_CHECK_SOURCES) {
     return {
       grade: 'C',
       reason: `独立来源仅 ${sources} 个（≤${CROSS_CHECK_SOURCES}），无法交叉验证`,
     };
-  }
-
-  if (sources === 0) {
-    return { grade: 'D', reason: '无任何可追溯来源' };
   }
 
   if (!allClaimsCited) {

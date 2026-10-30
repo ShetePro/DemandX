@@ -28,6 +28,12 @@ describe('credibility — grade A', () => {
       'A',
     );
   });
+
+  it('needs a third source: two cited sources cap a maximal score at C', () => {
+    expect(grade({ needs: 20, payment: 20, allClaimsCited: true, independentSources: 2 })).toBe(
+      'C',
+    );
+  });
 });
 
 describe('credibility — grade B', () => {
@@ -96,10 +102,15 @@ describe('credibility — boundaries', () => {
     // The 11–15 band with top payment is still B, not D.
     [13, 17, true, 4, 'B'],
     [15, 20, true, 4, 'B'],
+    // A needs the same third source B does: sources 3 vs 2 decides between A and C.
+    [20, 20, true, 3, 'A'],
+    [20, 20, true, 2, 'C'],
     // B needs a third source: two cited sources stay at C.
     [13, 17, true, 3, 'B'],
     [13, 17, true, 2, 'C'],
     [12, 0, true, 2, 'C'],
+    // No source at all is D before any band is consulted, even a C-band needs score.
+    [8, 8, true, 0, 'D'],
     // needs 11 vs 10: B needs 11, C owns 6–10.
     [11, 12, true, 3, 'B'],
     [10, 12, true, 3, 'C'],
@@ -121,11 +132,13 @@ describe('credibility — boundaries', () => {
     },
   );
 
-  it('grades a sourceless report D even when other inputs would pass', () => {
-    // D names "no traceable source at all"; C's floor covers 1–2, not 0–2.
-    const result = credibility(input({ needs: 0, payment: 0, independentSources: 0 }));
+  it('grades a sourceless report D before any band is consulted', () => {
+    // needs 8 would otherwise land in C's weak band; zero sources outranks it.
+    const result = credibility(
+      input({ needs: 8, payment: 8, allClaimsCited: true, independentSources: 0 }),
+    );
     expect(result.grade).toBe('D');
-    expect(result.reason).toContain('来源');
+    expect(result.reason).toBe('无任何可追溯来源');
   });
 
   it('treats junk numbers as nothing gathered instead of a pass', () => {

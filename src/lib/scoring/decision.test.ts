@@ -113,6 +113,13 @@ describe('decide — the §9 可信度 gate', () => {
       '建议先验证，再开发',
     );
   });
+
+  it('verifies a maximal 95-point opportunity capped at C by its two sources', () => {
+    const maximal = { total: 95, needs: 20, payment: 20, feasibility: 10 } as const;
+    const { grade } = credibility({ ...maximal, allClaimsCited: true, independentSources: 2 });
+    expect(grade).toBe('C');
+    expect(decide(input({ ...maximal, credibility: grade })).decision).toBe('建议先验证，再开发');
+  });
 });
 
 describe('decide — ⑤ 建议先验证，再开发', () => {
