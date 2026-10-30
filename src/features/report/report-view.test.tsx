@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -6,7 +6,10 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ReportEvidenceItem, ReportRecord } from '@/lib/report/read';
 import { REPORT_SECTIONS, type ReportSectionBody } from '@/lib/report/validate';
 
+import { exportReportAction } from './export-action';
 import { ReportView } from './report-view';
+
+vi.mock('./export-action', () => ({ exportReportAction: vi.fn() }));
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...props }: ComponentProps<'a'> & { href: string }) => (
@@ -175,5 +178,36 @@ describe('ReportView', () => {
       expect.stringContaining('1 条论断没有引用'),
       expect.arrayContaining([expect.stringContaining('没有引用的财务预测')]),
     );
+  });
+
+  it('downloads the Markdown returned by the export action', async () => {
+    const user = userEvent.setup();
+    vi.mocked(exportReportAction).mockResolvedValue({
+      ok: true,
+      value: { filename: '跨境卖家库存同步-2026-10-29.md', content: '# 报告' },
+    });
+
+    const createObjectURL = vi.fn(() => 'blob:report');
+    Object.defineProperty(URL, 'createObjectURL', { writable: true, value: createObjectURL });
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'revokeObjectURL', { writable: true, value: revokeObjectURL });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    render(
+      <ReportView
+        runId={7}
+        ideaTitle="跨境卖家库存同步"
+        report={REPORT}
+        scores={[]}
+        evidenceMap={{ 12: E12, 19: E19 }}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '导出 Markdown' }));
+
+    await waitFor(() => expect(exportReportAction).toHaveBeenCalledWith(7));
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(click).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:report');
   });
 });

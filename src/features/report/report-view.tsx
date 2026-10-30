@@ -1,8 +1,9 @@
 'use client';
 
-import { ChevronDown, Printer } from 'lucide-react';
+import { ChevronDown, Download, Printer } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 import { CitationChip } from '@/components/common/citation-chip';
 import { GradeBadge, type Grade } from '@/components/common/grade-badge';
@@ -24,6 +25,7 @@ import { cn } from '@/lib/utils/cn';
 import { formatDate, formatScore } from '@/lib/utils/format';
 
 import { CitationPanel } from './citation-panel';
+import { exportReportAction } from './export-action';
 
 /**
  * The chart is the only reason the report needs recharts, so it is pulled in
@@ -154,6 +156,7 @@ export function ReportView({ runId, ideaTitle, report, scores, evidenceMap }: Re
   const [active, setActive] = useState<ReportSection>('summary');
   const [selectedId, setSelectedId] = useState<number | null>(() => firstCitedId(report.sections));
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const isWide = useMediaQuery(WIDE_QUERY);
 
   const total = formatScore(
@@ -208,6 +211,34 @@ export function ReportView({ runId, ideaTitle, report, scores, evidenceMap }: Re
     setSheetOpen(true);
   }
 
+  async function handleExport() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const result = await exportReportAction(runId);
+      if (!result.ok) {
+        toast.error(result.message);
+        return;
+      }
+
+      const blob = new Blob([result.value.content], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = result.value.filename;
+      link.rel = 'noopener';
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast.success('已导出 Markdown');
+    } catch {
+      toast.error('导出失败：网络错误');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1400px] p-6">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4">
@@ -234,6 +265,15 @@ export function ReportView({ runId, ideaTitle, report, scores, evidenceMap }: Re
           <Button variant="ghost" size="sm" onClick={() => window.print()}>
             <Printer className="size-3.5" aria-hidden />
             打印
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void handleExport()}
+            disabled={exporting}
+          >
+            <Download className="size-3.5" aria-hidden />
+            {exporting ? '导出中…' : '导出 Markdown'}
           </Button>
         </div>
       </header>
