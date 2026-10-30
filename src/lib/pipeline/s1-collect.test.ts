@@ -338,4 +338,45 @@ describe('collectS1', () => {
     // Five classes × three queries.
     expect(searchCalls).toHaveLength(15);
   });
+
+  it('stops fetching once the page cap is reached and records it', async () => {
+    const repo = createRepo();
+    const urls = [
+      'https://example.com/a',
+      'https://example.com/b',
+      'https://example.com/c',
+      'https://example.com/d',
+    ];
+    const crawlCalls: string[] = [];
+    const port = createPort(
+      'ddg',
+      urls.map((url) => hit(url)),
+    );
+    const crawl = createCrawl(
+      Object.fromEntries(
+        urls.map((url) => [url, { status: 'needs_human' as const, reason: 'login' as const, url }]),
+      ),
+      crawlCalls,
+    );
+    const events: { type: string; payload: Record<string, unknown> }[] = [];
+
+    const summary = expectOk(
+      await collectS1(
+        context(),
+        deps(port, crawl, repo, {
+          limits: { delayMs: 0, maxPages: 2 },
+          onEvent: async (type, payload) => {
+            events.push({ type, payload });
+          },
+        }),
+      ),
+    );
+
+    expect(crawlCalls).toHaveLength(2);
+    expect(summary).toEqual({ sources: 0, skipped: 0, needsHuman: 2 });
+    expect(events.find((event) => event.type === 'stage.capped')?.payload).toMatchObject({
+      stage: 'S1',
+      maxPages: 2,
+    });
+  });
 });

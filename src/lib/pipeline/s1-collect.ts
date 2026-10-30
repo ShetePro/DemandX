@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from 'node:timers/promises';
+
 import type { CrawlPort } from '@/lib/crawl/port';
 import { canonicalizeUrl } from '@/lib/evidence/canonical-url';
 import { hammingDistance, simhash64 } from '@/lib/evidence/simhash';
@@ -38,6 +40,11 @@ export interface CollectDeps {
   recordQuery?: (input: RecordQueryInput) => Promise<Result<unknown>>;
   /** Defaults to `SNAPSHOT_DIR` (then `./data/snapshots`) via `writeSnapshot`. */
   snapshotDir?: string;
+  /**
+   * Politeness and volume caps from the operator's crawl settings. Absent means
+   * "no extra delay, no page cap" — the pre-settings behaviour.
+   */
+  limits?: { delayMs: number; maxPages: number };
   onEvent?: (type: string, payload: Record<string, unknown>) => Promise<void>;
   now?: () => Date;
 }
@@ -100,12 +107,18 @@ export async function collectS1(ctx: RunContext, deps: CollectDeps): Promise<Res
   /** Fingerprints of snapshots stored by this run, for near-duplicate detection. */
   const fingerprints: bigint[] = [];
 
+  const delayMs = deps.limits?.delayMs ?? 0;
+  const maxPages = deps.limits?.maxPages ?? Number.POSITIVE_INFINITY;
+  /** Pages actually fetched by this run; the cap counts attempts, not successes. */
+  let fetched = 0;
+  let capped = false;
+
   let sources = 0;
   let skipped = 0;
   let needsHuman = 0;
   let done = 0;
 
-  for (const group of groups) {
+  outer: for (const group of groups) {
     for (const query of group.queries) {
       const aliveHere = assertAlive(ctx.deadlineAt, now());
       if (!aliveHere.ok) return aliveHere;
@@ -160,8 +173,18 @@ export async function collectS1(ctx: RunContext, deps: CollectDeps): Promise<Res
           // Already stored by this run (or a previous attempt of it): no re-fetch.
           if (seen.has(canonical)) continue;
 
+          // The cap is a run budget, not a per-query one: once it is reached the
+          // remaining hits are not fetched at all.
+          if (fetched >= maxPages) {
+            capped = true;
+            break outer;
+          }
+
           const aliveHit = assertAlive(ctx.deadlineAt, now());
           if (!aliveHit.ok) return aliveHit;
+
+          if (fetched > 0 && delayMs > 0) await sleep(delayMs);
+          fetched += 1;
 
           let crawled;
           try {
@@ -283,6 +306,11 @@ export async function collectS1(ctx: RunContext, deps: CollectDeps): Promise<Res
       done += 1;
       await emit(deps, 'stage.progress', { stage: 'S1', done, total, sources });
     }
+  }
+
+  if (capped) {
+    // The run still succeeds; the cap is an operator budget, not a failure.
+    await emit(deps, 'stage.capped', { stage: 'S1', maxPages, sources, skipped });
   }
 
   return ok({ sources, skipped, needsHuman });

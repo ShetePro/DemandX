@@ -258,4 +258,84 @@ suite('run repository', () => {
       expect.objectContaining({ providerId, modelId: 'qwen2.5:7b' }),
     ]);
   });
+
+  it('writes the run state a worker owns, including the terminal timestamp', async () => {
+    const { run } = await createThreadWithRun();
+    const startedAt = new Date('2026-10-30T01:00:00.000Z');
+    const deadlineAt = new Date('2026-10-30T02:30:00.000Z');
+    const finishedAt = new Date('2026-10-30T01:30:00.000Z');
+
+    unwrap(
+      await repo.setRunState(run.runId, {
+        status: 'running',
+        stage: 'S1',
+        startedAt,
+        deadlineAt,
+        finishedAt: null,
+        error: null,
+      }),
+    );
+
+    const running = await client.sql<
+      {
+        status: string;
+        stage: string;
+        started_at: Date;
+        deadline_at: Date;
+        finished_at: Date | null;
+        error: unknown;
+      }[]
+    >`select status, stage, started_at, deadline_at, finished_at, error from runs where id = ${run.runId}`;
+    const runningRow = running[0];
+    if (!runningRow) throw new Error('run row missing');
+
+    expect(runningRow.status).toBe('running');
+    expect(runningRow.stage).toBe('S1');
+    expect(new Date(runningRow.started_at)).toEqual(startedAt);
+    expect(new Date(runningRow.deadline_at)).toEqual(deadlineAt);
+    expect(runningRow.finished_at).toBeNull();
+    expect(runningRow.error).toBeNull();
+
+    unwrap(
+      await repo.setRunState(run.runId, {
+        status: 'finished',
+        stage: 'S1',
+        finishedAt,
+      }),
+    );
+
+    const finished = await client.sql<
+      { status: string; stage: string; finished_at: Date | null }[]
+    >`select status, stage, finished_at from runs where id = ${run.runId}`;
+    expect(finished[0]?.status).toBe('finished');
+    expect(finished[0]?.stage).toBe('S1');
+    expect(finished[0]?.finished_at ? new Date(finished[0].finished_at) : null).toEqual(finishedAt);
+  });
+
+  it('stores a structured failure and rejects unknown states', async () => {
+    const { run } = await createThreadWithRun();
+
+    unwrap(
+      await repo.setRunState(run.runId, {
+        status: 'failed',
+        stage: 'S1',
+        error: { code: 'DEADLINE_EXCEEDED', message: '超时' },
+      }),
+    );
+
+    const rows = await client.sql<
+      { status: string; error: { code: string; message: string } }[]
+    >`select status, error from runs where id = ${run.runId}`;
+    expect(rows[0]).toMatchObject({
+      status: 'failed',
+      error: { code: 'DEADLINE_EXCEEDED', message: '超时' },
+    });
+
+    expect(expectFailure(await repo.setRunState(run.runId, { status: 'nope' })).code).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect(expectFailure(await repo.setRunState(424_242, { status: 'running' })).code).toBe(
+      'NOT_FOUND',
+    );
+  });
 });

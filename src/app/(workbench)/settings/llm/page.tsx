@@ -1,6 +1,7 @@
 import { Pencil } from 'lucide-react';
 
 import { PageHeader } from '@/components/shell/page-header';
+import { SettingsTabs } from '@/components/shell/settings-tabs';
 import { Button } from '@/components/ui/button';
 import { ChainEditor, type ChainDraft } from '@/features/settings/llm/chain-editor';
 import { ModelChips } from '@/features/settings/llm/model-chips';
@@ -91,6 +92,7 @@ export default async function LlmSettingsPage({ searchParams }: { searchParams: 
         title="LLM 与采集"
         description="模型链决定每次调用用哪个 provider；改动只影响下一次运行"
       />
+      <SettingsTabs />
 
       {errors.length > 0 ? (
         <div

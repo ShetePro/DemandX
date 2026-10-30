@@ -11,7 +11,7 @@ import { buildAngles } from '@/lib/pipeline/angles';
 import { collectS1 } from '@/lib/pipeline/s1-collect';
 import { createQuotaGuard } from '@/lib/quota/guard';
 import { DEFAULT_QUOTA } from '@/lib/quota/policy';
-import { appendEvent, getRunContext } from '@/lib/runs/repository';
+import { appendEvent, getRunContext, setRunState } from '@/lib/runs/repository';
 import { S1_EXPIRE_SECONDS, S1_QUEUE, S1_RETRY_LIMIT } from '@/lib/runs/queue';
 import { insertSource, listSourceUrls, recordQuery } from '@/lib/runs/sources-repository';
 import { createAppStoreSearch } from '@/lib/search/appstore';
@@ -20,6 +20,14 @@ import { createDuckDuckGoSearch } from '@/lib/search/ddg';
 import { createGitHubSearch } from '@/lib/search/github';
 import { createHnSearch } from '@/lib/search/hn';
 import type { SearchPort } from '@/lib/search/port';
+import {
+  CRAWL_SETTINGS_KEY,
+  DEFAULT_CRAWL_SETTINGS,
+  crawlSettingsSchema,
+  getSetting,
+  pickDelayMs,
+  type CrawlSettings,
+} from '@/lib/settings/store';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim() ?? '';
 
@@ -64,13 +72,23 @@ async function fetchRobots(url: string): Promise<string> {
   return response.text();
 }
 
-const crawler: Crawler = createCrawler({
-  strategy: CRAWL_ENABLED ? 'auto' : 'static',
-  ...(RESPECT_ROBOTS ? { robots: createRobotsCache({ fetchRobots }) } : {}),
-  ...(CRAWL_ENABLED
-    ? { browser: { profileDir: PROFILE_DIR, headless: process.env.CRAWL_HEADLESS !== 'false' } }
-    : {}),
-});
+/**
+ * The crawler is per run because `enabled`/`respectRobots` are operator
+ * settings; it is disposed when the run ends so no browser context outlives it.
+ * The env flags stay a hard ceiling: settings can restrict, never expand them.
+ */
+function createRunCrawler(settings: CrawlSettings): Crawler {
+  const browserEnabled = CRAWL_ENABLED && settings.enabled;
+  return createCrawler({
+    strategy: browserEnabled ? 'auto' : 'static',
+    ...(RESPECT_ROBOTS && settings.respectRobots
+      ? { robots: createRobotsCache({ fetchRobots }) }
+      : {}),
+    ...(browserEnabled
+      ? { browser: { profileDir: PROFILE_DIR, headless: process.env.CRAWL_HEADLESS !== 'false' } }
+      : {}),
+  });
+}
 
 /** Event writes are best-effort telemetry: a lost event never stops a run. */
 async function writeEvent(
@@ -95,7 +113,39 @@ async function runS1(runId: number): Promise<void> {
     return;
   }
 
-  const { idea, deadlineAt } = record.value;
+  const { idea } = record.value;
+
+  // A failed read falls back to the defaults and says so in the log: the run
+  // must still finish, and a silent fallback would hide a broken settings row.
+  const readSettings = await getSetting(CRAWL_SETTINGS_KEY, crawlSettingsSchema);
+  let settings: CrawlSettings = DEFAULT_CRAWL_SETTINGS;
+  if (!readSettings.ok) {
+    await writeEvent(runId, 'config.defaulted', {
+      key: CRAWL_SETTINGS_KEY,
+      code: readSettings.code,
+      message: readSettings.message,
+    });
+  } else if (readSettings.value !== null) {
+    settings = readSettings.value;
+  }
+
+  const startedAt = new Date();
+  // The deadline is the operator's, measured from the moment the stage starts,
+  // not from when the run row was created.
+  const deadlineAt = new Date(startedAt.getTime() + settings.deadlineMinutes * 60_000);
+  const running = await setRunState(runId, {
+    status: 'running',
+    stage: 'S1',
+    startedAt,
+    deadlineAt,
+    // A retried run starts clean: the previous verdict must not survive.
+    finishedAt: null,
+    error: null,
+  });
+  if (!running.ok) {
+    console.error(`⚠️ run ${runId} 状态写入失败: ${running.message}`);
+  }
+
   // S0 without an LLM: the angle names are the template classes, and collectS1
   // rebuilds the same groups from the idea.
   const ctx = {
@@ -105,19 +155,40 @@ async function runS1(runId: number): Promise<void> {
     deadlineAt,
   };
 
-  await writeEvent(runId, 'stage.started', { stage: 'S1' });
-
-  const collected = await collectS1(ctx, {
-    searchPorts,
-    crawl: crawler,
-    quota: createQuotaGuard({ policy: DEFAULT_QUOTA }),
-    repo: { insertSource, listSourceUrls },
-    recordQuery,
-    ...(SNAPSHOT_DIR === '' ? {} : { snapshotDir: SNAPSHOT_DIR }),
-    onEvent: (type, payload) => writeEvent(runId, type, payload),
+  await writeEvent(runId, 'stage.started', {
+    stage: 'S1',
+    deadlineMinutes: settings.deadlineMinutes,
   });
 
+  const crawler = createRunCrawler(settings);
+  let collected;
+  try {
+    collected = await collectS1(ctx, {
+      searchPorts,
+      crawl: crawler,
+      quota: createQuotaGuard({ policy: DEFAULT_QUOTA }),
+      repo: { insertSource, listSourceUrls },
+      recordQuery,
+      limits: { delayMs: pickDelayMs(settings), maxPages: settings.maxPagesPerRun },
+      ...(SNAPSHOT_DIR === '' ? {} : { snapshotDir: SNAPSHOT_DIR }),
+      onEvent: (type, payload) => writeEvent(runId, type, payload),
+    });
+  } finally {
+    // Release this run's browser context; the login profile on disk survives.
+    try {
+      await crawler.dispose();
+    } catch (error) {
+      console.error(`⚠️ run ${runId} 浏览器上下文释放失败:`, error);
+    }
+  }
+
   if (!collected.ok) {
+    await setRunState(runId, {
+      status: 'failed',
+      stage: 'S1',
+      finishedAt: new Date(),
+      error: { code: collected.code, message: collected.message },
+    });
     await writeEvent(runId, 'stage.finished', {
       stage: 'S1',
       status: 'failed',
@@ -131,11 +202,14 @@ async function runS1(runId: number): Promise<void> {
     return;
   }
 
+  await setRunState(runId, { status: 'finished', stage: 'S1', finishedAt: new Date() });
   await writeEvent(runId, 'stage.finished', { stage: 'S1', ...collected.value });
   await writeEvent(runId, 'run.finished', {
     stage: 'S1',
     status: 'finished',
-    ...collected.value,
+    sources: collected.value.sources,
+    skipped: collected.value.skipped,
+    needsHuman: collected.value.needsHuman,
   });
 }
 
@@ -155,11 +229,6 @@ async function shutdown(signal: string): Promise<void> {
     await boss.stop({ graceful: true, timeout: 15_000, close: true });
   } catch (error) {
     console.error('⚠️ pg-boss 停止失败:', error);
-  }
-  try {
-    await crawler.dispose();
-  } catch (error) {
-    console.error('⚠️ 浏览器上下文释放失败:', error);
   }
 
   process.exit(0);
@@ -189,13 +258,21 @@ async function main(): Promise<void> {
       try {
         await runS1(runId);
       } catch (error) {
-        // A thrown programming error still becomes a terminal event, so the
-        // SSE stream never hangs on a run no one will finish.
+        // A thrown programming error still becomes a terminal state and event,
+        // so the SSE stream never hangs on a run no one will finish.
         console.error(`❌ run ${runId} S1 崩溃:`, error);
+        const message = error instanceof Error ? error.message : String(error);
+        const failed = await setRunState(runId, {
+          status: 'failed',
+          stage: 'S1',
+          finishedAt: new Date(),
+          error: { code: 'INTERNAL', message },
+        });
+        if (!failed.ok) console.error(`⚠️ run ${runId} 状态写入失败: ${failed.message}`);
         await writeEvent(runId, 'run.failed', {
           stage: 'S1',
           code: 'INTERNAL',
-          message: error instanceof Error ? error.message : String(error),
+          message,
         });
       }
     }

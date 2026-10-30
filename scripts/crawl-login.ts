@@ -75,11 +75,21 @@ async function openLogin(argv: string[]): Promise<void> {
     }
 
     console.log(`会话目录：${target.profileDir}`);
-    console.log('请在打开的浏览器里完成登录，登录完成后回到终端按 Enter。');
 
-    const terminal = createInterface({ input: stdin, output: stdout });
-    await terminal.question('');
-    terminal.close();
+    if (stdin.isTTY) {
+      console.log('请在打开的浏览器里完成登录，登录完成后回到终端按 Enter。');
+      const terminal = createInterface({ input: stdin, output: stdout });
+      await terminal.question('');
+      terminal.close();
+    } else {
+      // Started detached from the settings page: there is no terminal to press
+      // Enter in, so the window stays open until the operator closes it.
+      console.log('请在打开的浏览器里完成登录，登录完成后直接关闭浏览器窗口。');
+      // `Promise.withResolvers` needs lib ES2024; this tsconfig targets older.
+      await new Promise<void>((resolve) => {
+        context.once('close', () => resolve());
+      });
+    }
   } finally {
     await context.close();
   }

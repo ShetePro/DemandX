@@ -316,6 +316,68 @@ export async function readEvents(
   }
 }
 
+/** Statuses a run may be moved into by a worker. */
+const RUN_STATUSES: readonly string[] = [
+  'queued',
+  'running',
+  'paused',
+  'finished',
+  'failed',
+  'cancelled',
+];
+
+/**
+ * The subset of `runs` a worker owns. `error` is the structured failure; pass
+ * `null` to clear it when a failed run is retried. Every field is optional so
+ * one call can move a run without touching the rest of its row.
+ */
+export type RunStatePatch = {
+  status?: string;
+  stage?: string | null;
+  startedAt?: Date;
+  finishedAt?: Date | null;
+  deadlineAt?: Date | null;
+  error?: unknown;
+};
+
+/**
+ * Write a run's own state. The event log drives SSE, but `runs.status` is what
+ * the stream route reads to decide a run is over, so a stage that only appends
+ * events would leave the connection open forever.
+ */
+export async function setRunState(runId: number, patch: RunStatePatch): Promise<Result<void>> {
+  if (!Number.isInteger(runId) || runId <= 0) return fail('NOT_FOUND', `run ${runId} 不存在`);
+  if (patch.status !== undefined && !RUN_STATUSES.includes(patch.status)) {
+    return fail('VALIDATION_FAILED', `未知的运行状态：${patch.status}`);
+  }
+
+  const values: Record<string, unknown> = {};
+  if (patch.status !== undefined) values.status = patch.status;
+  if (patch.stage !== undefined) values.stage = patch.stage;
+  if (patch.startedAt !== undefined) values.startedAt = patch.startedAt;
+  if (patch.finishedAt !== undefined) values.finishedAt = patch.finishedAt;
+  if (patch.deadlineAt !== undefined) values.deadlineAt = patch.deadlineAt;
+  if (patch.error !== undefined) {
+    // `null` must clear the column, not store the JSON value `null`.
+    values.error = patch.error === null ? null : sql`${JSON.stringify(patch.error)}::jsonb`;
+  }
+
+  if (Object.keys(values).length === 0) return ok(undefined);
+
+  try {
+    const rows = await db
+      .update(runs)
+      .set(values)
+      .where(eq(runs.id, runId))
+      .returning({ id: runs.id });
+
+    if (rows.length === 0) return fail('NOT_FOUND', `run ${runId} 不存在`);
+    return ok(undefined);
+  } catch (error) {
+    return storageFailure('更新 run 状态', error);
+  }
+}
+
 export type RunRecord = {
   id: number;
   ideaId: number;
