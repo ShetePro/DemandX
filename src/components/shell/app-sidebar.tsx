@@ -18,7 +18,7 @@ export function AppSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden h-dvh flex-col gap-3.5 border-r border-border bg-surface px-3.5 py-4.5 md:flex">
+    <aside className="no-print hidden h-dvh flex-col gap-3.5 border-r border-border bg-surface px-3.5 py-4.5 md:flex">
       <div className="flex items-center gap-2.5 px-1 pb-2">
         <div className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-linear-to-br from-accent to-s3 text-on-accent shadow-sm">
           <Layers className="size-[18px]" />

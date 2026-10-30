@@ -29,7 +29,7 @@ export function MobileNav() {
   const current = NAV_ITEMS.find((item) => item.isActive(pathname))?.label ?? '工作台';
 
   return (
-    <header className="flex h-14 items-center gap-1 border-b border-border bg-surface px-2 md:hidden">
+    <header className="no-print flex h-14 items-center gap-1 border-b border-border bg-surface px-2 md:hidden">
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
           <Button variant="ghost" size="icon" aria-label="打开导航">

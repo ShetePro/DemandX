@@ -25,6 +25,7 @@ import type { SaveReportInput } from '@/lib/report/persist';
 import { validateReport } from '@/lib/report/validate';
 import type { ScoringEvidenceRow } from '@/lib/runs/evidence-repository';
 import type { OpportunityRow } from '@/lib/runs/opportunities-repository';
+import { pickBestScored, type ScoredOpportunity } from '@/lib/scoring/best';
 import type { CredibilityGrade } from '@/lib/scoring/credibility';
 import type { Decision } from '@/lib/scoring/decision';
 import type { DimensionScore } from '@/lib/scoring/types';
@@ -76,13 +77,12 @@ async function emit(
 
 interface Candidate {
   opportunity: OpportunityRow;
-  scores: DimensionScore[];
+  scores: readonly DimensionScore[];
 }
 
 /**
- * S4's ranking rule: highest total wins, and a tie goes to the smaller id so a
- * re-run always picks the same opportunity. Opportunities are read oldest
- * first, but the comparison states the tie-break instead of relying on it.
+ * S4's ranking rule lives in `pickBestScored` so the report page reads the same
+ * opportunity; this wrapper only adds the two reads the rule needs.
  */
 async function pickBest(
   repo: ReportDeps['repo'],
@@ -91,25 +91,14 @@ async function pickBest(
   const listed = await repo.listOpportunities(runId);
   if (!listed.ok) return listed;
 
-  let best: Candidate | null = null;
-  let bestTotal = -1;
-
+  const candidates: ScoredOpportunity<OpportunityRow>[] = [];
   for (const opportunity of listed.value) {
     const scores = await repo.listScores(opportunity.id);
     if (!scores.ok) return scores;
-
-    const total = scores.value.reduce((sum, score) => sum + score.points, 0);
-    if (
-      best === null ||
-      total > bestTotal ||
-      (total === bestTotal && opportunity.id < best.opportunity.id)
-    ) {
-      best = { opportunity, scores: scores.value };
-      bestTotal = total;
-    }
+    candidates.push({ opportunity, scores: scores.value });
   }
 
-  return ok(best);
+  return ok(pickBestScored(candidates));
 }
 
 /** Only accepted rows may be cited, so the whitelist is built after this filter. */

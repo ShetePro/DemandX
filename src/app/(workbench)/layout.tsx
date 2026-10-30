@@ -11,10 +11,12 @@ import { MobileNav } from '@/components/shell/mobile-nav';
  */
 export default function WorkbenchLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="grid h-dvh grid-cols-[244px_minmax(0,1fr)] overflow-hidden max-md:grid-cols-1 max-md:grid-rows-[auto_minmax(0,1fr)]">
+    <div className="grid h-dvh grid-cols-[244px_minmax(0,1fr)] overflow-hidden max-md:grid-cols-1 max-md:grid-rows-[auto_minmax(0,1fr)] print:block print:h-auto print:overflow-visible">
       <AppSidebar />
       <MobileNav />
-      <main className="h-dvh overflow-y-auto max-md:h-full">{children}</main>
+      <main className="h-dvh overflow-y-auto max-md:h-full print:h-auto print:overflow-visible">
+        {children}
+      </main>
       <CommandPalette />
     </div>
   );

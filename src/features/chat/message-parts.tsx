@@ -7,13 +7,13 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import { Streamdown, type Components } from 'streamdown';
 
+import { CitationChip } from '@/components/common/citation-chip';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ChatMessage } from '@/lib/chat/types';
 import { useCodeHighlighter } from '@/lib/hooks/use-code-highlighter';
 
-import { CitationChip } from './citation-chip';
 import { CITATION_TAG, citationRehypePlugin, citationSanitizeSchema } from './citations';
 
 /**

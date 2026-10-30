@@ -3,7 +3,7 @@ const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
 /** `YYYY-MM-DD` in the local time zone (never shifts across the UTC day boundary). */
-function formatDate(date: Date): string {
+export function formatDate(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${date.getFullYear()}-${month}-${day}`;

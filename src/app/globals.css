@@ -152,3 +152,54 @@
   --shadow-md: 0 6px 20px rgb(0 0 0 / 0.34);
   --shadow-lg: 0 18px 48px rgb(0 0 0 / 0.42);
 }
+
+/* ---------- print ---------- */
+
+/* Screen-only affordances: navigation, TOC, action buttons and the citation
+   rail. Everything a reader needs on paper is already in the document flow,
+   and the report page repeats the citations as a footnote list that only
+   becomes visible here. */
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  /* The workbench shell is a fixed-height grid on screen; paper flows. */
+  main {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  a[href] {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  /* Printing a dark theme would put light text on white paper, so the dark
+     palette falls back to the light tokens. Only the tokens the report uses
+     are restated; backgrounds are not printed by default. */
+  [data-theme='dark'] {
+    color-scheme: light;
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --panel-2: #ffffff;
+    --fg: #101114;
+    --muted: #6b7280;
+    --faint: #9ca3af;
+    --border: #e6e7eb;
+    --border-strong: #d8dae0;
+    --accent: #4f46e5;
+    --accent-soft: #eef0ff;
+    --success: #059669;
+    --success-soft: #ecfdf5;
+    --warning: #b45309;
+    --warning-soft: #fffbeb;
+    --error: #dc2626;
+    --error-soft: #fef2f2;
+    --on-accent: #ffffff;
+  }
+}
