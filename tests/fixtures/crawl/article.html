@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>小红书笔记采集工具为什么总被封 - 独立开发者观察</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="main-nav">
+        <a href="/">首页</a>
+        <a href="/hot">热门</a>
+        <a href="/login">登录</a>
+      </nav>
+    </header>
+
+    <div class="ad-banner">限时优惠：全年会员仅需 ¥99，立即抢购！</div>
+
+    <main>
+      <article class="post">
+        <h1>小红书笔记采集工具为什么总被封</h1>
+        <p class="byline">作者：林舟 · 2026-10-12</p>
+        <p>
+          我用 Node 写了一个小红书笔记采集脚本，头两天还很稳定，第三天开始所有请求都返回空白页。日志里没有任何异常，
+          HTTP 状态码一直是 200，但解析出来的正文是空的，这才是最折磨人的地方。
+        </p>
+        <p>
+          后来把响应 HTML 抓下来对比才发现，页面其实是跳到了一个人机验证页，只是它同样返回 200。
+          也就是说，只看状态码的采集脚本根本不知道自己在被拦，它会一直重试，然后越试越封。
+        </p>
+        <aside class="related">相关阅读：抖音评论区抓取踩坑记录</aside>
+        <p>
+          正确的做法是先检测响应内容里有没有验证码或登录墙的痕迹，命中之后立刻停下来，把链接交给人工处理，
+          而不是继续重试。停下来同时意味着要记录这个域名，避免同一批任务里别的链接继续往墙上撞。
+        </p>
+        <footer class="post-footer">标签：采集 / 爬虫 / 风控</footer>
+      </article>
+    </main>
+
+    <div class="ad-banner">
+      <a href="https://ads.example.com/promo">赞助商推广位：云服务器首月 1 折</a>
+    </div>
+
+    <div class="sidebar">热门文章：十个免费 API、独立开发者工具清单、我的年度复盘</div>
+
+    <footer class="site-footer">
+      <p>© 2026 独立开发者观察 · 关于我们 · 联系方式</p>
+    </footer>
+
+    <script>
+      window.__TRACKING__ = { captcha: false, just: 'a moment' };
+    </script>
+  </body>
+</html>
