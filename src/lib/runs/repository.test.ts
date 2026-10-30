@@ -393,4 +393,52 @@ suite('run repository', () => {
     expect(rows[1]?.updatedAt).toBeInstanceOf(Date);
     expect(unwrap(await repo.listRuns(1))).toHaveLength(1);
   });
+
+  it('summarises every conversation by its newest run, and the report behind it', async () => {
+    const idle = unwrap(await repo.createThread({ title: '还没有研究', idea: IDEA }));
+
+    const ran = unwrap(await repo.createThread({ title: '正在跑', idea: IDEA }));
+    const firstRun = unwrap(await repo.createRun({ threadId: ran.threadId, idea: IDEA }));
+    await client.sql`update runs set status = 'failed', stage = 'S1' where id = ${firstRun.runId}`;
+    const secondRun = unwrap(await repo.createRun({ threadId: ran.threadId, idea: IDEA }));
+    await client.sql`update runs set status = 'running', stage = 'S3', started_at = now() where id = ${secondRun.runId}`;
+
+    const done = unwrap(await repo.createThread({ title: '已完成', idea: IDEA }));
+    const doneRun = unwrap(await repo.createRun({ threadId: done.threadId, idea: IDEA }));
+    await client.sql`update runs set status = 'finished', stage = 'S6', started_at = now(), finished_at = now() where id = ${doneRun.runId}`;
+    await client.sql`insert into reports (run_id, sections, rubric_total, credibility_grade, decision) values (${doneRun.runId}, '{}'::jsonb, 78, 'B', '建议先验证，再开发')`;
+
+    const rows = unwrap(await repo.listThreadSummaries(10));
+    const byId = new Map(rows.map((row) => [row.id, row]));
+
+    expect(byId.get(idle.threadId)).toMatchObject({
+      title: '还没有研究',
+      status: 'not_started',
+      stage: null,
+      score: null,
+      grade: null,
+      decision: null,
+      hasReport: false,
+    });
+    expect(byId.get(idle.threadId)?.updatedAt).toBeInstanceOf(Date);
+
+    // Two runs: the newer one is the conversation's state, never the older one.
+    expect(byId.get(ran.threadId)).toMatchObject({
+      status: 'running',
+      stage: 'S3',
+      score: null,
+      hasReport: false,
+    });
+
+    expect(byId.get(done.threadId)).toMatchObject({
+      status: 'finished',
+      stage: 'S6',
+      score: 78,
+      grade: 'B',
+      decision: '建议先验证，再开发',
+      hasReport: true,
+    });
+
+    expect(unwrap(await repo.listThreadSummaries(1))).toHaveLength(1);
+  });
 });

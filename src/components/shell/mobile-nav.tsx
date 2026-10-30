@@ -1,6 +1,6 @@
 'use client';
 
-import { Layers, Menu } from 'lucide-react';
+import { Layers, Menu, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
@@ -15,18 +15,40 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import type { ThreadSummaryRecord } from '@/lib/runs/repository';
 
-import { NavLink, NavLinks } from './nav-links';
-import { NAV_ITEMS, SETTINGS_ITEM } from './nav-items';
+import { NavLink } from './nav-links';
+import { SETTINGS_ITEM } from './nav-items';
+import { ThreadList } from './thread-list';
+
+export interface MobileNavProps {
+  /** Conversations, newest activity first; read by the `(workbench)` layout. */
+  threads: readonly ThreadSummaryRecord[];
+}
+
+/** The conversation the URL points at, for the top-bar title. */
+function activeThreadTitle(
+  pathname: string,
+  threads: readonly ThreadSummaryRecord[],
+): string | null {
+  const match = /^\/threads\/(\d+)\/?$/.exec(pathname);
+  const raw = match?.[1];
+  if (raw === undefined) return null;
+
+  return threads.find((thread) => thread.id === Number(raw))?.title ?? null;
+}
 
 /**
- * Mobile top bar (`md:hidden`): menu button, current page title and the theme
- * switch. The drawer reuses the same {@link NavLinks} as the desktop sidebar.
+ * Mobile top bar (`md:hidden`): menu button, current conversation title and the
+ * theme switch. The drawer reuses the same {@link ThreadList} as the desktop
+ * sidebar, so both entry points always show the same conversations.
  */
-export function MobileNav() {
+export function MobileNav({ threads }: MobileNavProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const current = NAV_ITEMS.find((item) => item.isActive(pathname))?.label ?? '工作台';
+  const current =
+    activeThreadTitle(pathname, threads) ??
+    (pathname.startsWith('/threads/new') ? '新研究' : 'DemandX');
 
   return (
     <header className="no-print flex h-14 items-center gap-1 border-b border-border bg-surface px-2 md:hidden">
@@ -38,11 +60,25 @@ export function MobileNav() {
         </SheetTrigger>
         <SheetContent side="right" className="max-w-[280px]">
           <SheetHeader>
-            <SheetTitle>导航</SheetTitle>
-            <SheetDescription>在工作台、对话、报告与证据库之间切换</SheetDescription>
+            <SheetTitle>会话</SheetTitle>
+            <SheetDescription>选择一次研究，或开始新的研究。</SheetDescription>
           </SheetHeader>
-          <NavLinks pathname={pathname} onNavigate={() => setOpen(false)} />
-          <div className="mt-auto flex items-center gap-1.5 border-t border-border pt-2.5">
+
+          <Button asChild className="w-full">
+            <Link href="/threads/new" onClick={() => setOpen(false)}>
+              <Plus className="size-4" />
+              新建研究
+            </Link>
+          </Button>
+
+          <ThreadList
+            threads={threads}
+            compact
+            onNavigate={() => setOpen(false)}
+            className="min-h-0 flex-1"
+          />
+
+          <div className="flex items-center gap-1.5 border-t border-border pt-2.5">
             <NavLink
               item={SETTINGS_ITEM}
               active={SETTINGS_ITEM.isActive(pathname)}
@@ -55,7 +91,7 @@ export function MobileNav() {
       </Sheet>
 
       <Link
-        href="/"
+        href="/threads/new"
         className="flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 text-sm font-semibold text-fg"
       >
         <span className="grid size-6 shrink-0 place-items-center rounded-md bg-linear-to-br from-accent to-s3 text-on-accent">

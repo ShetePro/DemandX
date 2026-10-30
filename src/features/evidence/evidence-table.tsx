@@ -105,11 +105,15 @@ const columns = helper.columns([
 /** Canonical query order: signal → platform → status → q. */
 function hrefFor(
   pathname: string,
+  current: URLSearchParams,
   filters: EvidenceFilterState,
   patch: Partial<EvidenceFilterState>,
 ): string {
   const next = { ...filters, ...patch };
-  const params = new URLSearchParams();
+  // Start from the current query so params this table does not own — e.g. the
+  // conversation page's `view=evidence` — survive the filter change.
+  const params = new URLSearchParams(current);
+  for (const key of ['signal', 'platform', 'status', 'q']) params.delete(key);
   if (next.signal) params.set('signal', next.signal);
   if (next.platform) params.set('platform', next.platform);
   if (next.status) params.set('status', next.status);
@@ -141,7 +145,7 @@ export function EvidenceTable({ items, counts, filters, platforms, onOpen }: Evi
   function navigate(patch: Partial<EvidenceFilterState>) {
     // Reads the parsed props rather than the raw URL, so an ignored invalid
     // param can never be carried into the next navigation.
-    router.push(hrefFor(pathname, filters, patch));
+    router.push(hrefFor(pathname, searchParams, filters, patch));
   }
 
   function open(item: EvidenceViewItem) {

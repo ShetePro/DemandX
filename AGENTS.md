@@ -18,6 +18,10 @@ this file only orients assistants to the code.
 
 ## Architecture & Data Flow
 
+Navigation is conversation-first: the sidebar lists threads (state of the newest run plus
+the report's score), and `/threads/[id]?view=…` switches 对话 / 证据 / 报告 / 计划 inside the
+conversation. `/runs/…` stays reachable by URL and shares the same RSC panels.
+
 ```text
 chat UI ──createRun──▶ runs + run_events (seq) ──SSE──▶ monitor / chat rail
    │                         │
@@ -26,7 +30,8 @@ chat UI ──createRun──▶ runs + run_events (seq) ──SSE──▶ moni
 worker: S1 sources → S2 evidence (quote gate) → S3 opportunities → S4 scores
         → S5 report + citations (evidence whitelist) → S6 self-check
                               ▼
-        /runs/<id>/report · /runs/<id>/evidence · /runs/<id>/plan
+        /threads/<id>?view=chat|evidence|report|plan  (one page, four views)
+        /runs/<id>/report · /runs/<id>/evidence · /runs/<id>/plan  (same loaders, standalone)
 ```
 
 Hard invariants:
@@ -45,37 +50,38 @@ Hard invariants:
 
 ## Key Directories
 
-| Path                                              | Purpose                                                                                                                                                                      |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/app/`                                        | Routes only: layouts, pages, route handlers. `(workbench)` is the app shell.                                                                                                 |
-| `src/app/(workbench)/runs/`                       | `/runs` index plus `/runs/[runId]/{,report,evidence,plan}`.                                                                                                                  |
-| `src/features/`                                   | Business components + server actions, one folder per domain (`chat`, `runs`, `report`, `evidence`, `validation`, `settings`, `workbench`); features never import each other. |
-| `src/components/ui/`                              | Token-only primitives (Button/Card/Sheet/Dialog/…); no business copy.                                                                                                        |
-| `src/components/shell/`, `src/components/common/` | App chrome, nav, shared semantic badges.                                                                                                                                     |
-| `src/lib/chat/`                                   | Chat model resolution and tool definitions.                                                                                                                                  |
-| `src/lib/crawl/`                                  | Static/Playwright fetch, robots, login profiles, extraction.                                                                                                                 |
-| `src/lib/crypto/`                                 | AES-256-GCM provider-key encryption.                                                                                                                                         |
-| `src/lib/db/`                                     | Drizzle client, `.env` loader, migration runner, `schema/`.                                                                                                                  |
-| `src/lib/eval/`                                   | Extraction metrics (recall/precision) used by `scripts/eval-extract.ts`.                                                                                                     |
-| `src/lib/evidence/`                               | Evidence schemas, quote gate, canonical URLs, snapshots, queries.                                                                                                            |
-| `src/lib/hooks/`                                  | Shared React hooks.                                                                                                                                                          |
-| `src/lib/llm/`                                    | Provider/model/chain repositories, adapters (openai-compatible, ollama, anthropic, google), quotas.                                                                          |
-| `src/lib/pipeline/`                               | S1–S6 stages, run orchestration, stage context.                                                                                                                              |
-| `src/lib/quota/`                                  | Per-provider request/allowance guards.                                                                                                                                       |
-| `src/lib/report/`                                 | Report assembly, citation validation, persistence, read model, Markdown export.                                                                                              |
-| `src/lib/runs/`                                   | Run/thread/event repository, queue producer, SSE helpers, stage vocabulary.                                                                                                  |
-| `src/lib/scoring/`                                | Rubric dimensions, aggregation, credibility grade, five-way decision.                                                                                                        |
-| `src/lib/search/`                                 | Search adapters (DDG, Bing, HN, GitHub, App Store).                                                                                                                          |
-| `src/lib/settings/`                               | Operator settings stored in the database.                                                                                                                                    |
-| `src/lib/testing/`                                | Deterministic stub LLM and acceptance summary used by `scripts/acceptance.ts`.                                                                                               |
-| `src/lib/validation/`                             | 14-day validation-plan repository and template.                                                                                                                              |
-| `src/worker/main.ts`                              | pg-boss consumer that executes the pipeline.                                                                                                                                 |
-| `scripts/`                                        | `acceptance.ts`, `eval-extract.ts`, `crawl-login.ts`, `check-tokens.mjs`, `stub-provider.mjs`.                                                                               |
-| `tests/e2e/`                                      | Playwright specs and DB/seed helpers.                                                                                                                                        |
-| `tests/fixtures/`                                 | Crawl, extract-label and search fixtures.                                                                                                                                    |
-| `drizzle/`                                        | Generated SQL migrations. Never edit by hand; change schema + `pnpm db:generate`.                                                                                            |
-| `docs/`                                           | `runbook.md`, `acceptance.md`, `eval.md`, `superpowers/specs/`, `superpowers/plans/`, `design/`.                                                                             |
-| `.worktrees/`                                     | Git-ignored isolated worktrees.                                                                                                                                              |
+| Path                                              | Purpose                                                                                                                                                                    |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/app/`                                        | Routes only: layouts, pages, route handlers. `(workbench)` is the app shell.                                                                                               |
+| `src/app/(workbench)/threads/`                    | `/threads/new` and `/threads/[threadId]?view=…`; the conversation is the navigation unit.                                                                                  |
+| `src/app/(workbench)/runs/`                       | `/runs` index plus `/runs/[runId]/{,report,evidence,plan}` — same panels as the thread tabs, reachable by URL.                                                             |
+| `src/features/`                                   | Business components + server actions, one folder per domain (`chat`, `threads`, `runs`, `report`, `evidence`, `validation`, `settings`); features never import each other. |
+| `src/components/ui/`                              | Token-only primitives (Button/Card/Sheet/Dialog/…); no business copy.                                                                                                      |
+| `src/components/shell/`, `src/components/common/` | App chrome, nav, shared semantic badges.                                                                                                                                   |
+| `src/lib/chat/`                                   | Chat model resolution and tool definitions.                                                                                                                                |
+| `src/lib/crawl/`                                  | Static/Playwright fetch, robots, login profiles, extraction.                                                                                                               |
+| `src/lib/crypto/`                                 | AES-256-GCM provider-key encryption.                                                                                                                                       |
+| `src/lib/db/`                                     | Drizzle client, `.env` loader, migration runner, `schema/`.                                                                                                                |
+| `src/lib/eval/`                                   | Extraction metrics (recall/precision) used by `scripts/eval-extract.ts`.                                                                                                   |
+| `src/lib/evidence/`                               | Evidence schemas, quote gate, canonical URLs, snapshots, queries.                                                                                                          |
+| `src/lib/hooks/`                                  | Shared React hooks.                                                                                                                                                        |
+| `src/lib/llm/`                                    | Provider/model/chain repositories, adapters (openai-compatible, ollama, anthropic, google), quotas.                                                                        |
+| `src/lib/pipeline/`                               | S1–S6 stages, run orchestration, stage context.                                                                                                                            |
+| `src/lib/quota/`                                  | Per-provider request/allowance guards.                                                                                                                                     |
+| `src/lib/report/`                                 | Report assembly, citation validation, persistence, read model, Markdown export.                                                                                            |
+| `src/lib/runs/`                                   | Run/thread/event repository, queue producer, SSE helpers, stage vocabulary.                                                                                                |
+| `src/lib/scoring/`                                | Rubric dimensions, aggregation, credibility grade, five-way decision.                                                                                                      |
+| `src/lib/search/`                                 | Search adapters (DDG, Bing, HN, GitHub, App Store).                                                                                                                        |
+| `src/lib/settings/`                               | Operator settings stored in the database.                                                                                                                                  |
+| `src/lib/testing/`                                | Deterministic stub LLM and acceptance summary used by `scripts/acceptance.ts`.                                                                                             |
+| `src/lib/validation/`                             | 14-day validation-plan repository and template.                                                                                                                            |
+| `src/worker/main.ts`                              | pg-boss consumer that executes the pipeline.                                                                                                                               |
+| `scripts/`                                        | `acceptance.ts`, `eval-extract.ts`, `crawl-login.ts`, `check-tokens.mjs`, `stub-provider.mjs`.                                                                             |
+| `tests/e2e/`                                      | Playwright specs and DB/seed helpers.                                                                                                                                      |
+| `tests/fixtures/`                                 | Crawl, extract-label and search fixtures.                                                                                                                                  |
+| `drizzle/`                                        | Generated SQL migrations. Never edit by hand; change schema + `pnpm db:generate`.                                                                                          |
+| `docs/`                                           | `runbook.md`, `acceptance.md`, `eval.md`, `superpowers/specs/`, `superpowers/plans/`, `design/`.                                                                           |
+| `.worktrees/`                                     | Git-ignored isolated worktrees.                                                                                                                                            |
 
 ## Development Commands
 

@@ -5,12 +5,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EvidenceTable } from './evidence-table';
 import type { EvidenceFilterState, EvidenceViewItem } from './types';
 
-const mocks = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn(), onOpen: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  push: vi.fn(),
+  refresh: vi.fn(),
+  onOpen: vi.fn(),
+  search: '',
+}));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }),
   usePathname: () => '/runs/7/evidence',
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(mocks.search),
 }));
 
 vi.mock('./actions', () => ({
@@ -54,6 +59,7 @@ beforeEach(() => {
   mocks.push.mockReset();
   mocks.refresh.mockReset();
   mocks.onOpen.mockReset();
+  mocks.search = '';
 });
 
 function renderTable(
@@ -125,6 +131,18 @@ describe('EvidenceTable', () => {
     await user.click(screen.getByRole('button', { name: '搜索' }));
     expect(mocks.push).toHaveBeenLastCalledWith(
       '/runs/7/evidence?signal=paying&platform=reddit&status=rejected&q=%E5%BA%93%E5%AD%98',
+    );
+  });
+
+  it('keeps the query params the table does not own, such as the conversation view', async () => {
+    mocks.search = 'view=evidence&signal=paying';
+    const user = userEvent.setup();
+    renderTable([ACCEPTED, REJECTED], { ...FILTERS, signal: 'paying' });
+
+    await user.selectOptions(screen.getByLabelText('平台'), 'reddit');
+
+    expect(mocks.push).toHaveBeenLastCalledWith(
+      '/runs/7/evidence?view=evidence&signal=paying&platform=reddit',
     );
   });
 

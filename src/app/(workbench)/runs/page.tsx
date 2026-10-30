@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-import { PageHeader } from '@/components/shell/page-header';
+import { PageHeader } from '@/components/common/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';

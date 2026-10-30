@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { PageHeader } from '@/components/shell/page-header';
+import { PageHeader } from '@/components/common/page-header';
 import { Button } from '@/components/ui/button';
 import { QueryTable } from '@/features/runs/query-table';
 import { RunMonitor } from '@/features/runs/run-monitor';

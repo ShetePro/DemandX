@@ -1,6 +1,14 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { ChatScreen } from '@/features/chat/chat-screen';
+import { EvidencePanel } from '@/features/evidence/evidence-panel';
+import { ReportPanel } from '@/features/report/report-panel';
+import { ThreadTabs } from '@/features/threads/thread-tabs';
+import { parseThreadView } from '@/features/threads/views';
+import { PlanPanel } from '@/features/validation/plan-panel';
 import type { ChatMessage } from '@/lib/chat/types';
 import { toRunEvents, type RunEvent } from '@/lib/runs/event-reducer';
 import {
@@ -14,7 +22,10 @@ import {
 // History and the run snapshot must reflect the database on every request.
 export const dynamic = 'force-dynamic';
 
-type ThreadPageProps = { params: Promise<{ threadId: string }> };
+type ThreadPageProps = {
+  params: Promise<{ threadId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
 
 /** Persisted rows only ever hold UIMessage parts; unknown shapes are skipped. */
 function toChatMessages(records: MessageRecord[]): ChatMessage[] {
@@ -36,18 +47,13 @@ function toChatMessages(records: MessageRecord[]): ChatMessage[] {
   return messages;
 }
 
-export default async function ThreadPage({ params }: ThreadPageProps) {
-  const { threadId: rawThreadId } = await params;
-  const threadId = Number(rawThreadId);
-
-  if (!Number.isSafeInteger(threadId) || threadId <= 0) notFound();
-
-  const [thread, messages] = await Promise.all([getThread(threadId), getMessages(threadId)]);
-  if (!thread.ok) throw new Error(thread.message);
-  if (thread.value === null) notFound();
+/** The 对话 tab: history, the latest run and its event tail for the rail. */
+async function ChatView({ threadId, title }: { threadId: number; title: string }) {
+  const [messages, latestRun] = await Promise.all([
+    getMessages(threadId),
+    getLatestRunForThread(threadId),
+  ]);
   if (!messages.ok) throw new Error(messages.message);
-
-  const latestRun = await getLatestRunForThread(threadId);
   if (!latestRun.ok) throw new Error(latestRun.message);
 
   const run = latestRun.value;
@@ -63,11 +69,82 @@ export default async function ThreadPage({ params }: ThreadPageProps) {
     <ChatScreen
       key={threadId}
       threadId={threadId}
-      title={thread.value.title}
+      title={title}
       initialMessages={toChatMessages(messages.value)}
       runId={run?.id ?? null}
       evidenceHref={run === null ? null : `/runs/${run.id}/evidence`}
       initialRunEvents={events}
     />
+  );
+}
+
+/**
+ * A conversation that has never been run has no evidence, report or plan to
+ * read; guessing a stage here would be the one thing the app never does.
+ */
+function NoRunYet({ threadId }: { threadId: number }) {
+  return (
+    <div className="mx-auto w-full max-w-[900px] p-4 md:p-6">
+      <Card className="px-4 py-10 text-center">
+        <p className="text-sm font-medium text-fg">还没有开始研究</p>
+        <p className="mt-1 text-xs leading-relaxed text-muted">
+          在对话里描述想法并开始研究后，这里会显示真实采集的证据、报告与验证计划。
+        </p>
+        <Button asChild className="mt-4" variant="ghost" size="sm">
+          <Link href={`/threads/${threadId}`}>回到对话</Link>
+        </Button>
+      </Card>
+    </div>
+  );
+}
+
+/**
+ * A conversation with views instead of routes: 对话 / 证据 / 报告 / 计划 all
+ * render under `/threads/:id?view=…`, so switching never loses the thread. The
+ * run-backed views read through the same loaders as `/runs/:id/…`.
+ */
+export default async function ThreadPage({ params, searchParams }: ThreadPageProps) {
+  const { threadId: rawThreadId } = await params;
+  const threadId = Number(rawThreadId);
+
+  if (!Number.isSafeInteger(threadId) || threadId <= 0) notFound();
+
+  const thread = await getThread(threadId);
+  if (!thread.ok) throw new Error(thread.message);
+  if (thread.value === null) notFound();
+
+  const query = await searchParams;
+  const view = parseThreadView(query.view);
+
+  if (view === 'chat') {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <ThreadTabs view={view} />
+        <div className="min-h-0 flex-1">
+          <ChatView threadId={threadId} title={thread.value.title} />
+        </div>
+      </div>
+    );
+  }
+
+  const latestRun = await getLatestRunForThread(threadId);
+  if (!latestRun.ok) throw new Error(latestRun.message);
+  const run = latestRun.value;
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <ThreadTabs view={view} />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {run === null ? (
+          <NoRunYet threadId={threadId} />
+        ) : view === 'evidence' ? (
+          <EvidencePanel runId={run.id} searchParams={query} embedded />
+        ) : view === 'report' ? (
+          <ReportPanel runId={run.id} embedded />
+        ) : (
+          <PlanPanel runId={run.id} embedded />
+        )}
+      </div>
+    </div>
   );
 }

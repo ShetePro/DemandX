@@ -4,7 +4,7 @@ import Link from 'next/link';
 
 import { cn } from '@/lib/utils/cn';
 
-import { NAV_ITEMS, type NavItem } from './nav-items';
+import type { NavItem } from './nav-items';
 
 export interface NavLinkProps {
   item: NavItem;
@@ -16,8 +16,9 @@ export interface NavLinkProps {
 }
 
 /**
- * A single navigation link in the prototype's `.nav-item` shape: 34px tall,
- * 16px icon, active state as `bg-accent-soft text-accent`.
+ * A single fixed destination in the prototype's `.nav-item` shape: 34px tall,
+ * 16px icon, active state as `bg-accent-soft text-accent`. The conversation
+ * list owns its own row treatment; this is only used for settings.
  */
 export function NavLink({ item, active = false, onNavigate, className }: NavLinkProps) {
   const Icon = item.icon;
@@ -38,26 +39,5 @@ export function NavLink({ item, active = false, onNavigate, className }: NavLink
       <Icon className="size-4 shrink-0" />
       <span className="truncate">{item.label}</span>
     </Link>
-  );
-}
-
-export interface NavLinksProps {
-  pathname: string;
-  onNavigate?: (() => void) | undefined;
-}
-
-/** The primary navigation list. The caller supplies the current pathname. */
-export function NavLinks({ pathname, onNavigate }: NavLinksProps) {
-  return (
-    <nav aria-label="主导航" className="flex flex-col gap-0.5">
-      {NAV_ITEMS.map((item) => (
-        <NavLink
-          key={item.label}
-          item={item}
-          active={item.isActive(pathname)}
-          onNavigate={onNavigate}
-        />
-      ))}
-    </nav>
   );
 }

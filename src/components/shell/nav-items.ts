@@ -1,15 +1,9 @@
-import {
-  Database,
-  FileText,
-  LayoutDashboard,
-  MessageSquare,
-  SlidersHorizontal,
-} from 'lucide-react';
+import { SlidersHorizontal } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 /**
  * One navigable destination. Shared by the sidebar, the mobile drawer and the
- * command palette so the three entry points can never drift apart.
+ * command palette so the entry points can never drift apart.
  */
 export interface NavItem {
   href: string;
@@ -21,55 +15,15 @@ export interface NavItem {
   isActive: (pathname: string) => boolean;
 }
 
-/** `/runs/1/` and `/runs/1` must match alike. */
+/** `/settings/llm/` and `/settings/llm` must match alike. */
 function normalize(pathname: string): string {
   return pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
 }
 
 /**
- * Report and evidence library live under the same `/runs` tree. There is no
- * cross-run evidence index, so both nav entries open the run list; the active
- * state still separates them: the list, `/runs/:id` and `/runs/:id/report` are
- * 报告, while only `/runs/:id/evidence` is 证据库.
+ * Sidebar footer + command palette entry for the settings tree. Conversations
+ * are the primary navigation now, so this is the only fixed destination left.
  */
-const REPORT_PATH = /^\/runs(?:\/[^/]+(?:\/report)?)?$/;
-const EVIDENCE_PATH = /^\/runs\/[^/]+\/evidence$/;
-
-export const NAV_ITEMS: readonly NavItem[] = [
-  {
-    href: '/',
-    label: '工作台',
-    icon: LayoutDashboard,
-    keywords: ['home', 'dashboard'],
-    isActive: (pathname) => normalize(pathname) === '/',
-  },
-  {
-    href: '/threads',
-    label: '对话',
-    icon: MessageSquare,
-    keywords: ['chat', 'thread', 'threads'],
-    isActive: (pathname) => {
-      const path = normalize(pathname);
-      return path === '/threads' || path.startsWith('/threads/');
-    },
-  },
-  {
-    href: '/runs',
-    label: '报告',
-    icon: FileText,
-    keywords: ['report', 'runs'],
-    isActive: (pathname) => REPORT_PATH.test(normalize(pathname)),
-  },
-  {
-    href: '/runs',
-    label: '证据库',
-    icon: Database,
-    keywords: ['evidence', 'runs'],
-    isActive: (pathname) => EVIDENCE_PATH.test(normalize(pathname)),
-  },
-];
-
-/** Sidebar footer + command palette entry for the settings tree. */
 export const SETTINGS_ITEM: NavItem = {
   href: '/settings/llm',
   label: 'LLM 与采集',

@@ -1,4 +1,4 @@
-import { PageHeader } from '@/components/shell/page-header';
+import { PageHeader } from '@/components/common/page-header';
 import { SettingsTabs } from '@/components/shell/settings-tabs';
 import { HumanQueue } from '@/features/settings/crawl/human-queue';
 import { LimitsForm } from '@/features/settings/crawl/limits-form';

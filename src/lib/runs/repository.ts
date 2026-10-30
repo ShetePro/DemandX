@@ -601,6 +601,117 @@ export async function listRuns(limit = RUN_LIST_LIMIT): Promise<Result<RunSummar
   }
 }
 
+/**
+ * Every `runs.status` the worker can write, plus the state of a conversation
+ * that has never been run. A value outside this set (a hand-edited row) is
+ * passed through verbatim rather than guessed into a neighbouring state.
+ */
+export type ThreadSummaryStatus =
+  'not_started' | 'queued' | 'running' | 'paused' | 'finished' | 'failed' | 'cancelled';
+
+/** One row of the sidebar: a conversation and the newest run behind it. */
+export type ThreadSummaryRecord = {
+  id: number;
+  title: string;
+  /** Newest activity: the run's end/start/creation, or the thread's creation. */
+  updatedAt: Date;
+  /** `not_started` when the conversation has no run at all. */
+  status: ThreadSummaryStatus;
+  /** Pipeline stage of that run (`S1`…`S6`); `null` before the worker starts. */
+  stage: string | null;
+  /** 0–100 rubric total from the published report; `null` before S5. */
+  score: number | null;
+  /** Credibility grade (A–D) from the published report; `null` before S5. */
+  grade: string | null;
+  /** The report's final decision, in Chinese; `null` before S5. */
+  decision: string | null;
+  hasReport: boolean;
+};
+
+const THREAD_LIST_LIMIT = 50;
+const THREAD_LIST_MAX = 200;
+
+/** `null` means "no run yet"; anything else is surfaced as stored. */
+function threadStatus(raw: string | null): ThreadSummaryStatus {
+  if (raw === null) return 'not_started';
+  // A value outside `RUN_STATUSES` reaches the UI verbatim instead of being
+  // folded into a state the run is not in.
+  return raw as ThreadSummaryStatus;
+}
+
+/**
+ * The newest conversations with the one run each one follows. A LATERAL join
+ * picks that run inside the same statement as the list, so "does this
+ * conversation have a report?" and "what score did it get?" cost no per-row
+ * query. A conversation without a run is still listed, as `not_started`.
+ */
+export async function listThreadSummaries(
+  limit = THREAD_LIST_LIMIT,
+): Promise<Result<ThreadSummaryRecord[]>> {
+  const capped =
+    Number.isInteger(limit) && limit > 0 ? Math.min(limit, THREAD_LIST_MAX) : THREAD_LIST_LIMIT;
+
+  const latestRun = db
+    .select({
+      status: runs.status,
+      stage: runs.stage,
+      startedAt: runs.startedAt,
+      finishedAt: runs.finishedAt,
+      createdAt: runs.createdAt,
+      reportId: reports.id,
+      rubricTotal: reports.rubricTotal,
+      credibilityGrade: reports.credibilityGrade,
+      decision: reports.decision,
+    })
+    .from(runs)
+    .leftJoin(reports, eq(reports.runId, runs.id))
+    .where(eq(runs.threadId, threads.id))
+    .orderBy(desc(runs.createdAt), desc(runs.id))
+    .limit(1)
+    .as('latest_run');
+
+  try {
+    const rows = await db
+      .select({
+        id: threads.id,
+        title: threads.title,
+        threadCreatedAt: threads.createdAt,
+        status: latestRun.status,
+        stage: latestRun.stage,
+        startedAt: latestRun.startedAt,
+        finishedAt: latestRun.finishedAt,
+        runCreatedAt: latestRun.createdAt,
+        reportId: latestRun.reportId,
+        score: latestRun.rubricTotal,
+        grade: latestRun.credibilityGrade,
+        decision: latestRun.decision,
+      })
+      .from(threads)
+      .leftJoinLateral(latestRun, sql`true`)
+      .orderBy(
+        desc(
+          sql`coalesce(${latestRun.finishedAt}, ${latestRun.startedAt}, ${latestRun.createdAt}, ${threads.createdAt})`,
+        ),
+        desc(threads.id),
+      )
+      .limit(capped);
+
+    return ok(
+      rows.map(
+        ({ reportId, status, threadCreatedAt, startedAt, finishedAt, runCreatedAt, ...row }) => ({
+          ...row,
+          status: threadStatus(status),
+          hasReport: reportId !== null,
+          // A report that does not exist has no score; never borrow a neighbour's.
+          updatedAt: finishedAt ?? startedAt ?? runCreatedAt ?? threadCreatedAt,
+        }),
+      ),
+    );
+  } catch (error) {
+    return storageFailure('读取会话列表', error);
+  }
+}
+
 /** What a worker needs to start a stage: the pitch and the run's deadline. */
 export type RunContextRecord = {
   id: number;
