@@ -32,9 +32,13 @@ const createdThreadIds: number[] = [];
 /** Open a real conversation through `/threads/new` and remember its id. */
 async function createThread(page: Page): Promise<number> {
   await page.goto('/threads/new');
-  await page.getByRole('button', { name: '新建研究', exact: true }).click();
 
-  await expect(page).toHaveURL(/\/threads\/\d+$/);
+  const composer = page.getByLabel('输入消息');
+  await composer.fill(IDEA);
+  await composer.press('Enter');
+
+  // The composer docks for 420ms before navigating.
+  await expect(page).toHaveURL(/\/threads\/\d+$/, { timeout: 15_000 });
   const match = /\/threads\/(\d+)$/.exec(page.url());
   if (match?.[1] === undefined) throw new Error(`无法从 URL 解析 thread id: ${page.url()}`);
 
@@ -144,7 +148,10 @@ test.describe('Chat', () => {
 
     const sheet = page.getByRole('dialog', { name: '证据 e12' });
     await expect(sheet).toContainText('证据 e12 的原文、快照高亮与状态在证据库中查看');
-    await expect(sheet.getByRole('button', { name: '打开证据库' })).toBeDisabled();
+    // A run now starts with the first message, so the evidence page is reachable.
+    const openEvidence = sheet.getByRole('link', { name: '打开证据库' });
+    await expect(openEvidence).toBeVisible();
+    await expect(openEvidence).toHaveAttribute('href', /\/runs\/\d+\/evidence$/);
 
     // Proof the answer was streamed: the adapter asked the stub for SSE.
     const requests = await stubRequests(request);
