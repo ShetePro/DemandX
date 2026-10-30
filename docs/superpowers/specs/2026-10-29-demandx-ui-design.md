@@ -75,6 +75,21 @@ flowchart LR
 
 空态：无线程时显示三条示例 Idea（点击填入输入框，不发请求）。加载态由 `loading.tsx` 的骨架屏承担（shadcn `Skeleton`）。
 
+### 4.1.1 新建研究 `/threads/new`
+
+聚焦式首屏，不显示消息列表与运行右栏。
+
+| 元素 | 规则 |
+|---|---|
+| 布局 | 垂直居中，`max-w-3xl`；外壳仍保留左侧导航 |
+| 推荐方向 | 输入框上方 6 个 chip：内置目录（10 条）+ 最近 5 条 idea，关键词/子串实时过滤（150ms debounce），“换一批”循环；无匹配回退默认组 |
+| Composer | `Composer size="hero"`：更大最小高度与字号、更强阴影；Enter 发送 / Shift+Enter 换行 / IME 不误发 |
+| 发送 | `startResearchAction({ idea })` 事务创建 idea + thread + 用户消息 + run，并 `enqueueS1`；成功后 composer 弹性下移（`dock-down`，380ms，`cubic-bezier(.22,1.2,.36,1)`，位移由测量得出），420ms 后跳转 `/threads/<id>` |
+| 动效降级 | `prefers-reduced-motion` 下不播放位移，直接切到落底态 |
+| 失败 | toast 显示 action 的 message，保留输入，不跳转 |
+
+跳转后的对话页：有 run 才渲染右栏（`aside[aria-label="运行详情"]`），无 run 时聊天区占满宽度。
+
 ### 4.2 对话 `/threads/[threadId]`
 
 | 层 | 选型 | 用途 |
