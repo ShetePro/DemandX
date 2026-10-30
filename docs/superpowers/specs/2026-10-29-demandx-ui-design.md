@@ -109,6 +109,7 @@ flowchart LR
 - 服务端 `/api/chat` 用 `streamText` + `tool({ inputSchema: z.object(...) })`；工具结果以 `data-evidence` / `data-run` part 回传，前端只渲染结构化数据，不拼 HTML、不用 `dangerouslySetInnerHTML`。
 - 助手文本中的 `[e12]` 在渲染时转成 `CitationChip`（不靠正则改 Markdown 源码，而在 Streamdown 之后的渲染层替换），点击打开右栏 `EvidenceSheet`。
 - 审批卡是 `tool-start_research` 的 `state: 'input-available'` 渲染；确认后才调用 Server Action 建 run——工具本身不产生副作用。
+- Composer **悬浮在对话之上**：没有独立 footer 背景/分隔线，滚动内容从其下方经过（列表底部预留 `pb-32`）；卡片使用 `bg-surface/95 + backdrop-blur + shadow-lg`，浮起感来自阴影而非背景色差。
 - 断线：聊天流不做 Redis 级恢复（理由见 §9.1），重新进入页面由 RSC 读回已落库消息；run 进度靠 `after_seq` 续传。
 - 输入框支持 `Enter` 发送 / `Shift+Enter` 换行；发送中按钮变为“停止”，与参考项目一致。
 
