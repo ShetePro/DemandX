@@ -74,6 +74,42 @@ describe('reduce', () => {
     expect(state.stage).toBeNull();
   });
 
+  it('never ends the run when a stage finishes with its own status', () => {
+    const state = fold([
+      event(1, 'run.created'),
+      event(2, 'stage.finished', { stage: 'S1', status: 'finished' }),
+    ]);
+
+    expect(state.stage).toBe('S1');
+    expect(state.status).toBe('running');
+    expect(state.terminal).toBe(false);
+    expect(state.error).toBeNull();
+  });
+
+  it('lets a run-level event end the run after a stage finished', () => {
+    const state = fold([
+      event(1, 'run.created'),
+      event(2, 'stage.finished', { stage: 'S1', status: 'finished' }),
+      event(3, 'run.finished', { status: 'finished' }),
+    ]);
+
+    expect(state.status).toBe('finished');
+    expect(state.terminal).toBe(true);
+  });
+
+  it('ignores run status fields nested in stage events', () => {
+    const state = fold([
+      event(1, 'run.created'),
+      event(2, 'stage.warning', { stage: 'S1', runStatus: 'failed', status: 'failed' }),
+      event(3, 'stage.progress', { stage: 'S1', runStatus: 'cancelled' }),
+    ]);
+
+    expect(state.stage).toBe('S1');
+    expect(state.status).toBe('running');
+    expect(state.terminal).toBe(false);
+    expect(state.error).toBeNull();
+  });
+
   it('marks a run as running when it is created', () => {
     const state = fold([event(1, 'run.created', { idea: 'a' })]);
     expect(state.status).toBe('running');
@@ -108,23 +144,30 @@ describe('reduce', () => {
     expect(state.terminal).toBe(true);
   });
 
-  it('treats a terminal status on any event type as final', () => {
-    const state = fold([event(1, 'run.updated', { status: 'cancelled' })]);
+  it('treats an explicit terminal runStatus on a run-level event as final', () => {
+    const state = fold([event(1, 'run.updated', { runStatus: 'cancelled' })]);
 
     expect(state.status).toBe('cancelled');
     expect(state.terminal).toBe(true);
     expect(state.events).toHaveLength(1);
   });
 
-  it('applies a non-terminal status without ending the run', () => {
-    const paused = reduce(initialRunState(), event(1, 'run.updated', { status: 'paused' }));
+  it('does not treat a bare status field on a run-level event as the run verdict', () => {
+    const state = fold([event(1, 'run.updated', { status: 'finished' })]);
+
+    expect(state.status).toBe('idle');
+    expect(state.terminal).toBe(false);
+  });
+
+  it('applies a non-terminal runStatus without ending the run', () => {
+    const paused = reduce(initialRunState(), event(1, 'run.updated', { runStatus: 'paused' }));
 
     expect(paused.status).toBe('paused');
     expect(paused.terminal).toBe(false);
   });
 
-  it('ignores an unknown status string', () => {
-    const state = reduce(initialRunState(), event(1, 'run.updated', { status: 'thinking' }));
+  it('ignores an unknown runStatus string', () => {
+    const state = reduce(initialRunState(), event(1, 'run.updated', { runStatus: 'thinking' }));
 
     expect(state.status).toBe('idle');
     expect(state.terminal).toBe(false);

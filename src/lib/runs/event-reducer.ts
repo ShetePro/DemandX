@@ -91,8 +91,13 @@ export function reduce(state: RunStreamState, event: RunEvent): RunStreamState {
   let terminal: boolean = state.terminal;
   let error = state.error;
 
-  if (event.type === 'stage.started' || event.type === 'stage.finished') {
+  // Stage events describe one step of the pipeline. `stage.finished` also
+  // carries a `status`, but that is the *stage's* status and says nothing
+  // about whether the run is over. Only updating `stage` here keeps an
+  // intermediate stage from ending the stream.
+  if (event.type.startsWith('stage.')) {
     stage = stringField(payload, 'stage') ?? stage;
+    return { ...appended, stage };
   }
 
   if (event.type === 'run.failed') {
@@ -103,14 +108,20 @@ export function reduce(state: RunStreamState, event: RunEvent): RunStreamState {
     status = isTerminalStatus(payload.status) ? payload.status : 'finished';
     terminal = true;
     if (status === 'failed') error = stringField(payload, 'code') ?? error;
-  } else if (isTerminalStatus(payload.status)) {
-    status = payload.status;
-    terminal = true;
-    error = stringField(payload, 'code') ?? error;
-  } else if (event.type === 'run.created') {
-    status = 'running';
-  } else if (isRunStatus(payload.status)) {
-    status = payload.status;
+  } else {
+    // Run-level updates name the run status explicitly (`runStatus`), so a
+    // nested `status` field can never be mistaken for the run's verdict.
+    const runStatus = payload.runStatus;
+
+    if (isTerminalStatus(runStatus)) {
+      status = runStatus;
+      terminal = true;
+      error = stringField(payload, 'code') ?? error;
+    } else if (event.type === 'run.created') {
+      status = 'running';
+    } else if (isRunStatus(runStatus)) {
+      status = runStatus;
+    }
   }
 
   return { ...appended, stage, status, terminal, error };

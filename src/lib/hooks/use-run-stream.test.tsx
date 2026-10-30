@@ -83,6 +83,31 @@ describe('useRunStream', () => {
     expect(result.current.state.stage).toBe('S1');
   });
 
+  it('keeps the stream open when a stage finishes with its own status', () => {
+    const { result } = renderHook(() => useRunStream(14));
+
+    act(() => stream().open());
+    act(() => {
+      stream().receive(1, 'run.created');
+      stream().receive(2, 'stage.finished', { stage: 'S1', status: 'finished' });
+    });
+
+    expect(result.current.state.stage).toBe('S1');
+    expect(result.current.state.status).toBe('running');
+    expect(result.current.state.terminal).toBe(false);
+    expect(result.current.connected).toBe(true);
+    expect(stream().close).not.toHaveBeenCalled();
+
+    // No reconnect timer was armed and the original stream is still the only one.
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(MockEventSource.instances).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+
+    act(() => stream().receive(3, 'run.finished', { status: 'finished' }));
+    expect(result.current.state.terminal).toBe(true);
+    expect(stream().close).toHaveBeenCalled();
+  });
+
   it('drops a duplicated frame', () => {
     const { result } = renderHook(() => useRunStream(1));
 
