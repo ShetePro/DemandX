@@ -22,13 +22,27 @@ export type CrawlErrorCode = 'HTTP_ERROR' | 'TIMEOUT' | 'NOT_HTML' | 'TOO_LARGE'
  */
 export type HumanReason = 'login' | 'captcha' | 'blocked';
 
+/** Why a URL was never fetched. `robots` is a policy skip, not a failure. */
+export type SkipReason = 'robots';
+
 /**
  * Closed set so callers branch on `status` and never guess: only `ok` carries
- * content, only `error` is retryable, and `needs_human` must be queued instead.
+ * content, only `error` is retryable, `needs_human` is queued for a person, and
+ * `skipped` is a deliberate non-crawl that must not be retried or queued.
  */
 export type CrawlResult =
-  | { status: 'ok'; snapshot: Snapshot }
+  | {
+      status: 'ok';
+      snapshot: Snapshot;
+      /**
+       * Browser tier only: whether the page had hydrated (`waitForSelector`)
+       * before its content was read. `false` means a slow client-side app, not
+       * a failure. Absent for the static tier.
+       */
+      settled?: boolean;
+    }
   | { status: 'needs_human'; reason: HumanReason; url: string }
+  | { status: 'skipped'; reason: SkipReason; url: string }
   | { status: 'error'; code: CrawlErrorCode; url: string };
 
 /** The port every tier implements; the pipeline only depends on this. */

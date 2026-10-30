@@ -26,6 +26,7 @@ function htmlFetch(html: string, status = 200): typeof fetch {
 function browserHarness(html: string): { launch: LaunchPersistent; context: BrowserContext } {
   const page: BrowserPage = {
     goto: vi.fn(async () => ({ status: () => 200 })),
+    waitForSelector: vi.fn(async () => ({})),
     content: vi.fn(async () => html),
     close: vi.fn(async () => undefined),
   };
@@ -53,7 +54,7 @@ describe('createCrawler', () => {
     expect(() => createCrawler({ strategy: 'browser' })).toThrow(/browser options/);
   });
 
-  it('never fetches a URL that robots.txt disallows', async () => {
+  it('skips a URL that robots.txt disallows without fetching or queueing it', async () => {
     const fetchImpl = htmlFetch(article);
     const onRobotsSkip = vi.fn();
     const crawler = createCrawler({
@@ -64,8 +65,8 @@ describe('createCrawler', () => {
     });
 
     await expect(crawler.crawl(PAGE_URL)).resolves.toEqual({
-      status: 'needs_human',
-      reason: 'blocked',
+      status: 'skipped',
+      reason: 'robots',
       url: PAGE_URL,
     });
     expect(fetchImpl).not.toHaveBeenCalled();

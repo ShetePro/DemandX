@@ -26,6 +26,7 @@ function harness(
 } {
   const page: BrowserPage = {
     goto: vi.fn(async () => ({ status: () => status })),
+    waitForSelector: vi.fn(async () => ({})),
     content: vi.fn(async () => html),
     close: vi.fn(async () => undefined),
   };
@@ -54,6 +55,51 @@ describe('createPlaywrightCrawler', () => {
       waitUntil: 'domcontentloaded',
       timeout: 30_000,
     });
+  });
+
+  it('waits for the hydration marker before reading content', async () => {
+    const { launch, page } = harness(article);
+    const crawler = createPlaywrightCrawler({ profileDir: '/tmp/demandx/profile', launch });
+
+    const result = await crawler.crawl(PAGE_URL);
+
+    expect(page.waitForSelector).toHaveBeenCalledWith('main, article, [role="main"]', {
+      timeout: 8_000,
+    });
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') return;
+    expect(result.settled).toBe(true);
+  });
+
+  it('honours a custom selector and settle budget', async () => {
+    const { launch, page } = harness(article);
+    const crawler = createPlaywrightCrawler({
+      profileDir: '/tmp/demandx/profile',
+      launch,
+      waitForSelector: '#note-content',
+      settleTimeoutMs: 1_500,
+    });
+
+    await crawler.crawl(PAGE_URL);
+
+    expect(page.waitForSelector).toHaveBeenCalledWith('#note-content', { timeout: 1_500 });
+  });
+
+  it('still returns a snapshot when the page never settles', async () => {
+    const { launch, page } = harness(article);
+    (page.waitForSelector as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      Object.assign(new Error('page.waitForSelector: Timeout 8000ms exceeded.'), {
+        name: 'TimeoutError',
+      }),
+    );
+    const crawler = createPlaywrightCrawler({ profileDir: '/tmp/demandx/profile', launch });
+
+    const result = await crawler.crawl(PAGE_URL);
+
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') return;
+    expect(result.settled).toBe(false);
+    expect(result.snapshot.text).toContain('我用 Node 写了一个小红书笔记采集脚本');
   });
 
   it('passes an explicit headless setting through to the launcher', async () => {
@@ -98,6 +144,7 @@ describe('createPlaywrightCrawler', () => {
         error.name = 'TimeoutError';
         throw error;
       }),
+      waitForSelector: vi.fn(async () => ({})),
       content: vi.fn(async () => article),
       close: vi.fn(async () => undefined),
     };

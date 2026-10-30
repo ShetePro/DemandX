@@ -18,6 +18,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/lib/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
+    "crawl:login": "tsx scripts/crawl-login.ts",
     "verify": "pnpm typecheck && pnpm lint && pnpm test",
     "tokens:check": "node scripts/check-tokens.mjs"
   },

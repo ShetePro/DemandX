@@ -55,6 +55,15 @@ describe('detectChallenge', () => {
     expect(detectChallenge(html, 'https://example.com/blog/login-flows-explained')).toBeNull();
   });
 
+  it('ignores a login modal parked inside a template', () => {
+    const html =
+      '<html><body><main><p>正文内容，可以正常阅读。</p></main>' +
+      '<template><div id="login-modal"><p>请先登录，登录后查看完整内容</p></div></template>' +
+      '</body></html>';
+
+    expect(detectChallenge(html, 'https://example.com/posts/1')).toBeNull();
+  });
+
   it('leaves an ordinary article alone', () => {
     expect(detectChallenge(readable, 'https://example.com/posts/xhs-crawler')).toBeNull();
   });

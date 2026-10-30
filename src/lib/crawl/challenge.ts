@@ -121,7 +121,9 @@ export function detectChallenge(html: string, url: string): HumanReason | null {
   if (html.trim() === '') return null;
 
   const $ = load(html.slice(0, MAX_SCAN_CHARS));
-  $('script, style, noscript').remove();
+  // Inert markup cannot challenge anyone: a login modal parked in a `<template>`
+  // is rendered later, if at all, and must not flag the page.
+  $('script, style, noscript, template').remove();
 
   const markup = (selector: string): boolean => $(selector).length > 0;
   if (BLOCKED_SELECTORS.some(markup)) return 'blocked';

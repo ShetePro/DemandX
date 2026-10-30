@@ -4,6 +4,10 @@ import { extractReadable } from './extract';
 import type { CrawlPort, CrawlResult } from './port';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+/** Hydration budget: a CSR app that misses it is still read, just un-settled. */
+const DEFAULT_SETTLE_TIMEOUT_MS = 8_000;
+/** Structure every article-shaped page has once its content has rendered. */
+const DEFAULT_WAIT_FOR_SELECTOR = 'main, article, [role="main"]';
 
 /**
  * The slice of Playwright's API the crawler needs. Keeping it structural lets
@@ -14,6 +18,7 @@ export interface BrowserPage {
     url: string,
     options: { waitUntil: 'domcontentloaded'; timeout: number },
   ): Promise<{ status(): number } | null>;
+  waitForSelector(selector: string, options: { timeout: number }): Promise<unknown>;
   content(): Promise<string>;
   close(): Promise<void>;
 }
@@ -41,6 +46,14 @@ export interface PlaywrightCrawlerOptions {
   /** Injected in tests; production launches Chromium via `@playwright/test`. */
   launch?: LaunchPersistent;
   timeoutMs?: number;
+  /**
+   * Element that marks the page as hydrated. Waiting for it is what stops a
+   * client-rendered app from being classified `NOT_HTML` while its shell is all
+   * that exists.
+   */
+  waitForSelector?: string;
+  /** How long to wait for that element; a miss is recorded, not fatal. */
+  settleTimeoutMs?: number;
 }
 
 async function launchChromium(
@@ -65,6 +78,8 @@ export function createPlaywrightCrawler(options: PlaywrightCrawlerOptions): Play
   const launch = options.launch ?? launchChromium;
   const headless = options.headless ?? false;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const waitForSelector = options.waitForSelector ?? DEFAULT_WAIT_FOR_SELECTOR;
+  const settleTimeoutMs = options.settleTimeoutMs ?? DEFAULT_SETTLE_TIMEOUT_MS;
 
   let contextPromise: Promise<BrowserContext> | null = null;
 
@@ -88,6 +103,16 @@ export function createPlaywrightCrawler(options: PlaywrightCrawlerOptions): Play
           waitUntil: 'domcontentloaded',
           timeout: timeoutMs,
         });
+
+        // Best effort: a page that never renders the marker is still read, and
+        // `settled: false` tells the caller the snapshot may be incomplete.
+        let settled = true;
+        try {
+          await page.waitForSelector(waitForSelector, { timeout: settleTimeoutMs });
+        } catch {
+          settled = false;
+        }
+
         const html = await page.content();
 
         // A 403 from Cloudflare is still a challenge page, so classify the body
@@ -105,6 +130,7 @@ export function createPlaywrightCrawler(options: PlaywrightCrawlerOptions): Play
         return {
           status: 'ok',
           snapshot: { url, html, text: article.text, title: article.title },
+          settled,
         };
       } catch (error) {
         return { status: 'error', code: isTimeoutError(error) ? 'TIMEOUT' : 'HTTP_ERROR', url };

@@ -55,6 +55,30 @@ describe('createStaticCrawler', () => {
     ).resolves.toEqual({ status: 'error', code: 'TIMEOUT', url: 'https://example.com/slow' });
   });
 
+  it('maps an abort while reading the body to TIMEOUT', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      url: '',
+      headers: new Headers({ 'content-type': 'text/html' }),
+      body: {
+        getReader: () => ({
+          read: async () => {
+            const error = new Error('The operation was aborted.');
+            error.name = 'AbortError';
+            throw error;
+          },
+          cancel: async () => undefined,
+          releaseLock: () => undefined,
+        }),
+      },
+      text: async () => '',
+    })) as unknown as typeof fetch;
+
+    await expect(
+      createStaticCrawler({ fetchImpl }).crawl('https://example.com/stall'),
+    ).resolves.toEqual({ status: 'error', code: 'TIMEOUT', url: 'https://example.com/stall' });
+  });
+
   it('maps an unhandled fetch failure to HTTP_ERROR', async () => {
     const fetchImpl = vi.fn(async () => {
       throw new TypeError('fetch failed');

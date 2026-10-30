@@ -101,9 +101,11 @@ export function createStaticCrawler(options: StaticCrawlerOptions = {}): CrawlPo
           status: 'ok',
           snapshot: { url: finalUrl, html, text: article.text, title: article.title },
         };
-      } catch {
-        // Stream errors and malformed responses land here; the URL is retryable.
-        return { status: 'error', code: 'HTTP_ERROR', url };
+      } catch (error) {
+        // A body that stalls mid-stream aborts like the request itself: both are
+        // the deadline, not the server, so they stay retryable as `TIMEOUT`.
+        const timedOut = controller.signal.aborted || isTimeoutError(error);
+        return { status: 'error', code: timedOut ? 'TIMEOUT' : 'HTTP_ERROR', url };
       } finally {
         clearTimeout(timer);
       }

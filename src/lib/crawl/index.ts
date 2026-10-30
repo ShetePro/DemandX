@@ -20,7 +20,7 @@ export interface CreateCrawlerOptions {
   browser?: PlaywrightCrawlerOptions;
   /** When given, a disallowed URL is never fetched by either tier. */
   robots?: RobotsCache;
-  /** Records a robots skip; the result reports it as `needs_human`/`blocked`. */
+  /** Records a robots skip; the crawl result reports `skipped`/`robots`. */
   onRobotsSkip?: (url: string) => void;
 }
 
@@ -53,9 +53,9 @@ export function createCrawler(options: CreateCrawlerOptions): Crawler {
     async crawl(url: string): Promise<CrawlResult> {
       if (options.robots !== undefined && !(await options.robots.canFetch(url))) {
         options.onRobotsSkip?.(url);
-        // No error code fits a policy skip, and it must not be retried: the
-        // decision (manual import, skip) belongs to a person.
-        return { status: 'needs_human', reason: 'blocked', url };
+        // A policy skip is neither a failure nor a human task: the URL is simply
+        // never fetched, and the callback above is where it gets recorded.
+        return { status: 'skipped', reason: 'robots', url };
       }
 
       if (options.strategy === 'static') return staticCrawler.crawl(url);
