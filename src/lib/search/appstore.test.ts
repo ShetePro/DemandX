@@ -15,10 +15,12 @@ describe('parseAppStoreJson', () => {
 
     expect(hits).toHaveLength(3);
     expect(hits[0]).toMatchObject({
-      url: 'https://itunes.apple.com/us/review?id=284882215&type=Purple%20Software',
       platform: 'appstore',
       publishedAt: '2026-10-28T06:48:02-07:00',
     });
+    expect(hits[0]?.url).toContain('https://itunes.apple.com/us/review?id=284882215');
+    expect(hits[0]?.url).toContain('dx_review=');
+    expect(new Set(hits.map((hit) => hit.url)).size).toBe(3);
     expect(hits[0]?.title).toContain('Ads');
     expect(hits[0]?.snippet).toContain('Sifting');
     expect(hits.every((hit) => hit.platform === 'appstore')).toBe(true);
@@ -41,7 +43,7 @@ describe('parseAppStoreJson', () => {
 
     expect(single).toEqual([
       {
-        url: 'https://apps.apple.com/us/review?id=1',
+        url: 'https://apps.apple.com/us/review?id=1&dx_review=1',
         title: 'Works well',
         snippet: 'Does what I need.',
         platform: 'appstore',

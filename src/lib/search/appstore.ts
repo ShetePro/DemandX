@@ -40,15 +40,21 @@ export function parseAppStoreJson(body: string, limit: number): SearchHit[] {
     const review = asRecord(entry);
     if (review === undefined) continue;
 
-    const url = absoluteHttpUrl(asRecord(asRecord(review.link)?.attributes)?.href);
-    if (url === null) continue;
+    const base = absoluteHttpUrl(asRecord(asRecord(review.link)?.attributes)?.href);
+    if (base === null) continue;
 
     const title = cleanText(asRecord(review.title)?.label);
     if (title === '') continue;
 
+    // Every review in a feed shares the app link; add the review id so URL
+    // canonicalisation does not collapse 50 reviews into one source.
+    const reviewId = cleanText(asRecord(review.id)?.label) || String(hits.length + 1);
+    const url = new URL(base);
+    url.searchParams.set('dx_review', reviewId);
+
     const publishedAt = asString(asRecord(review.updated)?.label);
     hits.push({
-      url,
+      url: url.toString(),
       title,
       snippet: summarize(asRecord(review.content)?.label),
       platform: 'appstore',
