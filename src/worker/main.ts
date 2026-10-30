@@ -1,11 +1,11 @@
 import '@/lib/db/load-env';
 
-import { homedir } from 'node:os';
 import path from 'node:path';
 
 import { PgBoss } from 'pg-boss';
 
 import { createCrawler, type Crawler } from '@/lib/crawl';
+import { browserRoot, profileDirFor } from '@/lib/crawl/platform-profile';
 import { createRobotsCache } from '@/lib/crawl/robots';
 import { buildAngles } from '@/lib/pipeline/angles';
 import { collectS1 } from '@/lib/pipeline/s1-collect';
@@ -47,9 +47,10 @@ const CRAWL_ENABLED = enabled(process.env.CRAWL_ENABLED);
 const RESPECT_ROBOTS = enabled(process.env.CRAWL_RESPECT_ROBOTS);
 const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR?.trim() ?? '';
 
-/** One persistent profile for pipeline crawls; `pnpm crawl:login` can seed it. */
-const PROFILE_DIR =
-  process.env.CRAWL_PROFILE_DIR?.trim() || path.join(homedir(), '.demandx', 'browser', 'pipeline');
+/** Root of the per-platform profiles that `pnpm crawl:login <platform>` seeds. */
+const BROWSER_DIR = browserRoot();
+/** Profile for URLs that belong to no platform. */
+const PROFILE_DIR = process.env.CRAWL_PROFILE_DIR?.trim() || path.join(BROWSER_DIR, 'pipeline');
 
 const searchPorts: SearchPort[] = [
   createDuckDuckGoSearch(),
@@ -85,7 +86,15 @@ function createRunCrawler(settings: CrawlSettings): Crawler {
       ? { robots: createRobotsCache({ fetchRobots }) }
       : {}),
     ...(browserEnabled
-      ? { browser: { profileDir: PROFILE_DIR, headless: process.env.CRAWL_HEADLESS !== 'false' } }
+      ? {
+          browser: {
+            // A platform URL reuses the session the login button created; the
+            // rest of the web shares the generic pipeline profile.
+            profileDir: (url: string) =>
+              profileDirFor(url, { baseDir: BROWSER_DIR, fallback: PROFILE_DIR }),
+            headless: process.env.CRAWL_HEADLESS !== 'false',
+          },
+        }
       : {}),
   });
 }

@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { profileDirFor } from './platform-profile';
+
 import {
   createPlaywrightCrawler,
   type BrowserContext,
@@ -36,6 +38,26 @@ function harness(
   };
   const launch = vi.fn(async () => context);
   return { launch, page, context };
+}
+
+/** A launcher that hands out one distinct context per profile directory. */
+function multiProfileHarness(html: string) {
+  const page: BrowserPage = {
+    goto: vi.fn(async () => ({ status: () => 200 })),
+    waitForSelector: vi.fn(async () => ({})),
+    content: vi.fn(async () => html),
+    close: vi.fn(async () => undefined),
+  };
+  const contexts: BrowserContext[] = [];
+  const launch = vi.fn<LaunchPersistent>(async () => {
+    const context: BrowserContext = {
+      newPage: vi.fn(async () => page),
+      close: vi.fn(async () => undefined),
+    };
+    contexts.push(context);
+    return context;
+  });
+  return { launch, contexts };
 }
 
 describe('createPlaywrightCrawler', () => {
@@ -187,5 +209,67 @@ describe('createPlaywrightCrawler', () => {
 
     await crawler.crawl(PAGE_URL);
     expect(launch).toHaveBeenCalledTimes(2);
+  });
+
+  it('launches one context per platform, even when two URLs crawl concurrently', async () => {
+    const { launch } = multiProfileHarness(article);
+    const crawler = createPlaywrightCrawler({
+      profileDir: (url) => profileDirFor(url, { baseDir: '/tmp/demandx-browser' }),
+      launch,
+    });
+
+    await Promise.all([
+      crawler.crawl('https://www.xiaohongshu.com/explore/1'),
+      crawler.crawl('https://www.xiaohongshu.com/explore/2'),
+    ]);
+
+    // Concurrent URLs must share the in-flight launch, not race a second one.
+    expect(launch).toHaveBeenCalledTimes(1);
+    expect(launch).toHaveBeenCalledWith('/tmp/demandx-browser/xiaohongshu', { headless: false });
+  });
+
+  it('uses a separate profile per platform and the fallback for other hosts', async () => {
+    const { launch } = multiProfileHarness(article);
+    const crawler = createPlaywrightCrawler({
+      profileDir: (url) =>
+        profileDirFor(url, {
+          baseDir: '/tmp/demandx-browser',
+          fallback: '/tmp/demandx-browser/pipeline',
+        }),
+      launch,
+    });
+
+    await crawler.crawl('https://www.xiaohongshu.com/explore/1');
+    await crawler.crawl('https://www.douyin.com/video/1');
+    await crawler.crawl('https://zhuanlan.zhihu.com/p/1');
+    await crawler.crawl('https://example.com/post');
+    // A platform page seen again must not relaunch.
+    await crawler.crawl('https://www.douyin.com/video/2');
+
+    expect(launch).toHaveBeenCalledTimes(4);
+    expect(launch.mock.calls.map(([dir]) => dir)).toEqual([
+      '/tmp/demandx-browser/xiaohongshu',
+      '/tmp/demandx-browser/douyin',
+      '/tmp/demandx-browser/zhihu',
+      '/tmp/demandx-browser/pipeline',
+    ]);
+  });
+
+  it('disposes every launched profile context', async () => {
+    const { launch, contexts } = multiProfileHarness(article);
+    const crawler = createPlaywrightCrawler({
+      profileDir: (url) => profileDirFor(url, { baseDir: '/tmp/demandx-browser' }),
+      launch,
+    });
+
+    await crawler.crawl('https://www.xiaohongshu.com/explore/1');
+    await crawler.crawl('https://www.douyin.com/video/1');
+    expect(contexts).toHaveLength(2);
+
+    await crawler.dispose();
+
+    for (const context of contexts) {
+      expect(context.close).toHaveBeenCalledTimes(1);
+    }
   });
 });

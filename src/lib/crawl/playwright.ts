@@ -39,8 +39,12 @@ export interface PlaywrightCrawler extends CrawlPort {
 }
 
 export interface PlaywrightCrawlerOptions {
-  /** Holds the platform session cookies; created by the manual login script. */
-  profileDir: string;
+  /**
+   * Holds the platform session cookies; created by the manual login script.
+   * A resolver lets one crawler serve several logged-in platforms: each
+   * distinct directory is launched once and reused.
+   */
+  profileDir: string | ((url: string) => string);
   /** `false` by default: a human may need to log in or solve a challenge. */
   headless?: boolean;
   /** Injected in tests; production launches Chromium via `@playwright/test`. */
@@ -70,9 +74,9 @@ async function launchChromium(
 }
 
 /**
- * Tier 2: a persistent browser profile, so a login performed once by a human
- * keeps working for later crawls. One context is reused for the crawler's
- * lifetime; challenges are reported, never solved.
+ * Tier 2: persistent browser profiles, so a login performed once by a human
+ * keeps working for later crawls. One context per profile directory is reused
+ * for the crawler's lifetime; challenges are reported, never solved.
  */
 export function createPlaywrightCrawler(options: PlaywrightCrawlerOptions): PlaywrightCrawler {
   const launch = options.launch ?? launchChromium;
@@ -80,25 +84,30 @@ export function createPlaywrightCrawler(options: PlaywrightCrawlerOptions): Play
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const waitForSelector = options.waitForSelector ?? DEFAULT_WAIT_FOR_SELECTOR;
   const settleTimeoutMs = options.settleTimeoutMs ?? DEFAULT_SETTLE_TIMEOUT_MS;
+  const fixedProfile = options.profileDir;
+  const profileFor = typeof fixedProfile === 'string' ? () => fixedProfile : fixedProfile;
 
-  let contextPromise: Promise<BrowserContext> | null = null;
+  /** One launch per profile directory, shared by every URL that resolves to it. */
+  const contexts = new Map<string, Promise<BrowserContext>>();
 
-  function context(): Promise<BrowserContext> {
-    if (contextPromise === null) {
-      // A rejected launch must not poison later crawls.
-      contextPromise = launch(options.profileDir, { headless }).catch((error: unknown) => {
-        contextPromise = null;
-        throw error;
-      });
-    }
-    return contextPromise;
+  function contextFor(profileDir: string): Promise<BrowserContext> {
+    const cached = contexts.get(profileDir);
+    if (cached !== undefined) return cached;
+
+    // A rejected launch must not poison later crawls for this profile.
+    const created = launch(profileDir, { headless }).catch((error: unknown) => {
+      contexts.delete(profileDir);
+      throw error;
+    });
+    contexts.set(profileDir, created);
+    return created;
   }
 
   return {
     async crawl(url: string): Promise<CrawlResult> {
       let page: BrowserPage | null = null;
       try {
-        page = await (await context()).newPage();
+        page = await (await contextFor(profileFor(url))).newPage();
         const response = await page.goto(url, {
           waitUntil: 'domcontentloaded',
           timeout: timeoutMs,
@@ -139,16 +148,20 @@ export function createPlaywrightCrawler(options: PlaywrightCrawlerOptions): Play
       }
     },
 
-    /** Close the profile so the next `crawl` (or process) starts clean. */
+    /** Close every launched profile so the next `crawl` (or process) starts clean. */
     async dispose(): Promise<void> {
-      const pending = contextPromise;
-      contextPromise = null;
-      if (pending === null) return;
-      try {
-        await (await pending).close();
-      } catch {
-        // Already closed, or the launch itself failed: disposal is best effort.
-      }
+      const pending = [...contexts.values()];
+      contexts.clear();
+
+      await Promise.all(
+        pending.map(async (contextPromise) => {
+          try {
+            await (await contextPromise).close();
+          } catch {
+            // Already closed, or the launch itself failed: disposal is best effort.
+          }
+        }),
+      );
     },
   };
 }

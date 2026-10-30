@@ -2,6 +2,8 @@ import { stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
+import { browserRoot } from './platform-profile';
+
 /** Platforms the crawl settings page offers a login button for. */
 export const PLATFORMS = ['xiaohongshu', 'douyin', 'zhihu'] as const;
 
@@ -28,10 +30,6 @@ export interface SessionStatus {
 
 /** Directory names must not escape the browser root. */
 const PLATFORM_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i;
-
-export function browserRoot(home: string = homedir()): string {
-  return path.join(home, '.demandx', 'browser');
-}
 
 export function platformProfileDir(platform: string, home: string = homedir()): string {
   if (!PLATFORM_PATTERN.test(platform)) {
