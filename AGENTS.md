@@ -123,6 +123,7 @@ Editing conventions for `README.md` itself:
 - QA for this repo is **editorial**: the spec must remain internally consistent — signal definitions, rubric weights (must total 100), report sections, and the 18 mandatory rules must not contradict each other or the commentary parts.
 - Before claiming a change is done, verify the claim against the file: re-read the edited range and cite `README.md:<line>` for assertions about the spec. Do not claim tests ran; there are none.
 - If code is introduced, this section must gain the actual runner command, test layout, and coverage expectation in the same change.
+- 抽取质量评估的当前范围、已跑结果与已知缺口见 `docs/eval.md`。
 
 ## Working Agreements for AI Assistants
 

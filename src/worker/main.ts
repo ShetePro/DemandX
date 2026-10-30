@@ -7,10 +7,15 @@ import { PgBoss } from 'pg-boss';
 import { createCrawler, type Crawler } from '@/lib/crawl';
 import { browserRoot, profileDirFor } from '@/lib/crawl/platform-profile';
 import { createRobotsCache } from '@/lib/crawl/robots';
+import { readSnapshotText } from '@/lib/evidence/snapshot';
+import { createLlmPort } from '@/lib/llm';
+import { getChain } from '@/lib/llm/chain-repository';
+import { resolveApiKey } from '@/lib/llm/repository';
 import { buildAngles } from '@/lib/pipeline/angles';
-import { collectS1 } from '@/lib/pipeline/s1-collect';
+import { runPipeline } from '@/lib/pipeline/run';
 import { createQuotaGuard } from '@/lib/quota/guard';
 import { DEFAULT_QUOTA } from '@/lib/quota/policy';
+import { insertEvidence, listSourcesForExtraction } from '@/lib/runs/evidence-repository';
 import { appendEvent, getRunContext, setRunState } from '@/lib/runs/repository';
 import { S1_EXPIRE_SECONDS, S1_QUEUE, S1_RETRY_LIMIT } from '@/lib/runs/queue';
 import { insertSource, listSourceUrls, recordQuery } from '@/lib/runs/sources-repository';
@@ -63,6 +68,12 @@ const appStoreAppId = process.env.APPSTORE_APP_ID?.trim() ?? '';
 if (appStoreAppId !== '') searchPorts.push(createAppStoreSearch({ appId: appStoreAppId }));
 
 /**
+ * S2's model surface. Constructed once: the port keeps provider cooldowns in
+ * memory, and rebuilding it per run would re-probe a provider that just failed.
+ */
+const llm = createLlmPort({ loadChain: getChain, resolveApiKey });
+
+/**
  * robots.txt is plain text, not a search result: read it directly so the
  * adapters' politeness limiter (which adds a 3–8s gap per host) does not
  * delay every first crawl of a domain.
@@ -111,7 +122,7 @@ async function writeEvent(
   }
 }
 
-async function runS1(runId: number): Promise<void> {
+async function runStages(runId: number): Promise<void> {
   const record = await getRunContext(runId);
   if (!record.ok) {
     console.error(`⚠️ run ${runId} 读取失败: ${record.message}`);
@@ -164,23 +175,38 @@ async function runS1(runId: number): Promise<void> {
     deadlineAt,
   };
 
-  await writeEvent(runId, 'stage.started', {
-    stage: 'S1',
-    deadlineMinutes: settings.deadlineMinutes,
-  });
+  // The runner announces each stage through `stage.started`; remembering the
+  // last one lets a failure record the stage that actually died. S2 failing
+  // still leaves S1's sources in the store, which `runPipeline` reports back.
+  let stage: 'S1' | 'S2' = 'S1';
 
   const crawler = createRunCrawler(settings);
-  let collected;
+  let outcome;
   try {
-    collected = await collectS1(ctx, {
-      searchPorts,
-      crawl: crawler,
-      quota: createQuotaGuard({ policy: DEFAULT_QUOTA }),
-      repo: { insertSource, listSourceUrls },
-      recordQuery,
-      limits: { delayMs: pickDelayMs(settings), maxPages: settings.maxPagesPerRun },
-      ...(SNAPSHOT_DIR === '' ? {} : { snapshotDir: SNAPSHOT_DIR }),
-      onEvent: (type, payload) => writeEvent(runId, type, payload),
+    outcome = await runPipeline(ctx, {
+      s1: {
+        searchPorts,
+        crawl: crawler,
+        quota: createQuotaGuard({ policy: DEFAULT_QUOTA }),
+        repo: { insertSource, listSourceUrls },
+        recordQuery,
+        limits: { delayMs: pickDelayMs(settings), maxPages: settings.maxPagesPerRun },
+        ...(SNAPSHOT_DIR === '' ? {} : { snapshotDir: SNAPSHOT_DIR }),
+      },
+      s2: {
+        llm,
+        repo: { listSources: listSourcesForExtraction, insertEvidence },
+        // The snapshot is content-addressed, so the source's hash is all the
+        // read needs; a missing file throws and S2 counts that page as failed.
+        readSnapshot: (source) =>
+          readSnapshotText(source.contentHash, SNAPSHOT_DIR === '' ? undefined : SNAPSHOT_DIR),
+      },
+      onEvent: (type, payload) => {
+        if (type === 'stage.started' && (payload.stage === 'S1' || payload.stage === 'S2')) {
+          stage = payload.stage;
+        }
+        return writeEvent(runId, type, payload);
+      },
     });
   } finally {
     // Release this run's browser context; the login profile on disk survives.
@@ -191,34 +217,27 @@ async function runS1(runId: number): Promise<void> {
     }
   }
 
-  if (!collected.ok) {
+  if (!outcome.ok) {
     await setRunState(runId, {
       status: 'failed',
-      stage: 'S1',
+      stage,
       finishedAt: new Date(),
-      error: { code: collected.code, message: collected.message },
-    });
-    await writeEvent(runId, 'stage.finished', {
-      stage: 'S1',
-      status: 'failed',
-      code: collected.code,
+      error: { code: outcome.code, message: outcome.message },
     });
     await writeEvent(runId, 'run.failed', {
-      stage: 'S1',
-      code: collected.code,
-      message: collected.message,
+      stage,
+      code: outcome.code,
+      message: outcome.message,
+      ...outcome.summary,
     });
     return;
   }
 
-  await setRunState(runId, { status: 'finished', stage: 'S1', finishedAt: new Date() });
-  await writeEvent(runId, 'stage.finished', { stage: 'S1', ...collected.value });
+  await setRunState(runId, { status: 'finished', stage: 'S2', finishedAt: new Date() });
   await writeEvent(runId, 'run.finished', {
-    stage: 'S1',
+    stage: 'S2',
     status: 'finished',
-    sources: collected.value.sources,
-    skipped: collected.value.skipped,
-    needsHuman: collected.value.needsHuman,
+    ...outcome.value,
   });
 }
 
@@ -263,23 +282,21 @@ async function main(): Promise<void> {
         console.error('⚠️ 任务缺少合法的 runId，已跳过:', job.id);
         continue;
       }
-      console.log(`▶️ run ${runId} S1 开始 (job ${job.id})`);
+      console.log(`▶️ run ${runId} 流水线开始 (job ${job.id})`);
       try {
-        await runS1(runId);
+        await runStages(runId);
       } catch (error) {
         // A thrown programming error still becomes a terminal state and event,
         // so the SSE stream never hangs on a run no one will finish.
-        console.error(`❌ run ${runId} S1 崩溃:`, error);
+        console.error(`❌ run ${runId} 崩溃:`, error);
         const message = error instanceof Error ? error.message : String(error);
         const failed = await setRunState(runId, {
           status: 'failed',
-          stage: 'S1',
           finishedAt: new Date(),
           error: { code: 'INTERNAL', message },
         });
         if (!failed.ok) console.error(`⚠️ run ${runId} 状态写入失败: ${failed.message}`);
         await writeEvent(runId, 'run.failed', {
-          stage: 'S1',
           code: 'INTERNAL',
           message,
         });
