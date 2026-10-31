@@ -30,14 +30,18 @@ flowchart LR
 
 | # | 路由 | 页面 | 渲染 | 数据来源 | 主要交互 |
 |---|---|---|---|---|---|
-| 1 | `/` | 工作台 | RSC | `threads`、`runs`、`reports` | 新建对话、进入最近 run |
-| 2 | `/threads/[threadId]` | 对话 | RSC 外壳 + 客户端岛屿 | `messages`、`runs`、`run_events` | 发消息、审批卡、追问引用 |
-| 3 | `/runs/[runId]` | 运行监控 | RSC + SSE 客户端 | `runs`、`run_events`、`queries`、`sources` | 实时阶段推进、暂停、查看失败源 |
-| 4 | `/runs/[runId]/report` | 报告 | RSC + 两个小岛屿 | `reports`、`scores`、`citations`、`evidence` | 目录跳转、引用侧栏、导出 Markdown、打印 |
-| 5 | `/runs/[runId]/evidence` | 证据库 | RSC + 表格岛屿 | `evidence`、`sources` | 筛选（URL）、排序、看原文、人工确认 |
-| 6 | `/settings/llm` | LLM 配置 | RSC + 表单岛屿 | `providers`、`provider_models`、`llm_chains`、`provider_usage` | CRUD、测试连接、拖拽链 |
-| 7 | `/settings/crawl` | 采集设置 | RSC + 表单岛屿 | 环境配置 + `sources` 统计 | 平台会话登录、限速、`needs_human` 队列 |
-| 8 | `/settings/general` | 数据与备份 | RSC | 表统计、快照目录 | 导出/清理快照、重建索引 |
+| 1 | `/` | 重定向到 `/threads/new` | — | — | 进入新建研究 |
+| 2 | `/threads/new` | 新建研究 | RSC + 客户端 | 最近 idea、推荐目录 | 居中 composer、实时推荐、弹性入底 |
+| 3 | `/threads/[threadId]` | **会话（四视图）** | RSC + 客户端岛屿 | `messages`、`runs`、`run_events`、`evidence`、`reports`、`validation_tasks` | `?view=chat｜evidence｜report｜plan`，不离开会话 |
+| 4 | `/runs` | 运行列表（保留直达，不在侧栏） | RSC | `runs`、`reports` | 进入监控/报告/证据 |
+| 5 | `/runs/[runId]` | 运行监控 | RSC + SSE 客户端 | `runs`、`run_events`、`queries`、`sources` | 实时阶段、失败源、降级横幅 |
+| 6 | `/runs/[runId]/report` | 报告（独立路由，与页内视图共用面板） | RSC | `reports`、`scores`、`citations`、`evidence` | 目录、引用侧栏、导出、打印 |
+| 7 | `/runs/[runId]/evidence` | 证据库（独立路由，同上） | RSC + 表格岛屿 | `evidence`、`sources` | 筛选（URL）、看原文、人工确认 |
+| 8 | `/runs/[runId]/plan` | 验证计划（独立路由，同上） | RSC | `validation_tasks` | 勾选 14 天任务 |
+| 9 | `/settings/llm` | LLM 配置 | RSC + 表单岛屿 | `providers`、`provider_models`、`llm_chains`、`provider_usage` | CRUD、测试连接、拖拽链 |
+| 10 | `/settings/crawl` | 采集设置 | RSC + 表单岛屿 | 环境配置 + `sources` 统计 | 平台会话登录、限速、`needs_human` 队列 |
+
+**导航模型**：侧栏不再放页面级入口，而是**会话列表**（每行显示真实状态与 `分数 · 等级`）；打开会话通过顶部 tab 在 对话/证据/报告/计划 间切换，URL 只变 `?view=`。`/runs/*` 独立路由保留用于直达与分享。
 
 ## 3. 应用外壳
 
@@ -75,6 +79,21 @@ flowchart LR
 
 空态：无线程时显示三条示例 Idea（点击填入输入框，不发请求）。加载态由 `loading.tsx` 的骨架屏承担（shadcn `Skeleton`）。
 
+### 4.1.1 新建研究 `/threads/new`
+
+聚焦式首屏，不显示消息列表与运行右栏。
+
+| 元素 | 规则 |
+|---|---|
+| 布局 | 垂直居中，`max-w-3xl`；外壳仍保留左侧导航 |
+| 推荐方向 | 输入框上方 6 个 chip：内置目录（10 条）+ 最近 5 条 idea，关键词/子串实时过滤（150ms debounce），“换一批”循环；无匹配回退默认组 |
+| Composer | `Composer size="hero"`：更大最小高度与字号、更强阴影；Enter 发送 / Shift+Enter 换行 / IME 不误发 |
+| 发送 | `startResearchAction({ idea })` 事务创建 idea + thread + 用户消息 + run，并 `enqueueS1`；成功后 composer 弹性下移（`dock-down`，380ms，`cubic-bezier(.22,1.2,.36,1)`，位移由测量得出），420ms 后跳转 `/threads/<id>` |
+| 动效降级 | `prefers-reduced-motion` 下不播放位移，直接切到落底态 |
+| 失败 | toast 显示 action 的 message，保留输入，不跳转 |
+
+跳转后的对话页：有 run 才渲染右栏（`aside[aria-label="运行详情"]`），无 run 时聊天区占满宽度。
+
 ### 4.2 对话 `/threads/[threadId]`
 
 | 层 | 选型 | 用途 |
@@ -94,6 +113,7 @@ flowchart LR
 - 服务端 `/api/chat` 用 `streamText` + `tool({ inputSchema: z.object(...) })`；工具结果以 `data-evidence` / `data-run` part 回传，前端只渲染结构化数据，不拼 HTML、不用 `dangerouslySetInnerHTML`。
 - 助手文本中的 `[e12]` 在渲染时转成 `CitationChip`（不靠正则改 Markdown 源码，而在 Streamdown 之后的渲染层替换），点击打开右栏 `EvidenceSheet`。
 - 审批卡是 `tool-start_research` 的 `state: 'input-available'` 渲染；确认后才调用 Server Action 建 run——工具本身不产生副作用。
+- Composer **悬浮在对话之上**：没有独立 footer 背景/分隔线，滚动内容从其下方经过（列表底部预留 `pb-32`）；卡片使用 `bg-surface/95 + backdrop-blur + shadow-lg`，浮起感来自阴影而非背景色差。
 - 断线：聊天流不做 Redis 级恢复（理由见 §9.1），重新进入页面由 RSC 读回已落库消息；run 进度靠 `after_seq` 续传。
 - 输入框支持 `Enter` 发送 / `Shift+Enter` 换行；发送中按钮变为“停止”，与参考项目一致。
 

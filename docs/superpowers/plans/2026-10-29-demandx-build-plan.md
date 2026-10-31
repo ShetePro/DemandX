@@ -84,6 +84,24 @@ app/**            只做路由、数据装配、metadata
 
 ## P0 基础（2 天）
 
+**执行顺序调整（2026-10-30）**：T0.8（测试基建）先于 T0.3–T0.5 执行，否则 hook 与组件测试没有运行环境；其余顺序不变。
+
+**P0 状态：已完成（2026-10-30）** — 9/9 任务；`pnpm verify` 绿（76 单测）、`pnpm e2e` 绿、`next build` 通过；工作台页在 1440/390 两种宽度实测。
+
+**P1 状态：已完成（2026-10-30）** — 6/6 任务；密钥箱、provider 仓储、LlmPort、配置 actions、配置页 UI、settings E2E。`/settings/llm` 已可用。
+
+**P2 状态：已完成（2026-10-30）** — 6/6 任务；run 事件与 SSE、`useRunStream`、`/api/chat`、对话页与右栏、Composer、Chat E2E。
+
+**P3 状态：已完成（2026-10-30）** — 7/7 任务；采集基座与 S1（真实 run 落库 sources、终态回写）、`/settings/crawl`。
+
+**P4 状态：已完成（2026-10-30）** — 5/5 任务，另加 S2 接线；Evidence schema/提示词、quote gate（仅精确+空白归一化，NFKC offset 映射）、S2 抽取（拒绝原因落库、失败策略、拒绝率告警）、`eval-extract`（12 页标注 + dry 模式）、证据库页（筛选/高亮/人工确认与复验恢复）、worker 现在真实跑 S1→S2。`docs/eval.md` 如实记录样本与未测项。
+
+**P5 状态：已完成（2026-10-30）** — 5/5 任务；聚合与七维 rubric（表驱动、总分恒 ≤100）、可信度 A–D（A/B 均要求独立来源 ≥3，0 来源直接 D）、五选一决策（按序求值）、S3 聚类（≥3 独立来源、幻觉 id 剔除、跨簇不复用证据）、S4 评级（序数缺失记 0 + unknown、`replaceScores` 幂等）、报告结构校验器。LLM 全程不能给分。
+
+**P6 状态：已完成（2026-10-30）** — 4/4 任务；S1–S6 串进 worker、报告装配与引用白名单（越界 claim 移入 unknowns）、报告页（三栏/引用栏/懒加载雷达/打印）、Markdown 导出、报告 E2E（八节/引用/导出/打印）。另修 `stage.finished` 被误判为 run 终态导致 SSE 提前关闭。
+
+**P7 状态：已完成（2026-10-30）** — 4/4 任务；14 天验证板、运行监控页（七段 stepper + 降级横幅 + 人工队列）、`/runs` 列表与真实工作台（无死链）、契约验收脚本（确定性假模型跑 S2–S6，13 条断言）、runbook/AGENTS/package scripts 定稿。全仓无 `runs/latest` 死链。
+
 ### T0.1 初始化工程与脚本
 
 **Files:** `package.json`、`tsconfig.json`、`next.config.ts`、`src/app/layout.tsx`、`src/app/page.tsx`、`.gitignore`、`.env.example`
