@@ -200,7 +200,7 @@ function TextPart({
       text={text}
       state={state}
       onOpenCitation={onOpenCitation}
-      className="text-sm leading-7 text-fg"
+      className="max-w-full min-w-0 text-sm leading-7 break-words text-fg [&_a]:max-w-full [&_a]:[overflow-wrap:anywhere] [&_a]:break-words [&_button]:max-w-full [&_button]:[overflow-wrap:anywhere] [&_button]:break-words [&_code]:[overflow-wrap:anywhere] [&_code]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto"
     />
   );
 }
@@ -224,7 +224,7 @@ function ReasoningPart({
   return (
     <details
       open={streaming}
-      className="rounded-xl border border-border bg-surface-2/50 px-3 py-2 text-muted"
+      className="max-w-full min-w-0 overflow-hidden rounded-xl border border-border bg-surface-2/50 px-3 py-2 text-muted"
     >
       <summary className="flex cursor-pointer items-center gap-2 text-xs font-medium text-muted select-none">
         {streaming && (
@@ -236,12 +236,12 @@ function ReasoningPart({
         思考过程
         <span className="font-normal text-faint">{text.length} 字</span>
       </summary>
-      <div className="mt-2">
+      <div className="mt-2 min-w-0">
         <MarkdownPart
           text={text}
           state={state}
           onOpenCitation={onOpenCitation}
-          className="text-[13px] leading-6 text-muted"
+          className="max-w-full min-w-0 text-[13px] leading-6 break-words text-muted [&_a]:max-w-full [&_a]:[overflow-wrap:anywhere] [&_a]:break-words [&_button]:max-w-full [&_button]:[overflow-wrap:anywhere] [&_button]:break-words [&_code]:[overflow-wrap:anywhere] [&_code]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto"
         />
       </div>
     </details>

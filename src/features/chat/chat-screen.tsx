@@ -29,6 +29,13 @@ type ChatHookOptions = Extract<NonNullable<Parameters<typeof useChat>[0]>, { cha
 type ChatHookMessage = NonNullable<ChatHookOptions['messages']>[number];
 type ChatHookTransport = NonNullable<ChatHookOptions['transport']>;
 
+/**
+ * Space between the last transcript item and the composer card. The floating
+ * wrapper already adds its own `pb-4`, so the content padding must cover the
+ * card, that inset, and the visible gap.
+ */
+const COMPOSER_CLEARANCE = 16 + 16;
+
 type RunState = {
   id: number | null;
   evidenceHref: string | null;
@@ -229,7 +236,11 @@ export function ChatScreen({
           <div
             ref={contentRef}
             className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 pt-6 pb-32"
-            style={composerHeight === 0 ? undefined : { paddingBottom: composerHeight + 16 }}
+            style={
+              composerHeight === 0
+                ? undefined
+                : { paddingBottom: composerHeight + COMPOSER_CLEARANCE }
+            }
           >
             {messages.length === 0 ? (
               <EmptyConversation />

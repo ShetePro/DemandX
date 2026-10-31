@@ -258,7 +258,7 @@ test.describe('Chat', () => {
 
     const before = await metrics();
     expect(before.composerHeight).toBeGreaterThan(60);
-    expect(Math.abs(before.paddingBottom - (before.composerHeight + 16))).toBeLessThanOrEqual(1);
+    expect(Math.abs(before.paddingBottom - (before.composerHeight + 32))).toBeLessThanOrEqual(1);
     expect(before.atBottom).toBe(true);
 
     const textarea = page.getByLabel('输入消息');
@@ -269,7 +269,42 @@ test.describe('Chat', () => {
       .toBeGreaterThan(before.paddingBottom + 40);
 
     const after = await metrics();
-    expect(Math.abs(after.paddingBottom - (after.composerHeight + 16))).toBeLessThanOrEqual(1);
+    expect(Math.abs(after.paddingBottom - (after.composerHeight + 32))).toBeLessThanOrEqual(1);
     expect(after.atBottom).toBe(true);
+  });
+
+  test('思考过程里的长链接不会撑破卡片', async ({ page }) => {
+    const threadId = await createThread(page);
+    const token = `https://example.com/${'a'.repeat(240)}`;
+
+    await db()`
+      insert into messages (thread_id, role, parts)
+      values (${threadId}, 'assistant', ${JSON.stringify([
+        { type: 'reasoning', text: `长链接 ${token} 结束`, state: 'done' },
+        { type: 'text', text: '链接已记录。' },
+      ])}::jsonb)
+    `;
+
+    await page.reload();
+    const details = page.locator('section[aria-label="对话"] details').first();
+    await expect(details).toBeVisible();
+
+    const metrics = await details.evaluate((element) => {
+      const card = element.getBoundingClientRect();
+      const widest = Math.max(
+        ...Array.from(element.querySelectorAll('*')).map(
+          (node) => node.getBoundingClientRect().right,
+        ),
+      );
+      return {
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth,
+        cardRight: card.right,
+        contentRight: widest,
+      };
+    });
+
+    expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+    expect(metrics.contentRight).toBeLessThanOrEqual(metrics.cardRight + 1);
   });
 });
