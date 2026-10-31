@@ -3,7 +3,7 @@
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useStickToBottom } from 'use-stick-to-bottom';
 
@@ -153,6 +153,28 @@ export function ChatScreen({
   const { sendMessage, status, stop } = chat;
 
   const { scrollRef, contentRef } = useStickToBottom({ initial: 'instant' });
+
+  // The composer floats over the transcript, so the content needs exactly its
+  // measured height (plus a gap) as bottom padding — a fixed value clips the
+  // last message as soon as the textarea grows to several lines.
+  const composerRef = useRef<HTMLDivElement>(null);
+  const [composerHeight, setComposerHeight] = useState(0);
+
+  useLayoutEffect(() => {
+    const element = composerRef.current;
+    if (element === null) return;
+    const target = element;
+
+    function measure(): void {
+      setComposerHeight(target.getBoundingClientRect().height);
+    }
+    measure();
+
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, []);
   const isStreaming = status === 'submitted' || status === 'streaming';
 
   // Ask the question the thread was created for. The server states it only when
@@ -207,6 +229,7 @@ export function ChatScreen({
           <div
             ref={contentRef}
             className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 pt-6 pb-32"
+            style={composerHeight === 0 ? undefined : { paddingBottom: composerHeight + 16 }}
           >
             {messages.length === 0 ? (
               <EmptyConversation />
@@ -242,7 +265,7 @@ export function ChatScreen({
 
         {/* Floats over the transcript: no footer band, the thread keeps the page colour. */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-4 pb-4">
-          <div className="pointer-events-auto mx-auto w-full max-w-3xl">
+          <div ref={composerRef} className="pointer-events-auto mx-auto w-full max-w-3xl">
             <Composer
               onSend={(text) => void sendMessage({ text })}
               onStop={stop}

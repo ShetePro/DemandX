@@ -236,4 +236,40 @@ test.describe('Chat', () => {
     await expect(activity).toHaveCount(0);
     await expect(page.getByText('研究完成', { exact: true })).toBeVisible({ timeout: 1_500 });
   });
+
+  test('输入框增高时，对话底部留出同等距离', async ({ page }) => {
+    await createThread(page);
+
+    const metrics = () =>
+      page.evaluate(() => {
+        const region = document.querySelector('section[aria-label="对话"]');
+        if (!region) throw new Error('对话区未渲染');
+        const scroll = region.querySelector('div.overflow-y-auto');
+        const content = scroll?.firstElementChild;
+        const composer = region.querySelector('div.pointer-events-auto');
+        if (!scroll || !content || !composer) throw new Error('布局节点缺失');
+
+        return {
+          paddingBottom: Number.parseFloat(getComputedStyle(content).paddingBottom),
+          composerHeight: composer.getBoundingClientRect().height,
+          atBottom: Math.abs(scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight) <= 1,
+        };
+      });
+
+    const before = await metrics();
+    expect(before.composerHeight).toBeGreaterThan(60);
+    expect(Math.abs(before.paddingBottom - (before.composerHeight + 16))).toBeLessThanOrEqual(1);
+    expect(before.atBottom).toBe(true);
+
+    const textarea = page.getByLabel('输入消息');
+    await textarea.fill(Array.from({ length: 6 }, (_, index) => `第 ${index + 1} 行`).join('\n'));
+
+    await expect
+      .poll(async () => (await metrics()).paddingBottom)
+      .toBeGreaterThan(before.paddingBottom + 40);
+
+    const after = await metrics();
+    expect(Math.abs(after.paddingBottom - (after.composerHeight + 16))).toBeLessThanOrEqual(1);
+    expect(after.atBottom).toBe(true);
+  });
 });
