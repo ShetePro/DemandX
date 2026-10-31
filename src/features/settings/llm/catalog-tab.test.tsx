@@ -160,7 +160,7 @@ describe('CatalogTab', () => {
 
     await user.click(await screen.findByRole('button', { name: /DeepSeek/ }));
 
-    expect(screen.getByText('环境变量：DEEPSEEK_API_KEY（可留空）')).toBeInTheDocument();
+    expect(screen.getByText(/该厂商通常使用环境变量 DEEPSEEK_API_KEY/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '添加并带入 2 个模型' })).toBeInTheDocument();
     expect(screen.getByLabelText('API Key（可选）')).toHaveAttribute('type', 'password');
     expect(onPrefillChange).toHaveBeenCalledWith({

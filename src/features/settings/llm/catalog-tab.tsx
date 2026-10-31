@@ -322,12 +322,18 @@ export function CatalogTab({ onPrefillChange, onRequestManual, onCreated }: Cata
               autoComplete="off"
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
-              placeholder="本地 provider 可留空"
+              placeholder={
+                selected.group === 'local'
+                  ? '本地 provider 可留空'
+                  : '粘贴 API Key，保存后只显示掩码'
+              }
             />
             <p className="text-[11px] text-muted">
-              {selected.env === null
-                ? '该 provider 不需要 key。'
-                : `环境变量：${selected.env}（可留空）`}
+              {selected.group === 'local'
+                ? '本地 provider 通常不需要 key，留空即可。'
+                : selected.env === null
+                  ? '该 provider 不需要 key。'
+                  : `该厂商通常使用环境变量 ${selected.env}；本应用只读取这里填写的 Key，留空可稍后补。`}
             </p>
             <p className="text-[11px] text-faint">Key 加密存储，页面上只显示掩码。</p>
           </div>
