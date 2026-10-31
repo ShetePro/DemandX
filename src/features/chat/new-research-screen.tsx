@@ -6,6 +6,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
+import type { CreateResearchResult, Result } from '@/lib/runs/repository';
 import { cn } from '@/lib/utils/cn';
 
 import { startResearchAction } from './actions';
@@ -18,10 +19,14 @@ import {
 } from './research-suggestions';
 
 /** The composer's whole journey from the centred slot to the bottom bar. */
-const DOCK_DURATION_MS = 420;
+const DOCK_DURATION_MS = 520;
 
-/** Overshoots just enough to feel physical without looking like a spring. */
-const DOCK_EASING = 'cubic-bezier(0.22, 1.2, 0.36, 1)';
+/**
+ * iOS-sheet easing: a gentle start and a long deceleration. An aggressive
+ * spring curve would spend the first 100ms on 90% of the distance and leave the
+ * rest as dead time; this one keeps moving for the whole 520ms.
+ */
+const DOCK_EASING = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
 /** Below this the dock is imperceptible; running the FLIP would only cost frames. */
 const DOCK_MIN_DISTANCE_PX = 2;
@@ -44,13 +49,14 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
   const [draft, setDraft] = useState('');
   const [batchState, setBatchState] = useState({ query: '', batch: 0 });
   const [phase, setPhase] = useState<'idle' | 'docking'>('idle');
-  const [targetThread, setTargetThread] = useState<number | null>(null);
   const [pending, setPending] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   /** Composer `top` from the last frame the reader saw, before the layout flips. */
   const firstTop = useRef<number | null>(null);
+  /** The create request, started on the keystroke so the dock never waits for it. */
+  const actionRef = useRef<Promise<Result<CreateResearchResult>> | null>(null);
 
   const debouncedDraft = useDebouncedValue(draft, SUGGESTION_DEBOUNCE_MS);
   const suggestions = useMemo(() => mergeSuggestions(recentIdeas), [recentIdeas]);
@@ -67,11 +73,13 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
   // FLIP: the layout has already re-anchored the composer by the time this runs,
   // so play the same node back from where it was and let it land. Because the
   // animation runs on one DOM node with `fill: both`, no style is swapped
-  // mid-flight; the thread page only takes over once the box has arrived.
+  // mid-flight; the thread page only takes over once both the motion and the
+  // request have landed — neither waits for the other.
   useLayoutEffect(() => {
-    if (phase !== 'docking' || targetThread === null) return;
+    if (phase !== 'docking') return;
+    const action = actionRef.current;
+    if (action === null) return;
 
-    const threadHref = `/threads/${targetThread}`;
     const node = composerRef.current;
     const from = firstTop.current;
     const to = node?.getBoundingClientRect().top;
@@ -80,57 +88,80 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
     // render-time snapshot: it is a one-shot decision, not reactive UI.
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    // No node, a jump too small to see, reduced motion, or a runtime without
-    // the Web Animations API: arrive immediately, exactly where it belongs.
+    let animation: Animation | null = null;
+    // No node, a jump too small to see, reduced motion, or a runtime without the
+    // Web Animations API: there is nothing to play, only a request to await.
     if (
-      node === null ||
-      prefersReduced ||
-      Math.abs(dy) < DOCK_MIN_DISTANCE_PX ||
-      typeof node.animate !== 'function'
+      node !== null &&
+      !prefersReduced &&
+      Math.abs(dy) >= DOCK_MIN_DISTANCE_PX &&
+      typeof node.animate === 'function'
     ) {
-      router.push(threadHref);
-      return;
+      animation = node.animate(
+        [
+          { transform: `translateY(${dy}px) scale(0.985)` },
+          { transform: 'translateY(-3px) scale(1.003)', offset: 0.78 },
+          { transform: 'translateY(0) scale(1)' },
+        ],
+        { duration: DOCK_DURATION_MS, easing: DOCK_EASING, fill: 'both' },
+      );
     }
 
-    const animation = node.animate(
-      [
-        { transform: `translateY(${dy}px) scale(0.985)` },
-        { transform: 'translateY(-3px) scale(1.003)', offset: 0.7 },
-        { transform: 'translateY(0) scale(1)' },
-      ],
-      { duration: DOCK_DURATION_MS, easing: DOCK_EASING, fill: 'both' },
-    );
+    // `cancel()` in cleanup rejects `finished`; swallowing it keeps the expected
+    // teardown out of the console while still awaiting the real landing.
+    const docked =
+      animation === null
+        ? Promise.resolve()
+        : animation.finished.then(
+            () => undefined,
+            () => undefined,
+          );
+    let cancelled = false;
 
-    // `cancel()` in cleanup rejects `finished`; the catch keeps that expected
-    // teardown from surfacing as an unhandled rejection.
-    void animation.finished.then(() => router.push(threadHref)).catch(() => undefined);
+    // A failure must not teleport the card back to the middle: play the dock in
+    // reverse, then hand the layout back to the centred prompt.
+    async function rollBack(): Promise<void> {
+      if (animation === null) return;
+      animation.reverse();
+      await animation.finished.catch(() => undefined);
+    }
 
-    return () => animation.cancel();
-  }, [phase, targetThread, router]);
+    void Promise.all([docked, action.catch(() => null)]).then(async ([, result]) => {
+      if (cancelled) return;
 
-  async function handleSend(idea: string): Promise<void> {
-    if (pending || phase === 'docking') return;
-    setPending(true);
-
-    try {
-      const result = await startResearchAction({ idea });
-      if (!result.ok) {
+      if (result === null) {
+        toast.error('创建研究失败：网络错误');
+      } else if (!result.ok) {
         toast.error(result.message);
+      } else {
+        router.push(`/threads/${result.value.threadId}`);
         return;
       }
 
-      // First rect, before React commits the new layout: the animation must
-      // start from the position the reader is looking at.
-      const node = composerRef.current;
-      firstTop.current = node === null ? null : node.getBoundingClientRect().top;
-
-      setTargetThread(result.value.threadId);
-      setPhase('docking');
-    } catch {
-      toast.error('创建研究失败：网络错误');
-    } finally {
+      await rollBack();
+      if (cancelled) return;
       setPending(false);
-    }
+      setPhase('idle');
+    });
+
+    return () => {
+      cancelled = true;
+      animation?.cancel();
+    };
+  }, [phase, router]);
+
+  function handleSend(idea: string): void {
+    if (pending || phase === 'docking') return;
+
+    // The card has to move on the keystroke, not when the network answers:
+    // measure it, flip the layout, and let the request run alongside the dock.
+    const node = composerRef.current;
+    if (node === null) return;
+
+    setPending(true);
+    firstTop.current = node.getBoundingClientRect().top;
+    actionRef.current = startResearchAction({ idea });
+    setPhase('docking');
   }
 
   function pick(suggestion: ResearchSuggestion): void {
@@ -205,7 +236,7 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
           <Composer
             value={draft}
             onValueChange={setDraft}
-            onSend={(text) => void handleSend(text)}
+            onSend={handleSend}
             onStop={() => undefined}
           />
         </div>

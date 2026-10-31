@@ -39,7 +39,8 @@ async function createThread(page: Page): Promise<number> {
   await composer.fill(IDEA);
   await composer.press('Enter');
 
-  // The composer plays a 420ms FLIP, then the thread page takes over.
+  // The composer docks immediately (520ms FLIP) while the create request runs
+  // in parallel, then the thread page takes over.
   await expect(page).toHaveURL(/\/threads\/\d+$/, { timeout: 15_000 });
   const match = /\/threads\/(\d+)$/.exec(page.url());
   if (match?.[1] === undefined) throw new Error(`无法从 URL 解析 thread id: ${page.url()}`);

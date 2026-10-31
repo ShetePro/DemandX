@@ -54,27 +54,28 @@ function fakeLayout(centredTop: number, dockedTop: number): void {
   });
 }
 
-/** The two handles the FLIP keeps from the animation it started. */
-type AnimateStub = { animate: Mock; cancel: Mock };
+/** The handles the FLIP keeps from the animation it started. */
+type AnimateStub = { animate: Mock; cancel: Mock; reverse: Mock };
 
 /** jsdom ships no Web Animations API; install a controllable stand-in. */
 function installAnimate(finished: Promise<void>): AnimateStub {
   const cancel = vi.fn();
-  const animate = vi.fn(() => ({ finished, cancel }));
+  const reverse = vi.fn();
+  const animate = vi.fn(() => ({ finished, cancel, reverse }));
   Object.defineProperty(Element.prototype, 'animate', {
     configurable: true,
     writable: true,
     value: animate,
   });
-  return { animate, cancel };
+  return { animate, cancel, reverse };
 }
 
-/** Submit the default idea and let the action and the commit settle. */
+/** Submit the idea and let the commit, the action and the animation settle. */
 async function submit(idea = '跨境卖家库存同步太麻烦'): Promise<void> {
   fireEvent.change(textbox(), { target: { value: idea } });
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: '发送' }));
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
   });
 }
 
@@ -165,10 +166,10 @@ describe('NewResearchScreen', () => {
     expect(animate).toHaveBeenCalledWith(
       [
         { transform: 'translateY(-520px) scale(0.985)' },
-        { transform: 'translateY(-3px) scale(1.003)', offset: 0.7 },
+        { transform: 'translateY(-3px) scale(1.003)', offset: 0.78 },
         { transform: 'translateY(0) scale(1)' },
       ],
-      { duration: 420, easing: 'cubic-bezier(0.22, 1.2, 0.36, 1)', fill: 'both' },
+      { duration: 520, easing: 'cubic-bezier(0.32, 0.72, 0, 1)', fill: 'both' },
     );
 
     // The thread page only takes over once the card has arrived.
@@ -189,6 +190,63 @@ describe('NewResearchScreen', () => {
 
     expect(mocks.push).toHaveBeenCalledTimes(1);
     expect(mocks.push).toHaveBeenCalledWith('/threads/7');
+  });
+
+  it('waits for a slow request even after the animation has landed', async () => {
+    // The dock is already over; only the create request is still in flight.
+    mocks.startResearchAction.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve(CREATED), 100);
+        }),
+    );
+    fakeLayout(120, 640);
+    installAnimate(Promise.resolve());
+
+    render(<NewResearchScreen recentIdeas={[]} />);
+    await submit();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(99);
+    });
+    expect(mocks.push).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(mocks.push).toHaveBeenCalledTimes(1);
+    expect(mocks.push).toHaveBeenCalledWith('/threads/7');
+  });
+
+  it('runs the dock immediately and the create request in parallel', async () => {
+    // A request that never answers: the card still has to move on the keystroke.
+    mocks.startResearchAction.mockImplementation(() => new Promise(() => undefined));
+    fakeLayout(120, 640);
+    const { animate } = installAnimate(new Promise<void>(() => undefined));
+
+    render(<NewResearchScreen recentIdeas={[]} />);
+    await submit();
+
+    expect(mocks.startResearchAction).toHaveBeenCalledTimes(1);
+    expect(animate).toHaveBeenCalledTimes(1);
+    expect(composer()).toHaveAttribute('data-docking', 'true');
+  });
+
+  it('starts only one request when the reader submits twice', async () => {
+    mocks.startResearchAction.mockImplementation(() => new Promise(() => undefined));
+    fakeLayout(120, 640);
+    installAnimate(new Promise<void>(() => undefined));
+
+    render(<NewResearchScreen recentIdeas={[]} />);
+    await submit('跨境卖家库存同步太麻烦');
+
+    // A second, fully enabled submit during the dock must be ignored.
+    fireEvent.change(textbox(), { target: { value: '第二条想法也要发出去' } });
+    const again = screen.getByRole('button', { name: '发送' });
+    expect(again).toBeEnabled();
+    fireEvent.click(again);
+
+    expect(mocks.startResearchAction).toHaveBeenCalledTimes(1);
   });
 
   it('navigates immediately when the Web Animations API is missing', async () => {
@@ -216,24 +274,37 @@ describe('NewResearchScreen', () => {
     expect(mocks.push).toHaveBeenCalledWith('/threads/7');
   });
 
-  it('stays idle and reports the failure without navigating', async () => {
+  it('rolls the dock back and reports a failed create without navigating', async () => {
     mocks.startResearchAction.mockResolvedValue({
       ok: false,
       code: 'STORAGE_FAILED',
       message: '创建研究失败 (SQLSTATE 08006)',
     });
-    const { animate } = installAnimate(Promise.resolve());
+    fakeLayout(120, 640);
+    const { animate, reverse } = installAnimate(Promise.resolve());
 
     render(<NewResearchScreen recentIdeas={[]} />);
     await submit();
 
     expect(mocks.error).toHaveBeenCalledWith('创建研究失败 (SQLSTATE 08006)');
+    // The card plays the dock backwards instead of snapping to the middle.
+    expect(reverse).toHaveBeenCalledTimes(1);
+    expect(animate).toHaveBeenCalledTimes(1);
     expect(composer()).toHaveAttribute('data-docking', 'false');
-    expect(animate).not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
 
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
+  it('rolls back to the prompt when the request throws', async () => {
+    mocks.startResearchAction.mockRejectedValue(new Error('fetch failed'));
+    fakeLayout(120, 640);
+    const { reverse } = installAnimate(Promise.resolve());
+
+    render(<NewResearchScreen recentIdeas={[]} />);
+    await submit();
+
+    expect(mocks.error).toHaveBeenCalledWith('创建研究失败：网络错误');
+    expect(reverse).toHaveBeenCalledTimes(1);
+    expect(composer()).toHaveAttribute('data-docking', 'false');
     expect(mocks.push).not.toHaveBeenCalled();
   });
 
