@@ -249,7 +249,7 @@ export function ChatScreen({
                 <article
                   key={message.id}
                   className={cn(
-                    'min-w-0',
+                    'max-w-full min-w-0 overflow-x-clip',
                     message.role === 'user' &&
                       'ml-auto w-fit max-w-[85%] rounded-xl bg-accent-soft px-3 py-2',
                   )}

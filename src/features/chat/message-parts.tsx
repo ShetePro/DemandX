@@ -62,7 +62,7 @@ export function MessageParts({
   onAdjustAngles,
 }: MessagePartsProps) {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex max-w-full min-w-0 flex-col gap-3">
       {coalesceReasoning(message.parts).map((part, index) => {
         switch (part.type) {
           case 'text':
@@ -200,7 +200,7 @@ function TextPart({
       text={text}
       state={state}
       onOpenCitation={onOpenCitation}
-      className="max-w-full min-w-0 text-sm leading-7 break-words text-fg [&_a]:max-w-full [&_a]:[overflow-wrap:anywhere] [&_a]:break-words [&_button]:max-w-full [&_button]:[overflow-wrap:anywhere] [&_button]:break-words [&_code]:[overflow-wrap:anywhere] [&_code]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto"
+      className="max-w-full min-w-0 text-sm leading-7 break-words text-fg [&_*]:max-w-full [&_*]:break-words [&_a]:max-w-full [&_a]:[overflow-wrap:anywhere] [&_a]:break-words [&_button]:max-w-full [&_button]:[overflow-wrap:anywhere] [&_button]:break-words [&_code]:[overflow-wrap:anywhere] [&_code]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto"
     />
   );
 }
@@ -241,7 +241,7 @@ function ReasoningPart({
           text={text}
           state={state}
           onOpenCitation={onOpenCitation}
-          className="max-w-full min-w-0 text-[13px] leading-6 break-words text-muted [&_a]:max-w-full [&_a]:[overflow-wrap:anywhere] [&_a]:break-words [&_button]:max-w-full [&_button]:[overflow-wrap:anywhere] [&_button]:break-words [&_code]:[overflow-wrap:anywhere] [&_code]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto"
+          className="max-w-full min-w-0 text-[13px] leading-6 break-words text-muted [&_*]:max-w-full [&_*]:break-words [&_a]:max-w-full [&_a]:[overflow-wrap:anywhere] [&_a]:break-words [&_button]:max-w-full [&_button]:[overflow-wrap:anywhere] [&_button]:break-words [&_code]:[overflow-wrap:anywhere] [&_code]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto"
         />
       </div>
     </details>
@@ -281,7 +281,7 @@ function StartResearchCard({
         <CardTitle>开始完整研究？</CardTitle>
         <p className="text-xs text-muted">预计耗时约 35 分钟，会采集一手帖子与定价页</p>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+      <CardContent className="flex max-w-full min-w-0 flex-col gap-3">
         {idea === '' ? (
           <p className="text-sm text-muted">正在整理研究主题…</p>
         ) : (

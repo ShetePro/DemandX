@@ -300,11 +300,13 @@ test.describe('Chat', () => {
         scrollWidth: element.scrollWidth,
         clientWidth: element.clientWidth,
         cardRight: card.right,
+        paddingRight: Number.parseFloat(getComputedStyle(element).paddingRight),
         contentRight: widest,
       };
     });
 
     expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
-    expect(metrics.contentRight).toBeLessThanOrEqual(metrics.cardRight + 1);
+    // Nothing may reach the padding, let alone the border.
+    expect(metrics.contentRight).toBeLessThanOrEqual(metrics.cardRight - metrics.paddingRight + 1);
   });
 });
