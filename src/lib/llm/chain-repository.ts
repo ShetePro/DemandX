@@ -65,16 +65,14 @@ export async function getChain(profile: Profile): Promise<Result<ChainItem[]>> {
  * Replace both chains in one transaction. Every entry must name an enabled
  * provider and a model that provider exposes to outside clients: a chain the
  * port cannot serve is refused now, not at the first run. Positions restart at
- * 0 for each profile.
+ * 0 for each profile. A profile may be empty here — the settings editor's
+ * schema still refuses to save that way, but a one-click append configures one
+ * chain at a time, and `getChain` already reports an empty chain as valid.
  */
 export async function saveChains(input: ChainsInput): Promise<Result<void>> {
   const entries = PROFILES.flatMap((profile) =>
     input[profile].map((entry, position) => ({ ...entry, profile, position })),
   );
-
-  for (const profile of PROFILES) {
-    if (input[profile].length === 0) return fail(`${profile} 链不能为空`);
-  }
 
   const providerIds = [...new Set(entries.map((entry) => entry.providerId))];
 

@@ -267,17 +267,22 @@ suite('chain repository', () => {
       expect(await chains()).toEqual([]);
     });
 
-    it('refuses an empty chain even when called directly', async () => {
+    it('writes a single profile and leaves the other empty', async () => {
       const p = await provider('P', 'openai-compatible', 'https://p.example/v1', true);
       await model(p, 'small-model');
 
-      const result = await repo.saveChains({
-        bulk: [],
-        quality: [{ providerId: p, modelId: 'small-model' }],
-      });
+      // One-click append configures one chain at a time; the editor's own
+      // schema is what refuses to save an empty profile.
+      unwrap(
+        await repo.saveChains({
+          bulk: [],
+          quality: [{ providerId: p, modelId: 'small-model' }],
+        }),
+      );
 
-      expect(result).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
-      expect(await chains()).toEqual([]);
+      expect(await chains()).toEqual([
+        { profile: 'quality', position: 0, provider_id: p, model_id: 'small-model' },
+      ]);
     });
   });
 });

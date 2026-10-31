@@ -70,7 +70,11 @@ test.describe('LLM settings', () => {
     await discoverModels(page, PROVIDER_NAME);
 
     await page.getByRole('button', { name: `测试 ${PROVIDER_NAME}` }).click();
-    await expect(page.getByRole('status')).toHaveText(/^200 · \d+ ms · stub-model-a$/);
+    // The settings page also has a role=status notice for empty chains, so the
+    // probe result is read inside its own panel.
+    await expect(page.getByRole('region', { name: '测试连接' }).getByRole('status')).toHaveText(
+      /^200 · \d+ ms · stub-model-a$/,
+    );
 
     // The probe and the discovery call left the browser via the adapter, so the
     // stub saw the encrypted key's plaintext and the provider's custom header.
@@ -132,5 +136,47 @@ test.describe('LLM settings', () => {
     await page.goto('/');
     await page.getByRole('link', { name: 'LLM 与采集' }).click();
     await expect(page).toHaveURL(/\/settings\/llm$/);
+  });
+
+  test('陈旧 provider id 会被纠正', async ({ page }) => {
+    await page.goto('/settings/llm?provider=999999');
+
+    await expect(page).toHaveURL(/\/settings\/llm(\?provider=\d+)?$/);
+    await expect(page).not.toHaveURL(/provider=999999/);
+  });
+
+  test('一键加入链', async ({ page }) => {
+    await createStubProvider(page, {
+      name: PROVIDER_NAME,
+      apiKey: API_KEY,
+      baseUrl: PROVIDER_BASE_URL,
+    });
+    await discoverModels(page, PROVIDER_NAME);
+
+    // First click: bulk is empty, so this alone must persist a usable chain.
+    await page.getByRole('button', { name: '把 stub-model-a 加入链' }).click();
+    await page.getByRole('menuitem', { name: '把 stub-model-a 加入 bulk 链' }).click();
+    await expect(page.getByText('已加入 bulk 链 #1')).toBeVisible();
+    await expect(page.getByRole('list', { name: 'bulk 链' })).toContainText(
+      `${PROVIDER_NAME} / stub-model-a`,
+    );
+
+    await page.getByRole('button', { name: '把 stub-model-b 加入链' }).click();
+    await page.getByRole('menuitem', { name: '把 stub-model-b 加入 quality 链' }).click();
+    await expect(page.getByText('已加入 quality 链 #1')).toBeVisible();
+    await expect(page.getByRole('list', { name: 'quality 链' })).toContainText(
+      `${PROVIDER_NAME} / stub-model-b`,
+    );
+
+    // Membership is now visible to the menu, so the same entry cannot repeat.
+    await page.getByRole('button', { name: '把 stub-model-b 加入链' }).click();
+    await expect(
+      page.getByRole('menuitem', { name: '把 stub-model-b 加入 quality 链' }),
+    ).toBeDisabled();
+    await page.keyboard.press('Escape');
+
+    await page.reload();
+    await expect(page.getByRole('list', { name: 'bulk 链' })).toContainText('stub-model-a');
+    await expect(page.getByRole('list', { name: 'quality 链' })).toContainText('stub-model-b');
   });
 });

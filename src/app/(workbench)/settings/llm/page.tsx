@@ -1,4 +1,5 @@
 import { Pencil } from 'lucide-react';
+import { redirect } from 'next/navigation';
 
 import { PageHeader } from '@/components/common/page-header';
 import { SettingsTabs } from '@/components/shell/settings-tabs';
@@ -60,15 +61,25 @@ export default async function LlmSettingsPage({ searchParams }: { searchParams: 
   const models = modelsResult.ok ? modelsResult.value : [];
   const usage = usageResult.ok ? usageResult.value : [];
 
-  const requestedId = Number(firstParam((await searchParams).provider));
-  const selectedProvider =
-    providers.find((provider) => provider.id === requestedId) ?? providers[0] ?? null;
+  const requestedParam = firstParam((await searchParams).provider);
+  const requestedId = requestedParam === undefined ? NaN : Number(requestedParam);
+  const matchedProvider = providers.find((provider) => provider.id === requestedId) ?? null;
+  const selectedProvider = matchedProvider ?? providers[0] ?? null;
+
+  // A stale link (deleted provider, hand-edited id) must not leave a provider
+  // in the address bar that the page is not actually showing.
+  if (requestedParam !== undefined && matchedProvider === null) {
+    redirect(
+      selectedProvider === null ? '/settings/llm' : `/settings/llm?provider=${selectedProvider.id}`,
+    );
+  }
 
   const chains = chainsResult.ok ? chainsResult.value : { bulk: [], quality: [] };
   const initialChains: Record<Profile, ChainDraft[]> = {
     bulk: chains.bulk.map((item) => ({ providerId: item.providerId, modelId: item.modelId })),
     quality: chains.quality.map((item) => ({ providerId: item.providerId, modelId: item.modelId })),
   };
+  const chainsEmpty = chains.bulk.length === 0 && chains.quality.length === 0;
 
   const modelCounts: Record<number, number> = {};
   for (const model of models) {
@@ -147,7 +158,27 @@ export default async function LlmSettingsPage({ searchParams }: { searchParams: 
                 </div>
               </div>
 
-              <ModelChips provider={selectedProvider} models={selectedModels} />
+              {chainsEmpty ? (
+                <div
+                  role="status"
+                  className="rounded-xl border border-warning/40 bg-warning-soft px-4 py-3 text-xs text-warning"
+                >
+                  <p className="font-medium">还没有可用的模型链，聊天与研究无法调用模型</p>
+                  <p className="mt-1">
+                    用模型右侧的 + 加入，或
+                    <a href="#chains" className="ml-1 underline underline-offset-2 hover:text-fg">
+                      到下方批量编辑
+                    </a>
+                    。
+                  </p>
+                </div>
+              ) : null}
+
+              <ModelChips
+                provider={selectedProvider}
+                models={selectedModels}
+                chains={initialChains}
+              />
 
               <div className="grid gap-4 md:grid-cols-2">
                 <UsagePanel provider={selectedProvider} usage={selectedUsage} />

@@ -24,6 +24,14 @@ export type TestButtonProps = {
  */
 export function TestButton({ providerId, providerName }: TestButtonProps) {
   const [state, setState] = useState<TestState>({ kind: 'idle' });
+  // The page keeps this component mounted while the URL switches providers; an
+  // error belongs to the id it was produced for, never to the next provider.
+  // React's "adjust state when props change" pattern avoids a cascading effect.
+  const [stateProviderId, setStateProviderId] = useState(providerId);
+  if (stateProviderId !== providerId) {
+    setStateProviderId(providerId);
+    setState({ kind: 'idle' });
+  }
 
   async function run() {
     setState({ kind: 'testing' });
@@ -40,9 +48,12 @@ export function TestButton({ providerId, providerName }: TestButtonProps) {
         kind: 'error',
         // `describe()` already reports an HTTP failure as "HTTP 401"; only a
         // status with no mention of it (e.g. storage errors) gets the suffix.
-        text: result.message.includes('HTTP')
-          ? result.message
-          : `${result.message}${result.status > 0 ? ` · HTTP ${result.status}` : ''}`,
+        text:
+          result.code === 'PROVIDER_NOT_FOUND'
+            ? 'provider 已不存在，请刷新页面'
+            : result.message.includes('HTTP')
+              ? result.message
+              : `${result.message}${result.status > 0 ? ` · HTTP ${result.status}` : ''}`,
       });
     } catch {
       setState({ kind: 'error', text: '测试失败：网络错误' });

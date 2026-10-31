@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -57,5 +57,41 @@ describe('TestButton', () => {
     await user.click(screen.getByRole('button', { name: '测试 OpenCode' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/^连接失败：HTTP 401$/);
+  });
+
+  it('reports a deleted provider with a refresh hint', async () => {
+    const user = userEvent.setup();
+    mocks.testProviderAction.mockResolvedValue({
+      ok: false,
+      code: 'PROVIDER_NOT_FOUND',
+      message: 'provider 100 不存在',
+      status: 0,
+    });
+
+    render(<TestButton providerId={100} providerName="OpenCode" />);
+
+    await user.click(screen.getByRole('button', { name: '测试 OpenCode' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('provider 已不存在，请刷新页面');
+  });
+
+  it('clears a stale result when the selected provider changes', async () => {
+    const user = userEvent.setup();
+    mocks.testProviderAction.mockResolvedValue({
+      ok: false,
+      code: 'PROVIDER_NOT_FOUND',
+      message: 'provider 100 不存在',
+      status: 0,
+    });
+
+    const { rerender } = render(<TestButton providerId={100} providerName="OpenCode" />);
+
+    await user.click(screen.getByRole('button', { name: '测试 OpenCode' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('provider 已不存在，请刷新页面');
+
+    rerender(<TestButton providerId={111} providerName="OpenCode Go" />);
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(mocks.testProviderAction).toHaveBeenCalledTimes(1);
   });
 });

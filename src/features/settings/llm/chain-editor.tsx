@@ -334,6 +334,7 @@ export function ChainEditor({ initialChains, providers, models }: ChainEditorPro
 
   return (
     <section
+      id="chains"
       aria-labelledby={headingId}
       className="rounded-xl border border-border bg-surface p-4 shadow-sm"
     >

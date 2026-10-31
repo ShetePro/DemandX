@@ -262,3 +262,71 @@ export async function addModelAction(id: unknown, raw: unknown): Promise<Result<
   if (result.ok) revalidatePath(SETTINGS_PATH);
   return result;
 }
+
+const appendModelInputSchema = z.object({
+  profile: z.enum(['bulk', 'quality']),
+  providerId: providerIdSchema,
+  modelId: z.string().trim().min(1, 'modelId 不能为空').max(200, 'modelId 过长'),
+});
+
+export type AppendModelResult = {
+  added: boolean;
+  /** Zero-based index in the profile chain, whether appended or already present. */
+  position: number;
+};
+
+/**
+ * One-click membership from the model list. The entry is appended, never
+ * inserted mid-chain, and the other profile is left exactly as it was: adding a
+ * model to `quality` must not silently spend `bulk` calls on it.
+ */
+export async function appendModelToChainAction(raw: unknown): Promise<Result<AppendModelResult>> {
+  const parsed = parse(appendModelInputSchema, raw);
+  if (!parsed.ok) return parsed;
+  const { profile, providerId, modelId } = parsed.value;
+
+  const models = await listAllModels();
+  if (!models.ok) return models;
+
+  const model = models.value.find(
+    (row) => row.providerId === providerId && row.modelId === modelId,
+  );
+  if (model === undefined) {
+    return {
+      ok: false,
+      code: 'VALIDATION_FAILED',
+      message: `模型 ${modelId} 不在 provider ${providerId} 的模型列表中`,
+    };
+  }
+  if (!model.availableExternally) {
+    return {
+      ok: false,
+      code: 'VALIDATION_FAILED',
+      message: `模型 ${modelId} 仅官方客户端可用，不能加入链`,
+    };
+  }
+
+  const [bulk, quality] = await Promise.all([getChain('bulk'), getChain('quality')]);
+  if (!bulk.ok) return bulk;
+  if (!quality.ok) return quality;
+
+  const chains: Record<Profile, ChainItem[]> = { bulk: bulk.value, quality: quality.value };
+  const position = chains[profile].findIndex(
+    (entry) => entry.providerId === providerId && entry.modelId === modelId,
+  );
+  if (position >= 0) return { ok: true, value: { added: false, position } };
+
+  const toEntry = (entry: ChainItem): { providerId: number; modelId: string } => ({
+    providerId: entry.providerId,
+    modelId: entry.modelId,
+  });
+  const appended = [...chains[profile].map(toEntry), { providerId, modelId }];
+  const result = await saveChains({
+    bulk: profile === 'bulk' ? appended : chains.bulk.map(toEntry),
+    quality: profile === 'quality' ? appended : chains.quality.map(toEntry),
+  });
+  if (!result.ok) return result;
+
+  revalidatePath(SETTINGS_PATH);
+  return { ok: true, value: { added: true, position: chains[profile].length } };
+}

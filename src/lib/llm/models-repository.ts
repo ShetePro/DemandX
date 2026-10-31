@@ -88,6 +88,34 @@ function parseOpenAiModels(body: unknown): RemoteModel[] {
 }
 
 /**
+ * Where a provider answers "what do you serve?". Ollama keeps its native tags
+ * endpoint at the daemon root. OpenCode publishes one catalogue for both its
+ * subscription and metered endpoints at the inference root, not under the
+ * per-client `/go/openai/v1` path its chat endpoint uses, so the suffix of the
+ * configured base URL must not be taken as the endpoint. Everything else speaks
+ * the OpenAI `/models` convention below its base URL.
+ */
+export function modelsEndpointFor(kind: ProviderKind, baseUrl: string): string {
+  if (kind === 'ollama') return ollamaTagsUrl(baseUrl);
+
+  const trimmed = trimBase(baseUrl);
+  try {
+    const url = new URL(trimmed);
+    if (
+      url.hostname === 'opencode.ai' &&
+      (url.pathname === '/inference' || url.pathname.startsWith('/inference/'))
+    ) {
+      return `${url.origin}/inference/v1/models`;
+    }
+  } catch {
+    // Not an absolute URL: keep the generic suffix and let the request report
+    // the failure instead of inventing a host.
+  }
+
+  return `${trimmed}/models`;
+}
+
+/**
  * Only providers with a real "list models" endpoint are discoverable. Anthropic
  * and Google deliberately have none: their model families are curated in the
  * vendor console, so the operator adds the ones they can call by hand.
@@ -101,15 +129,13 @@ async function fetchRemoteModels(
     return fail('VALIDATION_FAILED', '该 provider 不支持自动拉取模型，请使用“手动添加”填写模型 ID');
   }
 
-  if (kind === 'ollama') {
-    const response = await getJson(ollamaTagsUrl(baseUrl), headers);
-    if (!response.ok) return response;
-    return { ok: true, value: parseOllamaModels(response.value) };
-  }
-
-  const response = await getJson(`${trimBase(baseUrl)}/models`, headers);
+  const response = await getJson(modelsEndpointFor(kind, baseUrl), headers);
   if (!response.ok) return response;
-  return { ok: true, value: parseOpenAiModels(response.value) };
+  return {
+    ok: true,
+    value:
+      kind === 'ollama' ? parseOllamaModels(response.value) : parseOpenAiModels(response.value),
+  };
 }
 
 function toModelRow(row: typeof providerModels.$inferSelect): ProviderModelRow {
