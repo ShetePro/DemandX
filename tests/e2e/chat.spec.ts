@@ -61,7 +61,7 @@ async function seedRun(threadId: number): Promise<number> {
   const client = db();
   const rows = await client<{ id: number }[]>`
     insert into runs (idea_id, thread_id, status, stage)
-    select idea_id, id, 'running', 'S0' from threads where id = ${threadId}
+    select idea_id, id, 'running', 'S1' from threads where id = ${threadId}
     returning id
   `;
 

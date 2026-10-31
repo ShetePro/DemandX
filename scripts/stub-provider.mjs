@@ -27,7 +27,7 @@ const MODELS = ['stub-model-a', 'stub-model-b'];
  * increments; without it the whole answer can land in one paint and a
  * "streaming" assertion would only prove the text exists.
  */
-const STREAM_CHUNK_DELAY_MS = 400;
+const STREAM_CHUNK_DELAY_MS = 900;
 
 /** Data frames of the streamed answer; `[e12]` is what the UI turns into a chip. */
 const STREAM_CONTENT = ['先看证据：', '付费信号只有 1 条有价格页 [e12]。'];

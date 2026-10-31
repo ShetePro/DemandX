@@ -1,6 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = 3000;
+/** E2E runs against its own database and port so dev data never breaks it. */
+const DATABASE_URL =
+  process.env.E2E_DATABASE_URL ?? 'postgres://demandx:demandx@127.0.0.1:5433/demandx_e2e';
+process.env.DATABASE_URL = DATABASE_URL;
+
+const PORT = Number(process.env.E2E_PORT ?? 3100);
 const baseURL = `http://127.0.0.1:${PORT}`;
 const STUB_PORT = process.env.STUB_PORT ?? '4010';
 const STUB_URL = `http://127.0.0.1:${STUB_PORT}`;
@@ -30,9 +35,13 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'pnpm dev',
+      // A production server on its own port: `next dev` refuses to run twice
+      // from one checkout, and E2E must not share the developer's dev server.
+      command: `node scripts/e2e-db.mjs && pnpm build && pnpm start --port ${PORT}`,
       url: baseURL,
-      reuseExistingServer: true, // CI starts clean; local shells often already run `pnpm dev`
+      // Never reuse a dev server: it may be pointed at the developer's database.
+      reuseExistingServer: false,
+      env: { DATABASE_URL },
       timeout: 120_000,
     },
     {
