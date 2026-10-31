@@ -71,4 +71,19 @@ describe('Composer', () => {
 
     expect(onStop).toHaveBeenCalledTimes(1);
   });
+
+  it('renders one look for every page, so docking cannot swap styles', () => {
+    const { textarea } = setup();
+
+    // The card: identical whether it floats over the new-research screen or the
+    // conversation, since the dock animates this very node.
+    const card = screen.getByRole('textbox', { name: '输入消息' }).parentElement;
+    expect(card).toHaveClass('rounded-2xl', 'border', 'p-3', 'shadow-lg', 'backdrop-blur-md');
+    expect(card).not.toHaveClass('rounded-xl');
+    expect(card?.querySelector('span')).toHaveClass('text-xs');
+
+    // The field: one size, one text scale, one placeholder.
+    expect(textarea).toHaveClass('min-h-16', 'max-h-[240px]', 'py-2', 'text-[15px]');
+    expect(textarea).toHaveAttribute('placeholder', '描述一个产品想法，或粘贴一段用户抱怨…');
+  });
 });

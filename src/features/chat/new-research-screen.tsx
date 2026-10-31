@@ -2,7 +2,7 @@
 
 import { RefreshCw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
@@ -17,11 +17,14 @@ import {
   type ResearchSuggestion,
 } from './research-suggestions';
 
-/** Wait for the dock animation to finish before the thread page takes over. */
-const DOCK_DELAY_MS = 420;
+/** The composer's whole journey from the centred slot to the bottom bar. */
+const DOCK_DURATION_MS = 420;
 
-/** Matches `pb-6` below; the slide ends exactly at the anchored bottom. */
-const DOCK_BOTTOM_INSET = 24;
+/** Overshoots just enough to feel physical without looking like a spring. */
+const DOCK_EASING = 'cubic-bezier(0.22, 1.2, 0.36, 1)';
+
+/** Below this the dock is imperceptible; running the FLIP would only cost frames. */
+const DOCK_MIN_DISTANCE_PX = 2;
 
 const SUGGESTION_DEBOUNCE_MS = 150;
 
@@ -41,12 +44,13 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
   const [draft, setDraft] = useState('');
   const [batchState, setBatchState] = useState({ query: '', batch: 0 });
   const [phase, setPhase] = useState<'idle' | 'docking'>('idle');
-  const [dockFrom, setDockFrom] = useState(0);
+  const [targetThread, setTargetThread] = useState<number | null>(null);
   const [pending, setPending] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
-  const pushTimer = useRef<number | undefined>(undefined);
+  /** Composer `top` from the last frame the reader saw, before the layout flips. */
+  const firstTop = useRef<number | null>(null);
 
   const debouncedDraft = useDebouncedValue(draft, SUGGESTION_DEBOUNCE_MS);
   const suggestions = useMemo(() => mergeSuggestions(recentIdeas), [recentIdeas]);
@@ -60,11 +64,49 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
   const pool = matched.length > 0 ? matched : suggestions;
   const visible = suggestionWindow(pool, batch);
 
-  useEffect(() => {
-    return () => {
-      clearTimeout(pushTimer.current);
-    };
-  }, []);
+  // FLIP: the layout has already re-anchored the composer by the time this runs,
+  // so play the same node back from where it was and let it land. Because the
+  // animation runs on one DOM node with `fill: both`, no style is swapped
+  // mid-flight; the thread page only takes over once the box has arrived.
+  useLayoutEffect(() => {
+    if (phase !== 'docking' || targetThread === null) return;
+
+    const threadHref = `/threads/${targetThread}`;
+    const node = composerRef.current;
+    const from = firstTop.current;
+    const to = node?.getBoundingClientRect().top;
+    const dy = from === null || to === undefined ? 0 : from - to;
+    // The reader's preference at the moment the motion starts, not a
+    // render-time snapshot: it is a one-shot decision, not reactive UI.
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // No node, a jump too small to see, reduced motion, or a runtime without
+    // the Web Animations API: arrive immediately, exactly where it belongs.
+    if (
+      node === null ||
+      prefersReduced ||
+      Math.abs(dy) < DOCK_MIN_DISTANCE_PX ||
+      typeof node.animate !== 'function'
+    ) {
+      router.push(threadHref);
+      return;
+    }
+
+    const animation = node.animate(
+      [
+        { transform: `translateY(${dy}px) scale(0.985)` },
+        { transform: 'translateY(-3px) scale(1.003)', offset: 0.7 },
+        { transform: 'translateY(0) scale(1)' },
+      ],
+      { duration: DOCK_DURATION_MS, easing: DOCK_EASING, fill: 'both' },
+    );
+
+    // `cancel()` in cleanup rejects `finished`; the catch keeps that expected
+    // teardown from surfacing as an unhandled rejection.
+    void animation.finished.then(() => router.push(threadHref)).catch(() => undefined);
+
+    return () => animation.cancel();
+  }, [phase, targetThread, router]);
 
   async function handleSend(idea: string): Promise<void> {
     if (pending || phase === 'docking') return;
@@ -77,21 +119,13 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
         return;
       }
 
-      // Measure the composer before the layout re-anchors. The animation then
-      // starts at the pre-submit position, so docking never looks like a jump.
+      // First rect, before React commits the new layout: the animation must
+      // start from the position the reader is looking at.
       const node = composerRef.current;
-      const container = containerRef.current;
-      if (node !== null && container !== null) {
-        const box = node.getBoundingClientRect();
-        const bounds = container.getBoundingClientRect();
-        const bottom = bounds.height > 0 ? bounds.bottom : window.innerHeight;
-        setDockFrom(Math.max(0, bottom - DOCK_BOTTOM_INSET - box.height - box.top));
-      }
+      firstTop.current = node === null ? null : node.getBoundingClientRect().top;
 
+      setTargetThread(result.value.threadId);
       setPhase('docking');
-      pushTimer.current = window.setTimeout(() => {
-        router.push(`/threads/${result.value.threadId}`);
-      }, DOCK_DELAY_MS);
     } catch {
       toast.error('创建研究失败：网络错误');
     } finally {
@@ -110,7 +144,7 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
       aria-label="新建研究"
       className={cn(
         'flex min-h-full flex-col px-4 pt-10',
-        phase === 'docking' ? 'justify-end pb-6' : 'justify-center pb-10',
+        phase === 'docking' ? 'justify-end pb-4' : 'justify-center pb-10',
       )}
     >
       <div className="mx-auto w-full max-w-3xl">
@@ -119,11 +153,11 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
           role="group"
           aria-label="研究输入"
           data-docking={phase === 'docking'}
-          style={{ '--dock-from': `${dockFrom}px` } as CSSProperties}
           className="relative"
         >
           {/* Absolute so the composer itself is exactly centred; floating the
-              prompt keeps it above the composer while both slide together. */}
+              prompt keeps it above the composer without entering the FLIP
+              measurement — it only fades, the layout never moves it. */}
           <div
             data-research-fade
             className="absolute inset-x-0 bottom-full mb-8 px-4 max-md:static max-md:mb-6 max-md:px-0"
@@ -169,12 +203,10 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
           </div>
 
           <Composer
-            size="hero"
             value={draft}
             onValueChange={setDraft}
             onSend={(text) => void handleSend(text)}
             onStop={() => undefined}
-            placeholder="写下你观察到的痛点，或粘贴一条用户抱怨…"
           />
         </div>
       </div>

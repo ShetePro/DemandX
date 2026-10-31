@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+
+import { mockMediaQuery } from '@/test/setup-dom';
 
 import { NewResearchScreen } from './new-research-screen';
 
@@ -13,6 +15,8 @@ vi.mock('./actions', () => ({ startResearchAction: mocks.startResearchAction }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock('sonner', () => ({ toast: { error: mocks.error, success: vi.fn() } }));
 
+const CREATED = { ok: true as const, value: { ideaId: 3, threadId: 7, runId: 9 } };
+
 function suggestionChips(): HTMLElement[] {
   return within(screen.getByRole('list', { name: '推荐方向' })).getAllByRole('button');
 }
@@ -21,12 +25,66 @@ function textbox(): HTMLElement {
   return screen.getByRole('textbox', { name: '输入消息' });
 }
 
+function composer(): HTMLElement {
+  return screen.getByRole('group', { name: '研究输入' });
+}
+
+function domRect(top: number): DOMRect {
+  return {
+    top,
+    bottom: top + 120,
+    left: 0,
+    right: 800,
+    width: 800,
+    height: 120,
+    x: 0,
+    y: top,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
+/**
+ * jsdom lays every box out at `top: 0`, which would make the FLIP a no-op. The
+ * composer reports the centred slot until the layout docks it, then the bottom
+ * bar — exactly the two positions the animation interpolates between.
+ */
+function fakeLayout(centredTop: number, dockedTop: number): void {
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    return domRect(this.getAttribute('data-docking') === 'true' ? dockedTop : centredTop);
+  });
+}
+
+/** The two handles the FLIP keeps from the animation it started. */
+type AnimateStub = { animate: Mock; cancel: Mock };
+
+/** jsdom ships no Web Animations API; install a controllable stand-in. */
+function installAnimate(finished: Promise<void>): AnimateStub {
+  const cancel = vi.fn();
+  const animate = vi.fn(() => ({ finished, cancel }));
+  Object.defineProperty(Element.prototype, 'animate', {
+    configurable: true,
+    writable: true,
+    value: animate,
+  });
+  return { animate, cancel };
+}
+
+/** Submit the default idea and let the action and the commit settle. */
+async function submit(idea = '跨境卖家库存同步太麻烦'): Promise<void> {
+  fireEvent.change(textbox(), { target: { value: idea } });
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    await Promise.resolve();
+  });
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  delete (Element.prototype as Partial<Element>).animate;
 });
 
 describe('NewResearchScreen', () => {
@@ -36,10 +94,12 @@ describe('NewResearchScreen', () => {
     expect(screen.getByRole('heading', { name: '先描述一个问题' })).toBeVisible();
     expect(screen.getByText('推荐方向')).toBeVisible();
     expect(screen.getByRole('region', { name: '新建研究' })).toHaveClass('justify-center');
-    expect(screen.getByRole('group', { name: '研究输入' })).toHaveAttribute(
-      'data-docking',
-      'false',
-    );
+    expect(composer()).toHaveAttribute('data-docking', 'false');
+
+    // The dock animates this card into the thread page, so it must already be
+    // the thread page's card: same radius, padding and placeholder.
+    expect(textbox().parentElement).toHaveClass('rounded-2xl', 'p-3');
+    expect(textbox()).toHaveAttribute('placeholder', '描述一个产品想法，或粘贴一段用户抱怨…');
 
     const chips = suggestionChips();
     expect(chips).toHaveLength(6);
@@ -85,31 +145,74 @@ describe('NewResearchScreen', () => {
     expect(second).toHaveLength(6);
   });
 
-  it('creates the research, docks, then navigates after the animation delay', async () => {
-    mocks.startResearchAction.mockResolvedValue({
-      ok: true,
-      value: { ideaId: 3, threadId: 7, runId: 9 },
-    });
+  it('docks with a FLIP on the composer itself and waits for it to land', async () => {
+    mocks.startResearchAction.mockResolvedValue(CREATED);
+    fakeLayout(120, 640);
 
-    render(<NewResearchScreen recentIdeas={[]} />);
-    fireEvent.change(textbox(), { target: { value: '跨境卖家库存同步太麻烦' } });
+    // Never settles: the test proves navigation is gated on the animation.
+    const { animate, cancel } = installAnimate(new Promise<void>(() => undefined));
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '发送' }));
-      await Promise.resolve();
-    });
+    const { unmount } = render(<NewResearchScreen recentIdeas={[]} />);
+    await submit();
 
     expect(mocks.startResearchAction).toHaveBeenCalledWith({ idea: '跨境卖家库存同步太麻烦' });
-    expect(screen.getByRole('group', { name: '研究输入' })).toHaveAttribute('data-docking', 'true');
+    expect(composer()).toHaveAttribute('data-docking', 'true');
+    expect(screen.getByRole('region', { name: '新建研究' })).toHaveClass('justify-end');
 
-    act(() => {
-      vi.advanceTimersByTime(419);
-    });
+    // Inverted first frame: 120 − 640, so the animation starts where the reader
+    // last saw the card instead of at the docked slot.
+    expect(animate).toHaveBeenCalledTimes(1);
+    expect(animate).toHaveBeenCalledWith(
+      [
+        { transform: 'translateY(-520px) scale(0.985)' },
+        { transform: 'translateY(-3px) scale(1.003)', offset: 0.7 },
+        { transform: 'translateY(0) scale(1)' },
+      ],
+      { duration: 420, easing: 'cubic-bezier(0.22, 1.2, 0.36, 1)', fill: 'both' },
+    );
+
+    // The thread page only takes over once the card has arrived.
     expect(mocks.push).not.toHaveBeenCalled();
 
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
+    // Leaving early must abort the animation rather than let it run on.
+    unmount();
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('navigates as soon as the dock animation resolves', async () => {
+    mocks.startResearchAction.mockResolvedValue(CREATED);
+    fakeLayout(120, 640);
+    installAnimate(Promise.resolve());
+
+    render(<NewResearchScreen recentIdeas={[]} />);
+    await submit();
+
+    expect(mocks.push).toHaveBeenCalledTimes(1);
+    expect(mocks.push).toHaveBeenCalledWith('/threads/7');
+  });
+
+  it('navigates immediately when the Web Animations API is missing', async () => {
+    mocks.startResearchAction.mockResolvedValue(CREATED);
+    fakeLayout(120, 640);
+    expect('animate' in Element.prototype).toBe(false);
+
+    render(<NewResearchScreen recentIdeas={[]} />);
+    await submit();
+
+    expect(composer()).toHaveAttribute('data-docking', 'true');
+    expect(mocks.push).toHaveBeenCalledWith('/threads/7');
+  });
+
+  it('skips the slide entirely when the reader prefers reduced motion', async () => {
+    mockMediaQuery('(prefers-reduced-motion: reduce)', true);
+    mocks.startResearchAction.mockResolvedValue(CREATED);
+    fakeLayout(120, 640);
+    const { animate } = installAnimate(Promise.resolve());
+
+    render(<NewResearchScreen recentIdeas={[]} />);
+    await submit();
+
+    expect(animate).not.toHaveBeenCalled();
     expect(mocks.push).toHaveBeenCalledWith('/threads/7');
   });
 
@@ -119,20 +222,14 @@ describe('NewResearchScreen', () => {
       code: 'STORAGE_FAILED',
       message: '创建研究失败 (SQLSTATE 08006)',
     });
+    const { animate } = installAnimate(Promise.resolve());
 
     render(<NewResearchScreen recentIdeas={[]} />);
-    fireEvent.change(textbox(), { target: { value: '跨境卖家库存同步太麻烦' } });
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '发送' }));
-      await Promise.resolve();
-    });
+    await submit();
 
     expect(mocks.error).toHaveBeenCalledWith('创建研究失败 (SQLSTATE 08006)');
-    expect(screen.getByRole('group', { name: '研究输入' })).toHaveAttribute(
-      'data-docking',
-      'false',
-    );
+    expect(composer()).toHaveAttribute('data-docking', 'false');
+    expect(animate).not.toHaveBeenCalled();
 
     act(() => {
       vi.advanceTimersByTime(1000);

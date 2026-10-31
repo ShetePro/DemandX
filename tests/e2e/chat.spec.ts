@@ -34,13 +34,18 @@ async function createThread(page: Page): Promise<number> {
   await page.goto('/threads/new');
 
   const composer = page.getByLabel('输入消息');
+  // The dock animates this card into the thread page, so it is styled once.
+  await expect(composer.locator('..')).toHaveClass(/rounded-2xl/);
   await composer.fill(IDEA);
   await composer.press('Enter');
 
-  // The composer docks for 420ms before navigating.
+  // The composer plays a 420ms FLIP, then the thread page takes over.
   await expect(page).toHaveURL(/\/threads\/\d+$/, { timeout: 15_000 });
   const match = /\/threads\/(\d+)$/.exec(page.url());
   if (match?.[1] === undefined) throw new Error(`无法从 URL 解析 thread id: ${page.url()}`);
+
+  // Same card after the hand-off: no radius or padding swap on arrival.
+  await expect(page.getByLabel('输入消息').locator('..')).toHaveClass(/rounded-2xl/);
 
   const threadId = Number(match[1]);
   createdThreadIds.push(threadId);
