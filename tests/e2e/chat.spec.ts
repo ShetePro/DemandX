@@ -34,13 +34,19 @@ async function createThread(page: Page): Promise<number> {
   await page.goto('/threads/new');
 
   const composer = page.getByLabel('输入消息');
+  // The dock animates this card into the thread page, so it is styled once.
+  await expect(composer.locator('..')).toHaveClass(/rounded-2xl/);
   await composer.fill(IDEA);
   await composer.press('Enter');
 
-  // The composer docks for 420ms before navigating.
+  // The composer docks immediately (520ms FLIP) while the create request runs
+  // in parallel, then the thread page takes over.
   await expect(page).toHaveURL(/\/threads\/\d+$/, { timeout: 15_000 });
   const match = /\/threads\/(\d+)$/.exec(page.url());
   if (match?.[1] === undefined) throw new Error(`无法从 URL 解析 thread id: ${page.url()}`);
+
+  // Same card after the hand-off: no radius or padding swap on arrival.
+  await expect(page.getByLabel('输入消息').locator('..')).toHaveClass(/rounded-2xl/);
 
   const threadId = Number(match[1]);
   createdThreadIds.push(threadId);
@@ -55,7 +61,7 @@ async function seedRun(threadId: number): Promise<number> {
   const client = db();
   const rows = await client<{ id: number }[]>`
     insert into runs (idea_id, thread_id, status, stage)
-    select idea_id, id, 'running', 'S0' from threads where id = ${threadId}
+    select idea_id, id, 'running', 'S1' from threads where id = ${threadId}
     returning id
   `;
 

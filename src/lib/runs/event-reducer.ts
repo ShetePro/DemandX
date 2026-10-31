@@ -152,7 +152,7 @@ export function reduce(state: RunStreamState, event: RunEvent): RunStreamState {
  * row is the source of truth: a retried run keeps its old terminal event in
  * the log, and folding that alone would freeze the UI at the previous verdict.
  */
-export type RunStateSeed = { status?: string; stage?: string | null };
+export type RunStateSeed = { status?: string | undefined; stage?: string | null | undefined };
 
 /**
  * Project one server snapshot (oldest first) into state. The input is copied

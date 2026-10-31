@@ -72,6 +72,8 @@ async function ChatView({ threadId, title }: { threadId: number; title: string }
       title={title}
       initialMessages={toChatMessages(messages.value)}
       runId={run?.id ?? null}
+      runStatus={run?.status}
+      runStage={run?.stage}
       evidenceHref={run === null ? null : `/runs/${run.id}/evidence`}
       initialRunEvents={events}
     />

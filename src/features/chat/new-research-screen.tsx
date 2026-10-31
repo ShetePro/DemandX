@@ -2,10 +2,11 @@
 
 import { RefreshCw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
+import type { CreateResearchResult, Result } from '@/lib/runs/repository';
 import { cn } from '@/lib/utils/cn';
 
 import { startResearchAction } from './actions';
@@ -17,11 +18,18 @@ import {
   type ResearchSuggestion,
 } from './research-suggestions';
 
-/** Wait for the dock animation to finish before the thread page takes over. */
-const DOCK_DELAY_MS = 420;
+/** The composer's whole journey from the centred slot to the bottom bar. */
+const DOCK_DURATION_MS = 520;
 
-/** Matches `pb-6` below; the slide ends exactly at the anchored bottom. */
-const DOCK_BOTTOM_INSET = 24;
+/**
+ * iOS-sheet easing: a gentle start and a long deceleration. An aggressive
+ * spring curve would spend the first 100ms on 90% of the distance and leave the
+ * rest as dead time; this one keeps moving for the whole 520ms.
+ */
+const DOCK_EASING = 'cubic-bezier(0.32, 0.72, 0, 1)';
+
+/** Below this the dock is imperceptible; running the FLIP would only cost frames. */
+const DOCK_MIN_DISTANCE_PX = 2;
 
 const SUGGESTION_DEBOUNCE_MS = 150;
 
@@ -41,12 +49,14 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
   const [draft, setDraft] = useState('');
   const [batchState, setBatchState] = useState({ query: '', batch: 0 });
   const [phase, setPhase] = useState<'idle' | 'docking'>('idle');
-  const [dockFrom, setDockFrom] = useState(0);
   const [pending, setPending] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
-  const pushTimer = useRef<number | undefined>(undefined);
+  /** Composer `top` from the last frame the reader saw, before the layout flips. */
+  const firstTop = useRef<number | null>(null);
+  /** The create request, started on the keystroke so the dock never waits for it. */
+  const actionRef = useRef<Promise<Result<CreateResearchResult>> | null>(null);
 
   const debouncedDraft = useDebouncedValue(draft, SUGGESTION_DEBOUNCE_MS);
   const suggestions = useMemo(() => mergeSuggestions(recentIdeas), [recentIdeas]);
@@ -60,43 +70,98 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
   const pool = matched.length > 0 ? matched : suggestions;
   const visible = suggestionWindow(pool, batch);
 
-  useEffect(() => {
-    return () => {
-      clearTimeout(pushTimer.current);
-    };
-  }, []);
+  // FLIP: the layout has already re-anchored the composer by the time this runs,
+  // so play the same node back from where it was and let it land. Because the
+  // animation runs on one DOM node with `fill: both`, no style is swapped
+  // mid-flight; the thread page only takes over once both the motion and the
+  // request have landed — neither waits for the other.
+  useLayoutEffect(() => {
+    if (phase !== 'docking') return;
+    const action = actionRef.current;
+    if (action === null) return;
 
-  async function handleSend(idea: string): Promise<void> {
-    if (pending || phase === 'docking') return;
-    setPending(true);
+    const node = composerRef.current;
+    const from = firstTop.current;
+    const to = node?.getBoundingClientRect().top;
+    const dy = from === null || to === undefined ? 0 : from - to;
+    // The reader's preference at the moment the motion starts, not a
+    // render-time snapshot: it is a one-shot decision, not reactive UI.
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    try {
-      const result = await startResearchAction({ idea });
-      if (!result.ok) {
+    let animation: Animation | null = null;
+    // No node, a jump too small to see, reduced motion, or a runtime without the
+    // Web Animations API: there is nothing to play, only a request to await.
+    if (
+      node !== null &&
+      !prefersReduced &&
+      Math.abs(dy) >= DOCK_MIN_DISTANCE_PX &&
+      typeof node.animate === 'function'
+    ) {
+      animation = node.animate(
+        [
+          { transform: `translateY(${dy}px) scale(0.985)` },
+          { transform: 'translateY(-3px) scale(1.003)', offset: 0.78 },
+          { transform: 'translateY(0) scale(1)' },
+        ],
+        { duration: DOCK_DURATION_MS, easing: DOCK_EASING, fill: 'both' },
+      );
+    }
+
+    // `cancel()` in cleanup rejects `finished`; swallowing it keeps the expected
+    // teardown out of the console while still awaiting the real landing.
+    const docked =
+      animation === null
+        ? Promise.resolve()
+        : animation.finished.then(
+            () => undefined,
+            () => undefined,
+          );
+    let cancelled = false;
+
+    // A failure must not teleport the card back to the middle: play the dock in
+    // reverse, then hand the layout back to the centred prompt.
+    async function rollBack(): Promise<void> {
+      if (animation === null) return;
+      animation.reverse();
+      await animation.finished.catch(() => undefined);
+    }
+
+    void Promise.all([docked, action.catch(() => null)]).then(async ([, result]) => {
+      if (cancelled) return;
+
+      if (result === null) {
+        toast.error('创建研究失败：网络错误');
+      } else if (!result.ok) {
         toast.error(result.message);
+      } else {
+        router.push(`/threads/${result.value.threadId}`);
         return;
       }
 
-      // Measure the composer before the layout re-anchors. The animation then
-      // starts at the pre-submit position, so docking never looks like a jump.
-      const node = composerRef.current;
-      const container = containerRef.current;
-      if (node !== null && container !== null) {
-        const box = node.getBoundingClientRect();
-        const bounds = container.getBoundingClientRect();
-        const bottom = bounds.height > 0 ? bounds.bottom : window.innerHeight;
-        setDockFrom(Math.max(0, bottom - DOCK_BOTTOM_INSET - box.height - box.top));
-      }
-
-      setPhase('docking');
-      pushTimer.current = window.setTimeout(() => {
-        router.push(`/threads/${result.value.threadId}`);
-      }, DOCK_DELAY_MS);
-    } catch {
-      toast.error('创建研究失败：网络错误');
-    } finally {
+      await rollBack();
+      if (cancelled) return;
       setPending(false);
-    }
+      setPhase('idle');
+    });
+
+    return () => {
+      cancelled = true;
+      animation?.cancel();
+    };
+  }, [phase, router]);
+
+  function handleSend(idea: string): void {
+    if (pending || phase === 'docking') return;
+
+    // The card has to move on the keystroke, not when the network answers:
+    // measure it, flip the layout, and let the request run alongside the dock.
+    const node = composerRef.current;
+    if (node === null) return;
+
+    setPending(true);
+    firstTop.current = node.getBoundingClientRect().top;
+    actionRef.current = startResearchAction({ idea });
+    setPhase('docking');
   }
 
   function pick(suggestion: ResearchSuggestion): void {
@@ -110,7 +175,7 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
       aria-label="新建研究"
       className={cn(
         'flex min-h-full flex-col px-4 pt-10',
-        phase === 'docking' ? 'justify-end pb-6' : 'justify-center pb-10',
+        phase === 'docking' ? 'justify-end pb-4' : 'justify-center pb-10',
       )}
     >
       <div className="mx-auto w-full max-w-3xl">
@@ -119,11 +184,11 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
           role="group"
           aria-label="研究输入"
           data-docking={phase === 'docking'}
-          style={{ '--dock-from': `${dockFrom}px` } as CSSProperties}
           className="relative"
         >
           {/* Absolute so the composer itself is exactly centred; floating the
-              prompt keeps it above the composer while both slide together. */}
+              prompt keeps it above the composer without entering the FLIP
+              measurement — it only fades, the layout never moves it. */}
           <div
             data-research-fade
             className="absolute inset-x-0 bottom-full mb-8 px-4 max-md:static max-md:mb-6 max-md:px-0"
@@ -169,12 +234,10 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
           </div>
 
           <Composer
-            size="hero"
             value={draft}
             onValueChange={setDraft}
-            onSend={(text) => void handleSend(text)}
+            onSend={handleSend}
             onStop={() => undefined}
-            placeholder="写下你观察到的痛点，或粘贴一条用户抱怨…"
           />
         </div>
       </div>

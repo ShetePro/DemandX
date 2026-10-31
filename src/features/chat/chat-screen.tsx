@@ -44,6 +44,9 @@ export type ChatScreenProps = {
   initialMessages: ChatMessage[];
   /** Latest run of the thread, if one exists. */
   runId: number | null;
+  /** Database status/stage for the rail seed. */
+  runStatus?: string | undefined;
+  runStage?: string | null | undefined;
   /** Real `/runs/:id/evidence` link for citations; `null` before a run. */
   evidenceHref: string | null;
   /** First-paint snapshot for the rail, oldest first. */
@@ -60,6 +63,8 @@ export function ChatScreen({
   threadId,
   initialMessages,
   runId,
+  runStatus,
+  runStage,
   evidenceHref,
   initialRunEvents = [],
   title = '研究对话',
@@ -168,7 +173,12 @@ export function ChatScreen({
           aria-label="运行详情"
           className="min-h-0 overflow-y-auto border-l border-border bg-surface px-3.5 py-4 max-lg:border-t max-lg:border-l-0"
         >
-          <RunRail runId={run.id} initialEvents={run.events} />
+          <RunRail
+            runId={run.id}
+            runStatus={runStatus}
+            runStage={runStage}
+            initialEvents={run.events}
+          />
         </aside>
       )}
 
