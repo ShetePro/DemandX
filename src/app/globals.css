@@ -247,3 +247,32 @@
     --on-accent: #ffffff;
   }
 }
+
+/* Slim, borderless scrollbars. The track stays transparent and the thumb is a
+   soft tint of the foreground, so a scrolled pane never looks like a framed
+   box inside the surface. */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--fg) 20%, transparent) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+  border: 0;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklab, var(--fg) 16%, transparent);
+  border: 0;
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in oklab, var(--fg) 28%, transparent);
+}
