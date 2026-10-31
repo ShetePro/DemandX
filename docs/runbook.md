@@ -68,16 +68,19 @@ ollama pull qwen3:8b
 | 字段 | OpenCode Go |
 | --- | --- |
 | 类型 | `OpenAI 兼容` |
-| Base URL | `https://opencode.ai/inference/go` |
+| Base URL | `https://opencode.ai/inference/go/openai/v1`（填 `.../go` 也能用聊天与探针） |
 | API Key | 你的 key |
-| 额外 header | `{"x-opencode-session": "<每次对话固定的 uuid>"}` |
+| 额外 header | 可留空：应用会自动注入稳定的 `x-opencode-session`；需要固定值时可手填覆盖 |
 
 注意：
 
+- 模型清单地址固定为 `https://opencode.ai/inference/v1/models`，应用会自动解析（不要再拼 `/go/.../models`，那会 404）。
 - `https://opencode.ai/inference`（不带 `/go`）是按量计费入口，每次调用真实扣费；
   保存前必须显式勾选确认框，否则返回 `PAYG_NOT_ACKNOWLEDGED`。
-- OpenCode 的免费模型只允许官方客户端调用，其它客户端即使带 key 也会收到 403；
-  403 会原样展示，不要改写成“配置有误”。
+- OpenCode 的免费模型（id 以 `-free` 结尾）只允许官方客户端调用，其它客户端即使带 key
+  也会收到 403；拉取模型时它们会被自动标记为“仅官方客户端”，不能加入链。
+- 连通性测试会跳过 `*-free`，按顺序尝试前 5 个可外部调用的模型，返回首个成功的结果；
+  全部 403 时会提示“免费模型仅限官方客户端，或当前区域/隐私设置不可用”。
 - 其它 OpenAI 兼容端点（GLM / Kimi / DeepSeek / OpenRouter / 自建网关）填各自的
   Base URL、key，按需补 header 即可。
 
