@@ -299,4 +299,28 @@ suite('provider repository', () => {
       'gamma',
     ]);
   });
+
+  it('seeds OpenCode *-free catalog models as console-only', async () => {
+    const created = unwrap(
+      await repo.createProviderWithModels(
+        {
+          name: 'OpenCode Go',
+          kind: 'openai-compatible',
+          baseUrl: 'https://opencode.ai/inference/go',
+          apiKey: KEY,
+        },
+        [{ modelId: 'glm-5.3' }, { modelId: 'glm-5.3-flash-free' }],
+      ),
+    );
+
+    const rows = await client.sql<
+      { model_id: string; available_externally: boolean }[]
+    >`select model_id, available_externally from provider_models
+      where provider_id = ${created.provider.id} order by model_id`;
+
+    expect(rows.map((row) => [row.model_id, row.available_externally])).toEqual([
+      ['glm-5.3', true],
+      ['glm-5.3-flash-free', false],
+    ]);
+  });
 });

@@ -119,7 +119,39 @@ suite('refreshModels', () => {
       'https://opencode.ai/inference/go/openai/v1',
     );
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ object: 'list', data: [{ id: 'glm-5' }] }), {
+      new Response(
+        JSON.stringify({
+          object: 'list',
+          data: [{ id: 'big-pickle' }, { id: 'glm-5.3-flash-free' }],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await repo.refreshModels(providerId);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.map((model) => [model.modelId, model.availableExternally])).toEqual([
+        ['big-pickle', true],
+        ['glm-5.3-flash-free', false],
+      ]);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe('https://opencode.ai/inference/v1/models');
+    expect(init).toMatchObject({ headers: expect.any(Object) });
+  });
+
+  it('never re-enables a model the operator marked console-only', async () => {
+    const providerId = await seedProvider('OpenCode Go', 'https://opencode.ai/inference/go');
+    await client.sql`
+      insert into provider_models (provider_id, model_id, available_externally, source)
+      values (${providerId}, 'manually-disabled', false, 'manual')
+    `;
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ id: 'manually-disabled' }] }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
@@ -129,13 +161,7 @@ suite('refreshModels', () => {
     const result = await repo.refreshModels(providerId);
 
     expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value.map((model) => model.modelId)).toEqual(['glm-5']);
-    }
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe('https://opencode.ai/inference/v1/models');
-    expect(init).toMatchObject({ headers: expect.any(Object) });
+    if (result.ok) expect(result.value[0]?.availableExternally).toBe(false);
   });
 
   it('keeps the OpenAI-compatible suffix for an ordinary endpoint', async () => {

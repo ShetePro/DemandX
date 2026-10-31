@@ -6,6 +6,7 @@ import { complete as ollama } from './adapters/ollama';
 import { complete as openaiCompatible } from './adapters/openai-compatible';
 import type { Adapter, AdapterFailure, AdapterResult } from './adapters/types';
 import type { ChainItem, LlmPort, Profile, Prompt, Usage } from './port';
+import { withProviderHeaders } from './provider-headers';
 import type { AppErrorCode, ProviderKind, Result } from './types';
 
 const ADAPTERS: Record<ProviderKind, Adapter> = {
@@ -141,7 +142,7 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
         apiKey: apiKey.value,
         modelId: item.modelId,
         prompt,
-        headers: item.headers,
+        headers: withProviderHeaders(item.baseUrl, item.headers, item.providerName),
         structured,
         jsonSchema,
       });

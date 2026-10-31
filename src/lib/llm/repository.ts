@@ -5,6 +5,7 @@ import { loadSecretBox, SecretError, type SecretBox } from '@/lib/crypto/secret'
 import { db } from '@/lib/db/client';
 import { llmChains, providerModels, providers } from '@/lib/db/schema';
 
+import { isOpencodeFreeModel } from './provider-headers';
 import {
   createProviderInputSchema,
   updateProviderInputSchema,
@@ -176,7 +177,8 @@ export type SeedModel = z.input<typeof seedModelsSchema>[number];
  * settings directory fills both from one selection, and a half-written provider
  * (rows without models, or a provider that fails its own constraints) would be
  * worse than none. Catalog models are callable through the configured endpoint
- * by definition, so `available_externally` is true.
+ * by definition, except OpenCode's `*-free` models, which only its own client
+ * may call.
  */
 export async function createProviderWithModels(
   input: unknown,
@@ -213,7 +215,7 @@ export async function createProviderWithModels(
             modelId: model.modelId,
             displayName: model.displayName ?? null,
             source: options.source ?? 'catalog',
-            availableExternally: true,
+            availableExternally: !isOpencodeFreeModel(parsed.value.baseUrl, model.modelId),
           })),
         );
       }

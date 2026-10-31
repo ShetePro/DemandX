@@ -3,8 +3,9 @@ import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/lib/db/client';
 import { providerModels, providers } from '@/lib/db/schema';
 
-import type { AdapterFailureReason } from './adapters/types';
+import type { AdapterFailure, AdapterFailureReason } from './adapters/types';
 import { adapterFor } from './chain';
+import { isOpencodeBaseUrl, withProviderHeaders } from './provider-headers';
 import { resolveApiKey } from './repository';
 import type { AppErrorCode, ProviderKind, Result } from './types';
 
@@ -79,21 +80,27 @@ function describe(reason: AdapterFailureReason, status: number): string {
 }
 
 /**
- * The provider's first model that outside clients may call, by `model_id`
- * ascending. `provider_models` is a cache, so an empty result means "no usable
- * model discovered yet" — the probe cannot pick one on the operator's behalf.
+ * Up to five models outside clients may call, in `model_id` order. OpenCode's
+ * `*-free` models are skipped: the listing exposes them, but a non-OpenCode
+ * client always gets 403, so probing one proves nothing about the key.
+ * `provider_models` is a cache, so an empty result means "no usable model
+ * discovered yet" — the probe cannot pick one on the operator's behalf.
  */
-async function loadProbeTarget(
-  id: number,
-): Promise<
-  Result<{ kind: ProviderKind; baseUrl: string; headers: Record<string, string>; modelId: string }>
+async function loadProbeTarget(id: number): Promise<
+  Result<{
+    kind: ProviderKind;
+    baseUrl: string;
+    name: string;
+    headers: Record<string, string>;
+    modelIds: string[];
+  }>
 > {
   try {
     // A LEFT JOIN keeps "provider without usable models" distinguishable from
-    // "no such provider"; NULLS LAST ordering puts the smallest real model_id
-    // first.
-    const [row] = await db
+    // "no such provider"; NULLS LAST ordering puts real model ids first.
+    const rows = await db
       .select({
+        name: providers.name,
         kind: providers.kind,
         baseUrl: providers.baseUrl,
         headers: providers.headers,
@@ -108,20 +115,39 @@ async function loadProbeTarget(
         ),
       )
       .where(eq(providers.id, id))
-      .orderBy(asc(providerModels.modelId))
-      .limit(1);
+      .orderBy(asc(providerModels.modelId));
 
-    if (!row) return { ok: false, code: 'PROVIDER_NOT_FOUND', message: `provider ${id} 不存在` };
-    if (row.modelId === null) {
-      return { ok: false, code: 'VALIDATION_FAILED', message: '该 provider 没有可用模型' };
+    if (rows.length === 0) {
+      return { ok: false, code: 'PROVIDER_NOT_FOUND', message: `provider ${id} 不存在` };
     }
+
+    const provider = rows[0];
+    if (provider === undefined) {
+      return { ok: false, code: 'PROVIDER_NOT_FOUND', message: `provider ${id} 不存在` };
+    }
+
+    const modelIds = rows
+      .map((row) => row.modelId)
+      .filter((modelId): modelId is string => modelId !== null)
+      .filter((modelId) => !modelId.trim().toLowerCase().endsWith('-free'))
+      .slice(0, 5);
+
+    if (modelIds.length === 0) {
+      return {
+        ok: false,
+        code: 'VALIDATION_FAILED',
+        message: '该 provider 没有可外部调用的模型',
+      };
+    }
+
     return {
       ok: true,
       value: {
-        kind: row.kind as ProviderKind,
-        baseUrl: row.baseUrl,
-        headers: (row.headers ?? {}) as Record<string, string>,
-        modelId: row.modelId,
+        kind: provider.kind as ProviderKind,
+        baseUrl: provider.baseUrl,
+        name: provider.name,
+        headers: (provider.headers ?? {}) as Record<string, string>,
+        modelIds,
       },
     };
   } catch (error) {
@@ -130,7 +156,10 @@ async function loadProbeTarget(
 }
 
 /**
- * Send one minimal request through the provider's own adapter. Timeout and 401
+ * Send one minimal request through the provider's own adapter, moving down the
+ * provider's callable models until one answers. A model can be listed yet
+ * unavailable to this client (OpenCode's paid set varies by region/privacy), so
+ * the alphabetically first model is not a fair test of the key. Timeout and 401
  * /403 come back as data (`status` plus a short `reason`), never as a throw.
  */
 export async function testProviderConnection(id: number): Promise<ConnectionTestResult> {
@@ -140,37 +169,49 @@ export async function testProviderConnection(id: number): Promise<ConnectionTest
   const apiKey = await resolveApiKey(id);
   if (!apiKey.ok) return failure(apiKey.code, apiKey.message);
 
-  const { kind, baseUrl, headers, modelId } = target.value;
-  const startedAt = performance.now();
+  const { kind, baseUrl, name, headers, modelIds } = target.value;
+  const requestHeaders = withProviderHeaders(baseUrl, headers, name);
 
-  let outcome;
-  try {
-    outcome = await adapterFor(kind)({
-      baseUrl,
-      apiKey: apiKey.value,
-      modelId,
-      prompt: { system: '', user: PROBE_PROMPT },
-      headers,
-      structured: false,
-      timeoutMs: PROBE_TIMEOUT_MS,
-    });
-  } catch {
-    // An adapter bug is reported as a failed probe, not as a 500 to the page.
-    return failure('LLM_UNAVAILABLE', '连接失败：适配器异常', 0);
+  let lastOutcome: AdapterFailure | undefined;
+
+  for (const modelId of modelIds) {
+    const startedAt = performance.now();
+    let outcome;
+    try {
+      outcome = await adapterFor(kind)({
+        baseUrl,
+        apiKey: apiKey.value,
+        modelId,
+        prompt: { system: '', user: PROBE_PROMPT },
+        headers: requestHeaders,
+        structured: false,
+        timeoutMs: PROBE_TIMEOUT_MS,
+      });
+    } catch {
+      // An adapter bug is reported as a failed probe, not as a 500 to the page.
+      return failure('LLM_UNAVAILABLE', '连接失败：适配器异常', 0);
+    }
+
+    if (outcome.ok) {
+      const latencyMs = Math.round(performance.now() - startedAt);
+      return { ok: true, value: { latencyMs, model: modelId, status: 200 } };
+    }
+
+    lastOutcome = outcome;
+    // A timeout or a dead transport will not improve on the next model; stop
+    // holding the settings page open and report it.
+    if (outcome.reason === 'timeout' || outcome.reason === 'network') break;
   }
 
-  const latencyMs = Math.round(performance.now() - startedAt);
-
-  if (!outcome.ok) {
-    return failure(
-      codeFor(outcome.reason),
-      describe(outcome.reason, outcome.status),
-      outcome.status,
-      outcome.reason,
-    );
+  if (lastOutcome === undefined) {
+    return failure('VALIDATION_FAILED', '该 provider 没有可外部调用的模型');
   }
 
-  // `postJson` only returns a body for a 2xx response, and every adapter speaks
-  // a 200-style endpoint, so a success is reported as 200.
-  return { ok: true, value: { latencyMs, model: modelId, status: 200 } };
+  const status = lastOutcome.status;
+  const message =
+    lastOutcome.reason === 'http' && status === 403 && isOpencodeBaseUrl(baseUrl)
+      ? 'OpenCode 返回 403：免费模型仅限官方客户端，或该模型在当前区域/隐私设置下不可用'
+      : describe(lastOutcome.reason, status);
+
+  return failure(codeFor(lastOutcome.reason), message, status, lastOutcome.reason);
 }

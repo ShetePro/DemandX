@@ -2,6 +2,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { LanguageModel } from 'ai';
 
 import { getChain } from '@/lib/llm/chain-repository';
+import { withProviderHeaders } from '@/lib/llm/provider-headers';
 import { resolveApiKey } from '@/lib/llm/repository';
 import type { ChainItem } from '@/lib/llm/port';
 import type { Result } from '@/lib/llm/types';
@@ -54,7 +55,7 @@ export async function getChatModel(): Promise<Result<{ model: LanguageModel; use
     baseURL: compatibleBaseUrl(item.baseUrl),
     // Ollama ignores the bearer token; the SDK still requires a non-empty one.
     apiKey: key.value ?? 'ollama',
-    headers: item.headers,
+    headers: withProviderHeaders(item.baseUrl, item.headers, item.providerName),
   });
 
   return { ok: true, value: { model: provider(item.modelId), used: item } };

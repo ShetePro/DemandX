@@ -5,6 +5,7 @@ import { db } from '@/lib/db/client';
 import { providerModels, providers } from '@/lib/db/schema';
 
 import { asArray, asRecord, asString, trimBase } from './adapters/http';
+import { isOpencodeFreeModel } from './provider-headers';
 import { resolveApiKey } from './repository';
 import type { AppErrorCode, ProviderKind, ProviderModelRow, Result } from './types';
 
@@ -24,7 +25,7 @@ export const addModelInputSchema = z.object({
 
 export type AddModelInput = z.input<typeof addModelInputSchema>;
 
-type RemoteModel = { modelId: string; displayName: string | null };
+type RemoteModel = { modelId: string; displayName: string | null; availableExternally: boolean };
 
 function fail<T>(code: AppErrorCode, message: string): Result<T> {
   return { ok: false, code, message };
@@ -74,16 +75,23 @@ function parseOllamaModels(body: unknown): RemoteModel[] {
     const record = asRecord(entry);
     const modelId = asString(record?.model) ?? asString(record?.name);
     if (modelId === undefined || modelId.trim() === '') return [];
-    return [{ modelId, displayName: asString(record?.name) ?? null }];
+    return [{ modelId, displayName: asString(record?.name) ?? null, availableExternally: true }];
   });
 }
 
-/** `{ data: [{ id }] }` — the OpenAI `/v1/models` envelope. */
-function parseOpenAiModels(body: unknown): RemoteModel[] {
+/**
+ * `{ data: [{ id }] }` — the OpenAI `/v1/models` envelope. `isExternallyCallable`
+ * lets a vendor's own-client-only models (OpenCode's `*-free`) be cached as such
+ * instead of looking callable until the first 403.
+ */
+function parseOpenAiModels(
+  body: unknown,
+  isExternallyCallable: (modelId: string) => boolean = () => true,
+): RemoteModel[] {
   return asArray(asRecord(body)?.data).flatMap((entry) => {
     const modelId = asString(asRecord(entry)?.id);
     if (modelId === undefined || modelId.trim() === '') return [];
-    return [{ modelId, displayName: null }];
+    return [{ modelId, displayName: null, availableExternally: isExternallyCallable(modelId) }];
   });
 }
 
@@ -134,7 +142,9 @@ async function fetchRemoteModels(
   return {
     ok: true,
     value:
-      kind === 'ollama' ? parseOllamaModels(response.value) : parseOpenAiModels(response.value),
+      kind === 'ollama'
+        ? parseOllamaModels(response.value)
+        : parseOpenAiModels(response.value, (modelId) => !isOpencodeFreeModel(baseUrl, modelId)),
   };
 }
 
@@ -209,6 +219,7 @@ export async function refreshModels(providerId: number): Promise<Result<Provider
     providerId: parsedId.data,
     modelId: model.modelId,
     displayName: model.displayName,
+    availableExternally: model.availableExternally,
     source: provider.kind,
   }));
 
@@ -219,10 +230,12 @@ export async function refreshModels(providerId: number): Promise<Result<Provider
         .values(rows)
         .onConflictDoUpdate({
           target: [providerModels.providerId, providerModels.modelId],
-          // `available_externally` is intentionally absent from this set: a
-          // refresh only refreshes what the provider reports.
           set: {
             displayName: sql`coalesce(excluded.display_name, ${providerModels.displayName})`,
+            // A refresh may take availability away (`*-free` became visible in
+            // `/models` but not callable from here) but never grants it back to
+            // a model the operator marked console-only by hand.
+            availableExternally: sql`${providerModels.availableExternally} AND excluded.available_externally`,
             source: sql`excluded.source`,
           },
         });
