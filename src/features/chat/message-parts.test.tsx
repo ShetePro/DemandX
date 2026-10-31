@@ -184,6 +184,20 @@ describe('MessageParts', () => {
     expect(container.textContent).toContain('先看价格页，再看招聘帖。');
   });
 
+  it('merges consecutive reasoning parts into one block', () => {
+    const { container } = render(
+      <MessageParts
+        message={message([
+          { type: 'reasoning', text: '先看价格页。', state: 'done' },
+          { type: 'reasoning', text: '再看招聘帖。', state: 'done' },
+        ])}
+      />,
+    );
+
+    expect(container.querySelectorAll('details')).toHaveLength(1);
+    expect(container.textContent).toContain('先看价格页。再看招聘帖。');
+  });
+
   it('skips an unknown part instead of throwing, warning once', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const unknown = message([{ type: 'source-url', sourceId: 's1', url: 'https://example.com' }]);

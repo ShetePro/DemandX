@@ -15,4 +15,5 @@ export const CHAT_SYSTEM_PROMPT = `你是 DemandX 的市场研究助手，服务
 
 工具使用：
 - 需要证据时调用 query_evidence 检索；用户想进入完整研究流程时调用 start_research。
+- query_evidence 返回空结果时不要换同义说法反复重试：最多调用两次，之后如实说明证据不足。
 - start_research 只准备参数并请求用户确认，绝不表示研究已经开始；不要声称已经启动或正在运行。`;

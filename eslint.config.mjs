@@ -21,6 +21,8 @@ export default defineConfig([
     'data/**',
     'drizzle/**',
     'playwright-report/**',
+    'test-results/**',
+    '.worktrees/**',
   ]),
 
   // Baseline: react / next / react-hooks rules.

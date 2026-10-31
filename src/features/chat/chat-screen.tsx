@@ -29,11 +29,6 @@ type ChatHookOptions = Extract<NonNullable<Parameters<typeof useChat>[0]>, { cha
 type ChatHookMessage = NonNullable<ChatHookOptions['messages']>[number];
 type ChatHookTransport = NonNullable<ChatHookOptions['transport']>;
 
-/** One transport for the lifetime of the page; it holds no per-thread state. */
-const transport = new DefaultChatTransport({
-  api: '/api/chat',
-}) as unknown as ChatHookTransport;
-
 type RunState = {
   id: number | null;
   evidenceHref: string | null;
@@ -123,6 +118,17 @@ export function ChatScreen({
         ? initialMessages
         : withoutLastUserTurn(initialMessages)) as unknown as ChatHookMessage[],
     [autoPrompt, initialMessages],
+  );
+
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: '/api/chat',
+        // The route needs the thread to tell the model a run already exists,
+        // so the answer plans the research instead of asking to start it.
+        body: { threadId },
+      }) as unknown as ChatHookTransport,
+    [threadId],
   );
 
   const chat = useChat({

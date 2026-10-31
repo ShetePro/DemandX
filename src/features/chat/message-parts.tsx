@@ -63,7 +63,7 @@ export function MessageParts({
 }: MessagePartsProps) {
   return (
     <div className="flex flex-col gap-3">
-      {message.parts.map((part, index) => {
+      {coalesceReasoning(message.parts).map((part, index) => {
         switch (part.type) {
           case 'text':
             return (
@@ -110,6 +110,35 @@ export function MessageParts({
  * token of a stream, and the type is what a maintainer needs to know.
  */
 const warnedPartTypes = new Set<string>();
+
+/**
+ * Models emit a reasoning part per thought segment, so a single answer can
+ * carry several of them back to back. Rendered one per part, that is a stack
+ * of nearly empty "思考过程" bars; merged, it is one block with the full
+ * reasoning, and empty segments disappear entirely.
+ */
+function coalesceReasoning(parts: ChatPart[]): ChatPart[] {
+  const merged: ChatPart[] = [];
+  for (const part of parts) {
+    if (part.type !== 'reasoning') {
+      merged.push(part);
+      continue;
+    }
+    if (part.text.trim() === '') continue;
+
+    const previous = merged.at(-1);
+    if (previous?.type === 'reasoning') {
+      merged[merged.length - 1] = {
+        ...previous,
+        text: previous.text + part.text,
+        state: part.state,
+      } as ChatPart;
+    } else {
+      merged.push(part);
+    }
+  }
+  return merged;
+}
 
 function warnUnsupportedPart(type: string): void {
   if (warnedPartTypes.has(type)) return;
@@ -205,6 +234,7 @@ function ReasoningPart({
           />
         )}
         思考过程
+        <span className="font-normal text-faint">{text.length} 字</span>
       </summary>
       <div className="mt-2">
         <MarkdownPart
