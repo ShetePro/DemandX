@@ -309,4 +309,46 @@ test.describe('Chat', () => {
     // Nothing may reach the padding, let alone the border.
     expect(metrics.contentRight).toBeLessThanOrEqual(metrics.cardRight - metrics.paddingRight + 1);
   });
+
+  test('思考过程里的列表缩进一致', async ({ page }) => {
+    const threadId = await createThread(page);
+    const reasoning = [
+      '先列检索方向：',
+      '',
+      '- q: "播客字幕", signal: seeking',
+      '- q: "podcast chapters", signal: paying',
+      '',
+      '再排优先级：',
+      '',
+      '1. 付费信号',
+      '2. 问题信号',
+    ].join('\n');
+
+    await db()`
+      insert into messages (thread_id, role, parts)
+      values (${threadId}, 'assistant', ${JSON.stringify([
+        { type: 'reasoning', text: reasoning, state: 'done' },
+        { type: 'text', text: '列表见上。' },
+      ])}::jsonb)
+    `;
+
+    await page.reload();
+    const details = page.locator('section[aria-label="对话"] details').first();
+    await details.locator('summary').click();
+
+    const indents = await details.evaluate((element) => {
+      const lists = Array.from(element.querySelectorAll('ul, ol'));
+      return lists.map((list) => ({
+        tag: list.tagName,
+        padding: getComputedStyle(list).paddingLeft,
+        textX: Math.round(list.querySelector('li')?.getBoundingClientRect().left ?? 0),
+      }));
+    });
+
+    expect(indents.map((list) => list.tag)).toEqual(['UL', 'OL']);
+    for (const list of indents) {
+      expect(list.padding).toBe('24px');
+      expect(list.textX).toBe(indents[0]?.textX);
+    }
+  });
 });

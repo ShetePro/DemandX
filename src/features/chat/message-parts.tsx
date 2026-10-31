@@ -200,7 +200,7 @@ function TextPart({
       text={text}
       state={state}
       onOpenCitation={onOpenCitation}
-      className="max-w-full min-w-0 text-sm leading-7 break-words text-fg [&_*]:max-w-full [&_*]:break-words [&_a]:max-w-full [&_a]:[overflow-wrap:anywhere] [&_a]:break-words [&_button]:max-w-full [&_button]:[overflow-wrap:anywhere] [&_button]:break-words [&_code]:[overflow-wrap:anywhere] [&_code]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto"
+      className="max-w-full min-w-0 text-sm leading-7 break-words text-fg [&_*]:max-w-full [&_*]:break-words [&_a]:max-w-full [&_a]:[overflow-wrap:anywhere] [&_a]:break-words [&_button]:max-w-full [&_button]:[overflow-wrap:anywhere] [&_button]:break-words [&_code]:[overflow-wrap:anywhere] [&_code]:break-words [&_li]:my-0.5 [&_li]:pl-1 [&_li>p]:my-0 [&_ol]:pl-6 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_ul]:pl-6"
     />
   );
 }
@@ -241,7 +241,7 @@ function ReasoningPart({
           text={text}
           state={state}
           onOpenCitation={onOpenCitation}
-          className="max-w-full min-w-0 text-[13px] leading-6 break-words text-muted [&_*]:max-w-full [&_*]:break-words [&_a]:max-w-full [&_a]:[overflow-wrap:anywhere] [&_a]:break-words [&_button]:max-w-full [&_button]:[overflow-wrap:anywhere] [&_button]:break-words [&_code]:[overflow-wrap:anywhere] [&_code]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto"
+          className="max-w-full min-w-0 text-[13px] leading-6 break-words text-muted [&_*]:max-w-full [&_*]:break-words [&_a]:max-w-full [&_a]:[overflow-wrap:anywhere] [&_a]:break-words [&_button]:max-w-full [&_button]:[overflow-wrap:anywhere] [&_button]:break-words [&_code]:[overflow-wrap:anywhere] [&_code]:break-words [&_li]:my-0.5 [&_li]:pl-1 [&_li>p]:my-0 [&_ol]:pl-6 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_ul]:pl-6"
         />
       </div>
     </details>

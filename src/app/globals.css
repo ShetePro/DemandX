@@ -1,6 +1,11 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 
+@source '../../node_modules/streamdown/dist/*.js';
+@source '../../node_modules/@streamdown/cjk/dist/*.js';
+@source '../../node_modules/@streamdown/code/dist/*.js';
+
+
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--panel);
