@@ -10,7 +10,10 @@ import { MobileNav } from './mobile-nav';
 
 const pathname = vi.hoisted(() => ({ current: '/threads/2' }));
 
-vi.mock('next/navigation', () => ({ usePathname: () => pathname.current }));
+vi.mock('next/navigation', () => ({
+  usePathname: () => pathname.current,
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
 vi.mock('next/link', () => ({
   default: ({ href, children, onClick, ...props }: ComponentProps<'a'> & { href: string }) => (
     <a
@@ -55,7 +58,7 @@ const THREADS: ThreadSummaryRecord[] = [
 function renderMobileNav() {
   return render(
     <ThemeProvider>
-      <MobileNav threads={THREADS} />
+      <MobileNav threads={THREADS} onDelete={vi.fn()} />
     </ThemeProvider>,
   );
 }

@@ -476,4 +476,53 @@ suite('run repository', () => {
 
     expect(unwrap(await repo.listThreadSummaries(1))).toHaveLength(1);
   });
+
+  it('deletes a conversation with its messages, idea, runs and events', async () => {
+    const { thread, run } = await createThreadWithRun();
+    unwrap(await repo.appendAssistantMessage(thread.threadId, [{ type: 'text', text: '回答' }]));
+    unwrap(await repo.appendEvent(run.runId, 'stage.started', { stage: 'S1' }));
+
+    expect(unwrap(await repo.deleteThread(thread.threadId))).toEqual({
+      threadId: thread.threadId,
+      ideaDeleted: true,
+    });
+
+    const [counts] = await client.sql<
+      { threads: number; messages: number; ideas: number; runs: number; events: number }[]
+    >`select
+        (select count(*)::int from threads) as threads,
+        (select count(*)::int from messages) as messages,
+        (select count(*)::int from ideas) as ideas,
+        (select count(*)::int from runs) as runs,
+        (select count(*)::int from run_events) as events`;
+    expect(counts).toEqual({ threads: 0, messages: 0, ideas: 0, runs: 0, events: 0 });
+  });
+
+  it('keeps the idea and its runs when another conversation still uses them', async () => {
+    const { thread, run } = await createThreadWithRun();
+    await client.sql`
+      insert into threads (idea_id, title)
+      select idea_id, '共享想法' from threads where id = ${thread.threadId}
+    `;
+
+    expect(unwrap(await repo.deleteThread(thread.threadId))).toEqual({
+      threadId: thread.threadId,
+      ideaDeleted: false,
+    });
+
+    const [idea] = await client.sql<{ ideas: number }[]>`
+      select count(*)::int as ideas from ideas
+    `;
+    expect(idea?.ideas).toBe(1);
+
+    const [storedRun] = await client.sql<{ thread_id: number | null }[]>`
+      select thread_id from runs where id = ${run.runId}
+    `;
+    expect(storedRun?.thread_id).toBeNull();
+  });
+
+  it('rejects deleting a conversation that does not exist', async () => {
+    expect(expectFailure(await repo.deleteThread(424_242)).code).toBe('NOT_FOUND');
+    expect(expectFailure(await repo.deleteThread(0)).code).toBe('VALIDATION_FAILED');
+  });
 });

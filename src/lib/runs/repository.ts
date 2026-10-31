@@ -99,6 +99,47 @@ export async function createThread(input: CreateThreadInput): Promise<Result<Cre
   }
 }
 
+export type DeleteThreadResult = { threadId: number; ideaDeleted: boolean };
+
+/**
+ * Deletes one conversation. The thread's messages cascade; its idea is removed
+ * only when no other thread points at it, which cascades that idea's runs and
+ * run events. A run whose idea survives (a shared idea) keeps its row with
+ * `thread_id` set to null, as the schema intends.
+ */
+export async function deleteThread(threadId: number): Promise<Result<DeleteThreadResult>> {
+  if (!Number.isInteger(threadId) || threadId <= 0)
+    return fail('VALIDATION_FAILED', 'threadId 必须是正整数');
+
+  try {
+    const result = await db.transaction(async (tx): Promise<DeleteThreadResult | null> => {
+      const rows = await tx
+        .select({ id: threads.id, ideaId: threads.ideaId })
+        .from(threads)
+        .where(eq(threads.id, threadId))
+        .for('update');
+      const thread = rows[0];
+      if (!thread) return null;
+
+      await tx.delete(threads).where(eq(threads.id, threadId));
+
+      const remaining = await tx
+        .select({ id: threads.id })
+        .from(threads)
+        .where(eq(threads.ideaId, thread.ideaId))
+        .limit(1);
+      const ideaDeleted = remaining.length === 0;
+      if (ideaDeleted) await tx.delete(ideas).where(eq(ideas.id, thread.ideaId));
+
+      return { threadId, ideaDeleted };
+    });
+
+    return result === null ? fail('NOT_FOUND', `会话 ${threadId} 不存在`) : ok(result);
+  } catch (error) {
+    return storageFailure('删除会话', error);
+  }
+}
+
 export const createRunInputSchema = z.strictObject({
   threadId: z.number().int('threadId 必须是整数').positive('threadId 必须为正数'),
   idea: z.string().trim().min(1, '想法不能为空').max(4000, '想法最多 4000 个字符'),

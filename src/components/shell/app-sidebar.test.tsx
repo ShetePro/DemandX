@@ -9,7 +9,10 @@ import { AppSidebar } from './app-sidebar';
 
 const pathname = vi.hoisted(() => ({ current: '/threads/2' }));
 
-vi.mock('next/navigation', () => ({ usePathname: () => pathname.current }));
+vi.mock('next/navigation', () => ({
+  usePathname: () => pathname.current,
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
 
 // Real `next/link` needs a mounted app router; an anchor is enough here.
 vi.mock('next/link', () => ({
@@ -48,7 +51,7 @@ const THREADS: ThreadSummaryRecord[] = [
 function renderSidebar(threads: ThreadSummaryRecord[] = THREADS) {
   return render(
     <ThemeProvider>
-      <AppSidebar threads={threads} />
+      <AppSidebar threads={threads} onDelete={vi.fn()} />
     </ThemeProvider>,
   );
 }

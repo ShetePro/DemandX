@@ -8,11 +8,14 @@ import { NewResearchScreen } from './new-research-screen';
 const mocks = vi.hoisted(() => ({
   startResearchAction: vi.fn(),
   push: vi.fn(),
+  refresh: vi.fn(),
   error: vi.fn(),
 }));
 
 vi.mock('./actions', () => ({ startResearchAction: mocks.startResearchAction }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }),
+}));
 vi.mock('sonner', () => ({ toast: { error: mocks.error, success: vi.fn() } }));
 
 const CREATED = { ok: true as const, value: { ideaId: 3, threadId: 7, runId: 9 } };

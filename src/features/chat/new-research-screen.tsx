@@ -135,6 +135,9 @@ export function NewResearchScreen({ recentIdeas = [] }: NewResearchScreenProps) 
         toast.error(result.message);
       } else {
         router.push(`/threads/${result.value.threadId}`);
+        // The sidebar list is server data rendered by the layout; without a
+        // refresh the new conversation is missing until the next full load.
+        router.refresh();
         return;
       }
 

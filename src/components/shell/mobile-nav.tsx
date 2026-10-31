@@ -20,10 +20,13 @@ import type { ThreadSummaryRecord } from '@/lib/runs/repository';
 import { NavLink } from './nav-links';
 import { SETTINGS_ITEM } from './nav-items';
 import { ThreadList } from './thread-list';
+import type { DeleteThreadHandler } from './thread-row';
 
 export interface MobileNavProps {
   /** Conversations, newest activity first; read by the `(workbench)` layout. */
   threads: readonly ThreadSummaryRecord[];
+  /** Supplied by the layout: feature actions cannot be imported from here. */
+  onDelete: DeleteThreadHandler;
 }
 
 /** The conversation the URL points at, for the top-bar title. */
@@ -43,7 +46,7 @@ function activeThreadTitle(
  * theme switch. The drawer reuses the same {@link ThreadList} as the desktop
  * sidebar, so both entry points always show the same conversations.
  */
-export function MobileNav({ threads }: MobileNavProps) {
+export function MobileNav({ threads, onDelete }: MobileNavProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const current =
@@ -73,6 +76,7 @@ export function MobileNav({ threads }: MobileNavProps) {
 
           <ThreadList
             threads={threads}
+            onDelete={onDelete}
             compact
             onNavigate={() => setOpen(false)}
             className="min-h-0 flex-1"

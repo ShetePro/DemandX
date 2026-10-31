@@ -11,10 +11,13 @@ import type { ThreadSummaryRecord } from '@/lib/runs/repository';
 import { NavLink } from './nav-links';
 import { SETTINGS_ITEM } from './nav-items';
 import { ThreadList } from './thread-list';
+import type { DeleteThreadHandler } from './thread-row';
 
 export interface AppSidebarProps {
   /** Conversations, newest activity first; read by the `(workbench)` layout. */
   threads: readonly ThreadSummaryRecord[];
+  /** Supplied by the layout: feature actions cannot be imported from here. */
+  onDelete: DeleteThreadHandler;
 }
 
 /**
@@ -23,7 +26,7 @@ export interface AppSidebarProps {
  *
  * Brand → 新建研究 → the conversation list (the primary navigation) → settings.
  */
-export function AppSidebar({ threads }: AppSidebarProps) {
+export function AppSidebar({ threads, onDelete }: AppSidebarProps) {
   const pathname = usePathname();
 
   return (
@@ -48,7 +51,7 @@ export function AppSidebar({ threads }: AppSidebarProps) {
         </Link>
       </Button>
 
-      <ThreadList threads={threads} className="min-h-0 flex-1" />
+      <ThreadList threads={threads} onDelete={onDelete} className="min-h-0 flex-1" />
 
       <div className="flex items-center gap-1.5 border-t border-border pt-2.5">
         <NavLink
