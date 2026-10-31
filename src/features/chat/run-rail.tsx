@@ -4,7 +4,7 @@ import { Check, LoaderCircle, X } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { useRunStream } from '@/lib/hooks/use-run-stream';
-import type { RunEvent } from '@/lib/runs/event-reducer';
+import type { RunEvent, RunStateSeed } from '@/lib/runs/event-reducer';
 import {
   RUN_STAGES,
   STATUS_META,
@@ -17,6 +17,9 @@ import { cn } from '@/lib/utils/cn';
 export type RunRailProps = {
   /** `null` until the operator confirms the approval card. */
   runId: number | null;
+  /** Database status of the run, so a finished run never opens a stream. */
+  runStatus?: string | undefined;
+  runStage?: string | null | undefined;
   /** First-paint snapshot from the RSC, oldest first. */
   initialEvents?: RunEvent[];
 };
@@ -25,7 +28,7 @@ export type RunRailProps = {
  * Right-hand run monitor. The empty branch is the honest state before a run
  * exists: no stage is guessed, because no worker has touched one yet.
  */
-export function RunRail({ runId, initialEvents = [] }: RunRailProps) {
+export function RunRail({ runId, runStatus, runStage, initialEvents = [] }: RunRailProps) {
   if (runId === null) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-1 px-2 text-center">
@@ -35,11 +38,26 @@ export function RunRail({ runId, initialEvents = [] }: RunRailProps) {
     );
   }
 
-  return <LiveRunRail key={runId} runId={runId} initialEvents={initialEvents} />;
+  return (
+    <LiveRunRail
+      key={runId}
+      runId={runId}
+      initialEvents={initialEvents}
+      seed={{ status: runStatus, stage: runStage }}
+    />
+  );
 }
 
-function LiveRunRail({ runId, initialEvents }: { runId: number; initialEvents: RunEvent[] }) {
-  const { state, connected, retries } = useRunStream(runId, initialEvents);
+function LiveRunRail({
+  runId,
+  initialEvents,
+  seed,
+}: {
+  runId: number;
+  initialEvents: RunEvent[];
+  seed: RunStateSeed;
+}) {
+  const { state, connected, retries } = useRunStream(runId, initialEvents, seed);
 
   return (
     <div className="flex h-full flex-col">
