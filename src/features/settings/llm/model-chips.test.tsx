@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ProviderModelRow, ProviderRow } from '@/lib/llm/types';
@@ -8,7 +9,6 @@ import { ModelChips } from './model-chips';
 
 const mocks = vi.hoisted(() => ({
   addModelAction: vi.fn(),
-  appendModelToChainAction: vi.fn(),
   refreshModelsAction: vi.fn(),
   refresh: vi.fn(),
   push: vi.fn(),
@@ -18,7 +18,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('./actions', () => ({
   addModelAction: mocks.addModelAction,
-  appendModelToChainAction: mocks.appendModelToChainAction,
   refreshModelsAction: mocks.refreshModelsAction,
 }));
 
@@ -58,11 +57,30 @@ const MODELS: ProviderModelRow[] = [
   },
 ];
 
-const EMPTY_CHAINS = { bulk: [], quality: [] };
+const MEMBERSHIP = {
+  bulk: new Set([`${PROVIDER.id}:qwen3:8b`]),
+  quality: new Set<string>(),
+};
+
+/** Mirrors how ProviderDetail owns the selection. */
+function Harness({ onSelect }: { onSelect?: (model: ProviderModelRow) => void }) {
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  return (
+    <ModelChips
+      provider={PROVIDER}
+      models={MODELS}
+      membership={MEMBERSHIP}
+      selectedModelId={selectedModelId}
+      onSelect={(model) => {
+        onSelect?.(model);
+        setSelectedModelId((previous) => (previous === model.modelId ? null : model.modelId));
+      }}
+    />
+  );
+}
 
 beforeEach(() => {
   mocks.addModelAction.mockReset();
-  mocks.appendModelToChainAction.mockReset();
   mocks.refreshModelsAction.mockReset();
   mocks.refresh.mockReset();
   mocks.success.mockReset();
@@ -83,7 +101,7 @@ describe('ModelChips', () => {
       },
     });
 
-    render(<ModelChips provider={PROVIDER} models={[]} chains={EMPTY_CHAINS} />);
+    render(<Harness />);
 
     await user.click(screen.getByRole('button', { name: '手动添加' }));
     await user.type(await screen.findByLabelText('模型 ID'), 'qwen3:8b');
@@ -98,65 +116,52 @@ describe('ModelChips', () => {
     await waitFor(() => expect(mocks.refresh).toHaveBeenCalled());
   });
 
-  it('opens the chain menu from the + button', async () => {
+  it('selects a model and deselects it when clicked again', async () => {
+    const onSelect = vi.fn();
     const user = userEvent.setup();
-    render(<ModelChips provider={PROVIDER} models={MODELS} chains={EMPTY_CHAINS} />);
+    render(<Harness onSelect={onSelect} />);
 
-    // Only externally callable models get the shortcut.
-    expect(
-      screen.queryByRole('button', { name: '把 console-only 加入链' }),
-    ).not.toBeInTheDocument();
+    const chip = screen.getByRole('button', { name: 'qwen3:8b' });
+    expect(chip).toHaveAttribute('aria-pressed', 'false');
 
-    await user.click(screen.getByRole('button', { name: '把 qwen3:8b 加入链' }));
+    await user.click(chip);
 
-    const menu = screen.getByRole('menu', { name: '把 qwen3:8b 加入链' });
-    expect(menu).toBeVisible();
-    expect(screen.getByRole('menuitem', { name: '把 qwen3:8b 加入 bulk 链' })).toHaveTextContent(
-      '加入 bulk',
-    );
-    expect(screen.getByRole('menuitem', { name: '把 qwen3:8b 加入 quality 链' })).toHaveTextContent(
-      '加入 quality',
-    );
+    expect(onSelect).toHaveBeenCalledWith(MODELS[0]);
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(chip).toHaveClass('border-accent', 'bg-accent-soft', 'text-accent');
+
+    await user.click(chip);
+
+    expect(onSelect).toHaveBeenCalledTimes(2);
+    expect(chip).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('appends to the chosen chain and reports the position', async () => {
-    const user = userEvent.setup();
-    mocks.appendModelToChainAction.mockResolvedValue({
-      ok: true,
-      value: { added: true, position: 1 },
-    });
+  it('shows the bulk/quality membership badges', () => {
+    render(<Harness />);
 
-    render(<ModelChips provider={PROVIDER} models={MODELS} chains={EMPTY_CHAINS} />);
-
-    await user.click(screen.getByRole('button', { name: '把 qwen3:8b 加入链' }));
-    await user.click(screen.getByRole('menuitem', { name: '把 qwen3:8b 加入 quality 链' }));
-
-    await waitFor(() => expect(mocks.appendModelToChainAction).toHaveBeenCalledTimes(1));
-    expect(mocks.appendModelToChainAction).toHaveBeenCalledWith({
-      profile: 'quality',
-      providerId: PROVIDER.id,
-      modelId: 'qwen3:8b',
-    });
-    expect(mocks.success).toHaveBeenCalledWith('已加入 quality 链 #2');
-    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled());
-    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'qwen3:8b' })).toHaveTextContent('B');
+    expect(screen.getByRole('button', { name: 'qwen3:8b' })).not.toHaveTextContent('Q');
   });
 
-  it('disables the profile a model already belongs to', async () => {
+  it('cannot select a model that only the vendor client can call', async () => {
+    const onSelect = vi.fn();
     const user = userEvent.setup();
-    render(
-      <ModelChips
-        provider={PROVIDER}
-        models={MODELS}
-        chains={{ bulk: [], quality: [{ providerId: PROVIDER.id, modelId: 'qwen3:8b' }] }}
-      />,
-    );
+    render(<Harness onSelect={onSelect} />);
 
-    await user.click(screen.getByRole('button', { name: '把 qwen3:8b 加入链' }));
+    const chip = screen.getByRole('button', { name: /console-only/ });
+    expect(chip).toBeDisabled();
+    expect(chip).toHaveAttribute('aria-pressed', 'false');
+    expect(chip).toHaveClass('border-dashed');
+    expect(chip).toHaveTextContent('仅官方客户端');
 
-    const quality = screen.getByRole('menuitem', { name: '把 qwen3:8b 加入 quality 链' });
-    expect(quality).toBeDisabled();
-    expect(quality).toHaveTextContent('已在 quality 链');
-    expect(screen.getByRole('menuitem', { name: '把 qwen3:8b 加入 bulk 链' })).toBeEnabled();
+    await user.click(chip);
+
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('has no shortcut button that adds a model to a chain', () => {
+    render(<Harness />);
+
+    expect(screen.queryByRole('button', { name: /加入链/ })).not.toBeInTheDocument();
   });
 });

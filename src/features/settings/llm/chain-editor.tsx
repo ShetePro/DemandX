@@ -30,10 +30,16 @@ import { saveChainsAction } from './actions';
 
 export type ChainDraft = { providerId: number; modelId: string };
 
+/** The model chosen in the list above; the chains themselves live here. */
+export type PendingModel = ChainDraft & { label: string };
+
 export type ChainEditorProps = {
   initialChains: Record<Profile, ChainDraft[]>;
   providers: ProviderRow[];
   models: ProviderModelRow[];
+  pendingModel?: PendingModel | undefined;
+  /** Lets the model chips mirror unsaved membership while editing. */
+  onChainsChange?: (chains: Record<Profile, ChainDraft[]>) => void;
 };
 
 type AvailableModel = ChainDraft & { label: string };
@@ -240,7 +246,13 @@ function ChainColumn({
   );
 }
 
-export function ChainEditor({ initialChains, providers, models }: ChainEditorProps) {
+export function ChainEditor({
+  initialChains,
+  providers,
+  models,
+  pendingModel,
+  onChainsChange,
+}: ChainEditorProps) {
   const router = useRouter();
   const headingId = useId();
   const [chains, setChains] = useState<Record<Profile, ChainDraft[]>>(initialChains);
@@ -291,25 +303,28 @@ export function ChainEditor({ initialChains, providers, models }: ChainEditorPro
 
   const empty = chains.bulk.length === 0 || chains.quality.length === 0;
 
+  function commit(next: Record<Profile, ChainDraft[]>) {
+    setChains(next);
+    onChainsChange?.(next);
+  }
+
   function move(profile: Profile, from: number, to: number) {
-    setChains((previous) => ({
-      ...previous,
-      [profile]: arrayMove(previous[profile], from, to),
-    }));
+    commit({
+      ...chains,
+      [profile]: arrayMove(chains[profile], from, to),
+    });
   }
 
   function remove(profile: Profile, index: number) {
-    setChains((previous) => ({
-      ...previous,
-      [profile]: previous[profile].filter((_, position) => position !== index),
-    }));
+    commit({
+      ...chains,
+      [profile]: chains[profile].filter((_, position) => position !== index),
+    });
   }
 
   function add(profile: Profile, entry: ChainDraft) {
-    setChains((previous) => {
-      if (previous[profile].some((existing) => sameEntry(existing, entry))) return previous;
-      return { ...previous, [profile]: [...previous[profile], entry] };
-    });
+    if (chains[profile].some((existing) => sameEntry(existing, entry))) return;
+    commit({ ...chains, [profile]: [...chains[profile], entry] });
   }
 
   async function save() {
@@ -351,6 +366,32 @@ export function ChainEditor({ initialChains, providers, models }: ChainEditorPro
           {saving ? '保存中…' : '保存链'}
         </Button>
       </div>
+
+      {pendingModel ? (
+        <div
+          role="group"
+          aria-label="已选中的模型"
+          className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-accent/40 bg-accent-soft px-3 py-2"
+        >
+          <span className="min-w-0 flex-1 truncate text-xs text-accent" title={pendingModel.label}>
+            已选中 {pendingModel.label}
+          </span>
+          {(['bulk', 'quality'] as const).map((profile) => {
+            const member = chains[profile].some((entry) => sameEntry(entry, pendingModel));
+            return (
+              <Button
+                key={profile}
+                size="sm"
+                variant={member ? 'ghost' : 'primary'}
+                disabled={member}
+                onClick={() => add(profile, pendingModel)}
+              >
+                {member ? `已在 ${profile}` : `加入 ${profile}`}
+              </Button>
+            );
+          })}
+        </div>
+      ) : null}
 
       {empty ? (
         <p className="mb-3 rounded-lg border border-warning/40 bg-warning-soft px-3 py-2 text-xs text-warning">

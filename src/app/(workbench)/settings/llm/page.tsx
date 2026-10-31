@@ -4,14 +4,12 @@ import { redirect } from 'next/navigation';
 import { PageHeader } from '@/components/common/page-header';
 import { SettingsTabs } from '@/components/shell/settings-tabs';
 import { Button } from '@/components/ui/button';
-import { ChainEditor, type ChainDraft } from '@/features/settings/llm/chain-editor';
-import { ModelChips } from '@/features/settings/llm/model-chips';
+import type { ChainDraft } from '@/features/settings/llm/chain-editor';
 import { ProviderDelete } from '@/features/settings/llm/provider-delete';
+import { ProviderDetail } from '@/features/settings/llm/provider-detail';
 import { ProviderDialog } from '@/features/settings/llm/provider-dialog';
 import { ProviderForm } from '@/features/settings/llm/provider-form';
 import { ProviderList } from '@/features/settings/llm/provider-list';
-import { TestButton } from '@/features/settings/llm/test-button';
-import { UsagePanel } from '@/features/settings/llm/usage-panel';
 import {
   getChainsForPage,
   getModelsForPage,
@@ -165,25 +163,24 @@ export default async function LlmSettingsPage({ searchParams }: { searchParams: 
                 >
                   <p className="font-medium">还没有可用的模型链，聊天与研究无法调用模型</p>
                   <p className="mt-1">
-                    用模型右侧的 + 加入，或
+                    点击模型选中后，到下方链路里加入 bulk / quality，或
                     <a href="#chains" className="ml-1 underline underline-offset-2 hover:text-fg">
-                      到下方批量编辑
+                      直接编辑链路
                     </a>
                     。
                   </p>
                 </div>
               ) : null}
 
-              <ModelChips
+              <ProviderDetail
+                key={selectedProvider.id}
                 provider={selectedProvider}
                 models={selectedModels}
-                chains={initialChains}
+                usage={selectedUsage}
+                initialChains={initialChains}
+                providers={providers}
+                allModels={models}
               />
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <UsagePanel provider={selectedProvider} usage={selectedUsage} />
-                <TestButton providerId={selectedProvider.id} providerName={selectedProvider.name} />
-              </div>
             </>
           ) : (
             <section className="rounded-xl border border-border bg-surface p-4 shadow-sm">
@@ -194,8 +191,6 @@ export default async function LlmSettingsPage({ searchParams }: { searchParams: 
               <ProviderForm />
             </section>
           )}
-
-          <ChainEditor initialChains={initialChains} providers={providers} models={models} />
         </div>
       </div>
     </div>

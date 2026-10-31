@@ -80,7 +80,7 @@ describe('LlmSettingsPage', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       '还没有可用的模型链，聊天与研究无法调用模型',
     );
-    expect(screen.getByRole('link', { name: '到下方批量编辑' })).toHaveAttribute('href', '#chains');
+    expect(screen.getByRole('link', { name: '直接编辑链路' })).toHaveAttribute('href', '#chains');
   });
 
   it('hides the notice once either chain has an entry', async () => {

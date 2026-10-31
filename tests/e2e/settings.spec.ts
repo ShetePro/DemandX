@@ -145,7 +145,7 @@ test.describe('LLM settings', () => {
     await expect(page).not.toHaveURL(/provider=999999/);
   });
 
-  test('一键加入链', async ({ page }) => {
+  test('选中模型后加入链', async ({ page }) => {
     await createStubProvider(page, {
       name: PROVIDER_NAME,
       apiKey: API_KEY,
@@ -153,29 +153,39 @@ test.describe('LLM settings', () => {
     });
     await discoverModels(page, PROVIDER_NAME);
 
-    // First click: bulk is empty, so this alone must persist a usable chain.
-    await page.getByRole('button', { name: '把 stub-model-a 加入链' }).click();
-    await page.getByRole('menuitem', { name: '把 stub-model-a 加入 bulk 链' }).click();
-    await expect(page.getByText('已加入 bulk 链 #1')).toBeVisible();
+    const models = page.getByRole('list', { name: `${PROVIDER_NAME} 的模型` });
+
+    // The chip only selects; membership is assigned from the chain toolbar.
+    await models.getByRole('button', { name: 'stub-model-a', exact: true }).click();
+    await expect(page.getByText(`已选中 ${PROVIDER_NAME} / stub-model-a`)).toBeVisible();
+
+    await page.getByRole('button', { name: '加入 bulk', exact: true }).click();
+    await expect(page.getByRole('button', { name: '已在 bulk', exact: true })).toBeDisabled();
     await expect(page.getByRole('list', { name: 'bulk 链' })).toContainText(
       `${PROVIDER_NAME} / stub-model-a`,
     );
 
-    await page.getByRole('button', { name: '把 stub-model-b 加入链' }).click();
-    await page.getByRole('menuitem', { name: '把 stub-model-b 加入 quality 链' }).click();
-    await expect(page.getByText('已加入 quality 链 #1')).toBeVisible();
+    // Selecting another model retargets the toolbar; bulk is left untouched.
+    await models.getByRole('button', { name: 'stub-model-b', exact: true }).click();
+    await expect(page.getByText(`已选中 ${PROVIDER_NAME} / stub-model-b`)).toBeVisible();
+    await expect(page.getByRole('button', { name: '加入 bulk', exact: true })).toBeEnabled();
+
+    await page.getByRole('button', { name: '加入 quality', exact: true }).click();
+    await expect(page.getByRole('button', { name: '已在 quality', exact: true })).toBeDisabled();
     await expect(page.getByRole('list', { name: 'quality 链' })).toContainText(
       `${PROVIDER_NAME} / stub-model-b`,
     );
 
-    // Membership is now visible to the menu, so the same entry cannot repeat.
-    await page.getByRole('button', { name: '把 stub-model-b 加入链' }).click();
-    await expect(
-      page.getByRole('menuitem', { name: '把 stub-model-b 加入 quality 链' }),
-    ).toBeDisabled();
-    await page.keyboard.press('Escape');
-
+    await saveChains(page);
     await page.reload();
+
+    // Membership survives the round trip and is shown on the chips themselves.
+    await expect(models.getByRole('button', { name: 'stub-model-a', exact: true })).toContainText(
+      'B',
+    );
+    await expect(models.getByRole('button', { name: 'stub-model-b', exact: true })).toContainText(
+      'Q',
+    );
     await expect(page.getByRole('list', { name: 'bulk 链' })).toContainText('stub-model-a');
     await expect(page.getByRole('list', { name: 'quality 链' })).toContainText('stub-model-b');
   });
