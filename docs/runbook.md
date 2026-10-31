@@ -81,6 +81,26 @@ ollama pull qwen3:8b
 - 其它 OpenAI 兼容端点（GLM / Kimi / DeepSeek / OpenRouter / 自建网关）填各自的
   Base URL、key，按需补 header 即可。
 
+### 3.3 从目录添加 provider（models.dev）
+
+`/settings/llm` 左上角「添加」默认打开**目录** tab，数据来自
+`https://models.dev/api.json`（进程内缓存 24 小时）：
+
+1. 搜索框按名称 / baseURL / 环境变量匹配，200ms 防抖；分组按钮切换 全部 / 国内 /
+   海外 / 本地。
+2. 点一行选中：名称、Base URL 可改，API Key 可留空（Ollama / LM Studio 本地服务不需要
+   key，key 也可以之后再补）。每行显示模型数与「已支持」标签。
+3. 点「添加并带入 N 个模型」：provider 与 `provider_models` 在同一事务中写入，
+   模型 `source = catalog`、`available_externally = true`；key 仍走 AES-256-GCM 加密，
+   页面只回显掩码。目录项没有模型列表时按钮变为「添加 provider」，之后在模型区点
+   「拉取模型」或「手动添加」。
+4. 需要额外 headers、月额度或按量计费确认时，点「在手动模式中编辑」——目录选择会预填
+   名称 / 类型 / Base URL，切到「手动」不丢值。
+
+目录请求失败时页面显示「目录不可用，使用内置列表」并回退到内置预设（国内 9 家、
+海外 14 家、本地 2 家），仍可搜索和添加，不会报错。Azure、Amazon Bedrock、Google
+Vertex 需要资源名/项目参数/请求签名，目录中不出现，请走「手动」模式。
+
 链的生效时机：新建 run 时把两条链快照进 `runs.chain_snapshot`，该 run 全程只用快照；
 改配置只影响之后的 run。
 

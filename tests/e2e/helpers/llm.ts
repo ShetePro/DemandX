@@ -46,6 +46,9 @@ export async function createStubProvider(page: Page, config: StubProviderConfig)
     .click();
 
   const dialog = page.getByRole('dialog', { name: '添加 provider' });
+  // The dialog opens on the models.dev directory; this helper wants the full
+  // form so it can set kind, headers and the stub endpoint explicitly.
+  await dialog.getByRole('tab', { name: '手动' }).click();
   await dialog.getByLabel('名称').fill(config.name);
   await dialog.getByLabel('类型').selectOption('openai-compatible');
   await dialog.getByLabel('Base URL').fill(config.baseUrl ?? STUB_BASE_URL);

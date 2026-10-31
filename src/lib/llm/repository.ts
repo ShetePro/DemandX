@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { loadSecretBox, SecretError, type SecretBox } from '@/lib/crypto/secret';
 import { db } from '@/lib/db/client';
-import { llmChains, providers } from '@/lib/db/schema';
+import { llmChains, providerModels, providers } from '@/lib/db/schema';
 
 import {
   createProviderInputSchema,
@@ -69,6 +69,30 @@ function encryptApiKey(plain: string): Result<{ apiKeyCt: string; apiKeyHint: st
   }
 }
 
+/** Shared by single and transactional creation so both encrypt identically. */
+function providerInsertValues(
+  data: z.output<typeof createProviderInputSchema>,
+): Result<typeof providers.$inferInsert> {
+  let key: { apiKeyCt: string; apiKeyHint: string } | null = null;
+  if (data.apiKey !== undefined) {
+    const encrypted = encryptApiKey(data.apiKey);
+    if (!encrypted.ok) return encrypted;
+    key = encrypted.value;
+  }
+
+  return ok({
+    name: data.name,
+    kind: data.kind,
+    baseUrl: data.baseUrl,
+    apiKeyCt: key?.apiKeyCt ?? null,
+    apiKeyHint: key?.apiKeyHint ?? null,
+    headers: data.headers ?? {},
+    enabled: data.enabled,
+    monthlyAllowanceUsd:
+      data.monthlyAllowanceUsd === undefined ? null : data.monthlyAllowanceUsd.toFixed(2),
+  });
+}
+
 function toProviderRow(row: ProviderRecord): ProviderRow {
   return {
     id: row.id,
@@ -125,34 +149,81 @@ export async function createProvider(input: unknown): Promise<Result<ProviderRow
   const parsed = parse(createProviderInputSchema, input);
   if (!parsed.ok) return parsed;
 
-  const data = parsed.value;
-  let key: { apiKeyCt: string; apiKeyHint: string } | null = null;
-  if (data.apiKey !== undefined) {
-    const encrypted = encryptApiKey(data.apiKey);
-    if (!encrypted.ok) return encrypted;
-    key = encrypted.value;
-  }
+  const values = providerInsertValues(parsed.value);
+  if (!values.ok) return values;
 
   try {
-    const [row] = await db
-      .insert(providers)
-      .values({
-        name: data.name,
-        kind: data.kind,
-        baseUrl: data.baseUrl,
-        apiKeyCt: key?.apiKeyCt ?? null,
-        apiKeyHint: key?.apiKeyHint ?? null,
-        headers: data.headers ?? {},
-        enabled: data.enabled,
-        monthlyAllowanceUsd:
-          data.monthlyAllowanceUsd === undefined ? null : data.monthlyAllowanceUsd.toFixed(2),
-      })
-      .returning();
+    const [row] = await db.insert(providers).values(values.value).returning();
 
     if (!row) return fail('STORAGE_FAILED', '创建 provider 失败：数据库未返回记录');
     return ok(toProviderRow(row));
   } catch (error) {
     return storageFailure('创建 provider ', error);
+  }
+}
+
+const seedModelsSchema = z.array(
+  z.object({
+    modelId: z.string().trim().min(1, 'modelId 不能为空').max(200, 'modelId 过长'),
+    displayName: z.string().trim().min(1).max(200, '显示名过长').nullable().optional(),
+  }),
+);
+
+export type SeedModel = z.input<typeof seedModelsSchema>[number];
+
+/**
+ * Create a provider together with its model list in one transaction. The
+ * settings directory fills both from one selection, and a half-written provider
+ * (rows without models, or a provider that fails its own constraints) would be
+ * worse than none. Catalog models are callable through the configured endpoint
+ * by definition, so `available_externally` is true.
+ */
+export async function createProviderWithModels(
+  input: unknown,
+  models: unknown,
+  options: { source?: string } = {},
+): Promise<Result<{ provider: ProviderRow; modelCount: number }>> {
+  const parsed = parse(createProviderInputSchema, input);
+  if (!parsed.ok) return parsed;
+
+  const parsedModels = seedModelsSchema.safeParse(models ?? []);
+  if (!parsedModels.success) {
+    return fail('VALIDATION_FAILED', formatIssues(parsedModels.error));
+  }
+
+  const seen = new Set<string>();
+  const seed = parsedModels.data.filter((model) => {
+    if (seen.has(model.modelId)) return false;
+    seen.add(model.modelId);
+    return true;
+  });
+
+  const values = providerInsertValues(parsed.value);
+  if (!values.ok) return values;
+
+  try {
+    const created = await db.transaction(async (tx) => {
+      const [row] = await tx.insert(providers).values(values.value).returning();
+      if (!row) throw new Error('provider insert returned no row');
+
+      if (seed.length > 0) {
+        await tx.insert(providerModels).values(
+          seed.map((model) => ({
+            providerId: row.id,
+            modelId: model.modelId,
+            displayName: model.displayName ?? null,
+            source: options.source ?? 'catalog',
+            availableExternally: true,
+          })),
+        );
+      }
+
+      return { provider: toProviderRow(row), modelCount: seed.length };
+    });
+
+    return ok(created);
+  } catch (error) {
+    return storageFailure('创建 provider 与模型 ', error);
   }
 }
 

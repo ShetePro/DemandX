@@ -232,6 +232,10 @@ interface LlmPort {
 | Chains | `bulk` 与 `quality` 两列 | 拖拽排序、增删、灰度显示不可用 provider；保存前校验“链非空” |
 | Usage | 各 provider 的 5h / 本周 / 本月用量与额度（来自 `provider_usage`） | 进度条 + "重置窗口"按钮（仅清本地计数） |
 
+Providers 的「添加」默认从**目录**（`https://models.dev/api.json`，24h 缓存）选择：按
+`npm` 映射到四种 kind、按 国内 / 海外 / 本地 分组，选中后预填名称 / Base URL / 环境变量
+提示并带入模型清单；目录不可用时回退内置预设并在 UI 显式标注，不阻断添加。
+
 **连通性测试（Server Action 执行，结果回填页面）**
 
 ```ts

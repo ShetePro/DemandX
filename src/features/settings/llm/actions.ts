@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { getChain, saveChains } from '@/lib/llm/chain-repository';
+import { loadCatalog, searchCatalog, type CatalogSnapshot } from '@/lib/llm/catalog';
 import { testProviderConnection, type ConnectionTestResult } from '@/lib/llm/connection';
 import {
   addModel,
@@ -14,16 +15,25 @@ import {
 import type { ChainItem, Profile } from '@/lib/llm/port';
 import {
   createProvider,
+  createProviderWithModels,
   deleteProvider,
   listProviders,
   updateProvider,
 } from '@/lib/llm/repository';
-import type { ProviderModelRow, ProviderRow, ProviderUsageSummary, Result } from '@/lib/llm/types';
+import {
+  providerBaseUrlSchema,
+  providerNameSchema,
+  type ProviderModelRow,
+  type ProviderRow,
+  type ProviderUsageSummary,
+  type Result,
+} from '@/lib/llm/types';
 import { getProviderUsage } from '@/lib/llm/usage-repository';
 
 import {
   PAYG_ISSUE_CODE,
   chainsInputSchema,
+  isPaygBaseUrl,
   providerFormSchema,
   providerUpdateFormSchema,
 } from './schema';
@@ -34,6 +44,19 @@ const providerIdSchema = z
   .number()
   .int('provider id 必须是整数')
   .positive('provider id 必须为正数');
+
+const catalogQuerySchema = z.object({
+  q: z.string().trim().max(120, '搜索词过长').default(''),
+  group: z.enum(['all', 'domestic', 'overseas', 'local']).default('all'),
+});
+
+const catalogSelectionSchema = z.object({
+  catalogId: z.string().trim().min(1, 'catalogId 不能为空').max(120, 'catalogId 过长'),
+  /** Optional: local daemons need no key, and keys can be added later. */
+  apiKey: z.string().trim().max(500, 'API Key 过长').optional(),
+  name: providerNameSchema.optional(),
+  baseUrl: providerBaseUrlSchema.optional(),
+});
 
 function formatIssues(error: z.ZodError): string {
   return error.issues
@@ -73,6 +96,82 @@ function withoutPaygAcknowledgement(value: Record<string, unknown>): Record<stri
 
 export async function listProvidersAction(): Promise<Result<ProviderRow[]>> {
   return listProviders();
+}
+
+/**
+ * Search the directory (models.dev) for the "add provider" dialog. A failed
+ * fetch is not an execution failure: `loadCatalog` answers with the built-in
+ * presets and `source: 'fallback'`, which the dialog shows explicitly.
+ */
+export async function getCatalogAction(
+  q?: unknown,
+  group?: unknown,
+): Promise<Result<CatalogSnapshot>> {
+  const parsed = parse(catalogQuerySchema, { q, group });
+  if (!parsed.ok) return parsed;
+
+  try {
+    const snapshot = await loadCatalog();
+    return {
+      ok: true,
+      value: {
+        ...snapshot,
+        providers: searchCatalog(snapshot.providers, parsed.value.q, parsed.value.group),
+      },
+    };
+  } catch {
+    return { ok: false, code: 'LLM_UNAVAILABLE', message: '读取 models.dev 目录失败' };
+  }
+}
+
+export type CatalogCreation = { provider: ProviderRow; modelCount: number };
+
+/**
+ * One directory selection becomes one provider plus its model list, written in
+ * a single transaction. The key is optional; a local daemon or a keyless
+ * endpoint stays usable and can be given a key later.
+ */
+export async function createFromCatalogAction(input: unknown): Promise<Result<CatalogCreation>> {
+  const parsed = parse(catalogSelectionSchema, input);
+  if (!parsed.ok) return parsed;
+
+  const snapshot = await loadCatalog();
+  const entry = snapshot.providers.find((provider) => provider.id === parsed.value.catalogId);
+  if (entry === undefined) {
+    return {
+      ok: false,
+      code: 'VALIDATION_FAILED',
+      message: `目录中没有 provider ${parsed.value.catalogId}，请刷新目录后重试`,
+    };
+  }
+
+  const baseUrl = parsed.value.baseUrl ?? entry.baseUrl;
+  // Catalog entries are curated, but a metered endpoint still needs the explicit
+  // acknowledgement the manual form collects; never insert it silently.
+  if (isPaygBaseUrl(baseUrl)) {
+    return {
+      ok: false,
+      code: 'PAYG_NOT_ACKNOWLEDGED',
+      message: '该端点是按量计费入口，请切换到“手动”并勾选确认后再保存。',
+    };
+  }
+
+  const providerInput: Record<string, unknown> = {
+    name: parsed.value.name ?? entry.name,
+    kind: entry.kind,
+    baseUrl,
+    enabled: true,
+  };
+  if (parsed.value.apiKey !== undefined && parsed.value.apiKey !== '') {
+    providerInput.apiKey = parsed.value.apiKey;
+  }
+
+  const result = await createProviderWithModels(
+    providerInput,
+    entry.models.map((model) => ({ modelId: model.id, displayName: model.name })),
+  );
+  if (result.ok) revalidatePath(SETTINGS_PATH);
+  return result;
 }
 
 export async function createProviderAction(raw: unknown): Promise<Result<ProviderRow>> {

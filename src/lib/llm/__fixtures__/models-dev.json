@@ -1,0 +1,148 @@
+{
+  "deepseek": {
+    "id": "deepseek",
+    "name": "DeepSeek",
+    "npm": "@ai-sdk/openai-compatible",
+    "env": ["DEEPSEEK_API_KEY"],
+    "doc": "https://api-docs.deepseek.com/quick_start/pricing",
+    "api": "https://api.deepseek.com",
+    "models": {
+      "deepseek-v4-flash": {
+        "id": "deepseek-v4-flash",
+        "name": "DeepSeek V4 Flash"
+      },
+      "deepseek-v4-flash-vision-exp": {
+        "id": "deepseek-v4-flash-vision-exp",
+        "name": "DeepSeek V4 Flash Vision Exp"
+      }
+    }
+  },
+  "openai": {
+    "id": "openai",
+    "name": "OpenAI",
+    "npm": "@ai-sdk/openai",
+    "env": ["OPENAI_API_KEY"],
+    "doc": "https://platform.openai.com/docs/models",
+    "models": {
+      "gpt-daybreak-red-latest": {
+        "id": "gpt-daybreak-red-latest",
+        "name": "Daybreak Red"
+      },
+      "gpt-5.2": {
+        "id": "gpt-5.2",
+        "name": "GPT-5.2"
+      }
+    }
+  },
+  "anthropic": {
+    "id": "anthropic",
+    "name": "Anthropic",
+    "npm": "@ai-sdk/anthropic",
+    "env": ["ANTHROPIC_API_KEY"],
+    "doc": "https://docs.anthropic.com/en/docs/about-claude/models",
+    "models": {
+      "claude-fable-5": {
+        "id": "claude-fable-5",
+        "name": "Claude Fable 5"
+      },
+      "claude-opus-4-6": {
+        "id": "claude-opus-4-6",
+        "name": "Claude Opus 4.6"
+      }
+    }
+  },
+  "google": {
+    "id": "google",
+    "name": "Google",
+    "npm": "@ai-sdk/google",
+    "env": ["GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY"],
+    "doc": "https://ai.google.dev/gemini-api/docs/models",
+    "models": {
+      "gemini-3.1-flash-lite": {
+        "id": "gemini-3.1-flash-lite",
+        "name": "Gemini 3.1 Flash Lite"
+      },
+      "gemini-3.5-flash": {
+        "id": "gemini-3.5-flash",
+        "name": "Gemini 3.5 Flash"
+      }
+    }
+  },
+  "minimax-cn": {
+    "id": "minimax-cn",
+    "name": "MiniMax (minimax.cn)",
+    "npm": "@ai-sdk/anthropic",
+    "env": ["MINIMAX_API_KEY"],
+    "doc": "https://platform.minimaxi.com/docs/guides/quickstart",
+    "api": "https://api.minimax.cn/anthropic/v1",
+    "models": {
+      "MiniMax-M3.1-Flash": {
+        "id": "MiniMax-M3.1-Flash",
+        "name": "MiniMax-M3.1-Flash"
+      },
+      "MiniMax-M3": {
+        "id": "MiniMax-M3",
+        "name": "MiniMax-M3"
+      }
+    }
+  },
+  "openrouter": {
+    "id": "openrouter",
+    "name": "OpenRouter",
+    "npm": "@openrouter/ai-sdk-provider",
+    "env": ["OPENROUTER_API_KEY"],
+    "doc": "https://openrouter.ai/models",
+    "api": "https://openrouter.ai/api/v1",
+    "models": {
+      "bytedance-seed/seed-2.0-code": {
+        "id": "bytedance-seed/seed-2.0-code",
+        "name": "Seed 2.0 Code"
+      },
+      "bytedance-seed/seed-1.6-flash": {
+        "id": "bytedance-seed/seed-1.6-flash",
+        "name": "Seed 1.6 Flash"
+      }
+    }
+  },
+  "groq": {
+    "id": "groq",
+    "name": "Groq",
+    "npm": "@ai-sdk/groq",
+    "env": ["GROQ_API_KEY"],
+    "doc": "https://console.groq.com/docs/models",
+    "models": {
+      "allam-2-7b": {
+        "id": "allam-2-7b",
+        "name": "ALLaM-2-7b"
+      },
+      "llama-3.3-70b-versatile": {
+        "id": "llama-3.3-70b-versatile",
+        "name": "Llama 3.3 70B"
+      }
+    }
+  },
+  "azure": {
+    "id": "azure",
+    "name": "Azure",
+    "npm": "@ai-sdk/azure",
+    "env": ["AZURE_RESOURCE_NAME", "AZURE_API_KEY"],
+    "doc": "https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models",
+    "models": {
+      "gpt-image-1": {
+        "id": "gpt-image-1",
+        "name": "GPT-Image-1"
+      },
+      "gpt-5.2": {
+        "id": "gpt-5.2",
+        "name": "GPT-5.2"
+      }
+    }
+  },
+  "self-hosted-demo": {
+    "id": "self-hosted-demo",
+    "name": "Self-hosted Demo",
+    "npm": "@ai-sdk/openai-compatible",
+    "env": ["DEMO_API_KEY"],
+    "models": {}
+  }
+}

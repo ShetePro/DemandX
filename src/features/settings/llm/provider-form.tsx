@@ -63,11 +63,18 @@ export function parseHeadersText(text: string): ParsedHeaders {
   return { ok: true, value: Object.fromEntries(entries) as Record<string, string> };
 }
 
-function defaultValues(provider?: ProviderRow): FormValues {
+/** Values a directory selection hands to the manual form. */
+export type ProviderFormDefaults = {
+  name?: string;
+  kind?: ProviderKind;
+  baseUrl?: string;
+};
+
+function defaultValues(provider?: ProviderRow, initial?: ProviderFormDefaults): FormValues {
   return {
-    name: provider?.name ?? '',
-    kind: provider?.kind ?? 'openai-compatible',
-    baseUrl: provider?.baseUrl ?? '',
+    name: provider?.name ?? initial?.name ?? '',
+    kind: provider?.kind ?? initial?.kind ?? 'openai-compatible',
+    baseUrl: provider?.baseUrl ?? initial?.baseUrl ?? '',
     apiKey: '',
     headersText:
       provider && Object.keys(provider.headers).length > 0
@@ -104,12 +111,14 @@ function fieldErrorsFrom(error: {
 export type ProviderFormProps = {
   /** Present when editing; absent when creating. */
   provider?: ProviderRow | undefined;
+  /** Prefill for a new provider, e.g. a selection from the directory. */
+  initialValues?: ProviderFormDefaults | undefined;
   /** Called after the action succeeds, so a wrapping dialog can close. */
   onSaved?: () => void;
   className?: string;
 };
 
-export function ProviderForm({ provider, onSaved, className }: ProviderFormProps) {
+export function ProviderForm({ provider, initialValues, onSaved, className }: ProviderFormProps) {
   const router = useRouter();
   const formId = useId();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -160,7 +169,7 @@ export function ProviderForm({ provider, onSaved, className }: ProviderFormProps
     control,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    defaultValues: defaultValues(provider),
+    defaultValues: defaultValues(provider, initialValues),
     resolver,
   });
 
