@@ -110,3 +110,17 @@ export async function countThreadArtifacts(
   `;
   return rows[0] ?? { threads: -1, runs: -1, messages: -1 };
 }
+
+/**
+ * Every stored turn of one thread, oldest first. A streaming reply reaches the
+ * page before it reaches Postgres, so a spec that reloads asserts on this row
+ * instead of on the DOM and a timeout.
+ */
+export async function storedMessages(
+  threadId: number,
+): Promise<{ role: string; parts: unknown }[]> {
+  const rows = await db()<{ role: string; parts: unknown }[]>`
+    select role, parts from messages where thread_id = ${threadId} order by created_at, id
+  `;
+  return rows.map((row) => ({ role: row.role, parts: row.parts }));
+}

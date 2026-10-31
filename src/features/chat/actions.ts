@@ -3,12 +3,15 @@
 import { z } from 'zod';
 
 import {
+  appendAssistantMessage,
   createResearch,
   createRun,
   createRunInputSchema,
   createThread,
   createThreadInputSchema,
   formatIssues,
+  type AppendAssistantMessageResult,
+  type AssistantMessagePart,
   type CreateResearchResult,
   type CreateRunResult,
   type CreateThreadResult,
@@ -47,6 +50,47 @@ export async function createRunAction(raw: unknown): Promise<Result<CreateRunRes
   }
 
   return created;
+}
+
+/**
+ * The assistant's answer as the client streams it. `useChat` parts carry more
+ * than the text (state, ids, provider metadata); only these two fields decide
+ * what is saved, so a changed part shape elsewhere cannot break persistence.
+ */
+const assistantPartSchema = z.object({
+  type: z.enum(['text', 'reasoning']),
+  text: z.string(),
+});
+
+const appendAssistantMessageInputSchema = z.strictObject({
+  threadId: z.number().int('threadId 必须是整数').positive('threadId 必须为正数'),
+  parts: z.array(assistantPartSchema).min(1, '回复内容不能为空').max(200, '回复片段最多 200 个'),
+});
+
+/**
+ * Persist a streamed answer so a refresh keeps it. `parts` arrives from the
+ * client and is therefore untrusted: the shape is validated here, and empty
+ * fragments are dropped (a turn that only called a tool has nothing to save).
+ * The write itself is idempotent, so a retried or duplicated call is harmless.
+ */
+export async function appendAssistantMessageAction(
+  threadId: number,
+  parts: unknown,
+): Promise<Result<AppendAssistantMessageResult>> {
+  const parsed = appendAssistantMessageInputSchema.safeParse({ threadId, parts });
+  if (!parsed.success) {
+    return { ok: false, code: 'VALIDATION_FAILED', message: formatIssues(parsed.error) };
+  }
+
+  const storable: AssistantMessagePart[] = [];
+  for (const part of parsed.data.parts) {
+    if (part.text.trim() === '') continue;
+    storable.push({ type: part.type, text: part.text });
+  }
+  if (storable.length === 0)
+    return { ok: false, code: 'VALIDATION_FAILED', message: '回复内容不能为空' };
+
+  return appendAssistantMessage(parsed.data.threadId, storable);
 }
 
 const startResearchInputSchema = z.strictObject({

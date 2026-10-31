@@ -74,6 +74,15 @@ export function MessageParts({
                 onOpenCitation={onOpenCitation}
               />
             );
+          case 'reasoning':
+            return (
+              <ReasoningPart
+                key={index}
+                text={part.text}
+                state={part.state}
+                onOpenCitation={onOpenCitation}
+              />
+            );
           case 'tool-start_research':
             return (
               <StartResearchCard
@@ -108,14 +117,21 @@ function warnUnsupportedPart(type: string): void {
   console.warn(`[chat] 未识别的消息片段，已跳过：${type}`);
 }
 
-function TextPart({
+/**
+ * Shared by the answer and the reasoning: the same pipeline (raw HTML →
+ * citations → sanitize → harden) must apply to both, because both come from
+ * the model.
+ */
+function MarkdownPart({
   text,
   state,
   onOpenCitation,
+  className,
 }: {
   text: string;
   state?: 'streaming' | 'done' | undefined;
   onOpenCitation?: ((id: string) => void) | undefined;
+  className: string;
 }) {
   const code = useCodeHighlighter(text);
   const components = useMemo<Components>(
@@ -131,13 +147,74 @@ function TextPart({
   return (
     <Streamdown
       mode={state === 'streaming' ? 'streaming' : 'static'}
-      className="text-sm leading-7 text-fg"
+      className={className}
       plugins={code === undefined ? { cjk } : { cjk, code }}
       rehypePlugins={REHYPE_PLUGINS}
       components={components}
     >
       {text}
     </Streamdown>
+  );
+}
+
+function TextPart({
+  text,
+  state,
+  onOpenCitation,
+}: {
+  text: string;
+  state?: 'streaming' | 'done' | undefined;
+  onOpenCitation?: ((id: string) => void) | undefined;
+}) {
+  return (
+    <MarkdownPart
+      text={text}
+      state={state}
+      onOpenCitation={onOpenCitation}
+      className="text-sm leading-7 text-fg"
+    />
+  );
+}
+
+/**
+ * The model's thinking, kept beside the answer instead of hidden. It opens
+ * while it streams (with a pulse so it does not read as finished text) and
+ * collapses once the answer is complete; a reader can still expand it.
+ */
+function ReasoningPart({
+  text,
+  state,
+  onOpenCitation,
+}: {
+  text: string;
+  state?: 'streaming' | 'done' | undefined;
+  onOpenCitation?: ((id: string) => void) | undefined;
+}) {
+  const streaming = state === 'streaming';
+
+  return (
+    <details
+      open={streaming}
+      className="rounded-xl border border-border bg-surface-2/50 px-3 py-2 text-muted"
+    >
+      <summary className="flex cursor-pointer items-center gap-2 text-xs font-medium text-muted select-none">
+        {streaming && (
+          <span
+            aria-hidden="true"
+            className="inline-block size-1.5 shrink-0 animate-pulse rounded-full bg-accent"
+          />
+        )}
+        思考过程
+      </summary>
+      <div className="mt-2">
+        <MarkdownPart
+          text={text}
+          state={state}
+          onOpenCitation={onOpenCitation}
+          className="text-[13px] leading-6 text-muted"
+        />
+      </div>
+    </details>
   );
 }
 

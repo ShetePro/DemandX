@@ -7,14 +7,17 @@ import {
   db,
   deleteThreadsWithIdeas,
   purgeProvidersByPrefix,
+  storedMessages,
 } from './helpers/db';
-import { resetStub, setupProviderWithChains, stubRequests } from './helpers/llm';
+import { resetStub, setupProviderWithChains, stubRequests, type StubRequest } from './helpers/llm';
 
 /**
- * Chat page end to end: the composer posts to the real `/api/chat` route, which
- * reads the quality chain from Postgres and streams from the stubbed provider;
- * `useChat` renders the increments, `[e12]` becomes a chip and the run rail
- * folds the real SSE event log.
+ * Chat page end to end: `/threads/new` creates the run and hands over to the
+ * conversation, which asks the question on its own. That request goes to the
+ * real `/api/chat` route, which reads the quality chain from Postgres and
+ * streams from the stubbed provider; `useChat` renders the increments, the run
+ * activity card folds the real SSE event log, and the answer is written back so
+ * a reload still shows it.
  *
  * Only the provider's network edge is stubbed. The suite names its provider
  * `e2e-chat-*` and deletes every row it created in `afterAll`, so the shared
@@ -25,9 +28,21 @@ const PROVIDER_NAME = 'e2e-chat';
 const PROVIDER_PREFIX = `${PROVIDER_NAME}%`;
 const API_KEY = 'sk-e2e-chat-123456';
 const IDEA = '帮我验证跨境库存同步工具';
+const REPLY = '付费信号只有 1 条有价格页';
 
 /** Thread ids created by this file; `afterAll` deletes their whole idea tree. */
 const createdThreadIds: number[] = [];
+
+/** A chat completion the adapter requested as a stream — the only real answer. */
+function isStreamingChat(entry: StubRequest): boolean {
+  return (
+    entry.path === '/v1/chat/completions' &&
+    typeof entry.body === 'object' &&
+    entry.body !== null &&
+    'stream' in entry.body &&
+    entry.body.stream === true
+  );
+}
 
 /** Open a real conversation through `/threads/new` and remember its id. */
 async function createThread(page: Page): Promise<number> {
@@ -55,7 +70,8 @@ async function createThread(page: Page): Promise<number> {
 
 /**
  * Insert a run and its first two events directly: the worker that normally
- * writes them does not exist yet, and the rail must still render a real log.
+ * writes them does not exist yet, and the transcript must still render a real
+ * log.
  */
 async function seedRun(threadId: number): Promise<number> {
   const client = db();
@@ -85,8 +101,8 @@ async function seedRun(threadId: number): Promise<number> {
 }
 
 /**
- * Append the terminal event and flip the run row. The rail must pick this up
- * over SSE — the page is never reloaded after this call.
+ * Append the terminal event and flip the run row. The rail and the activity
+ * card must pick this up over SSE — the page is never reloaded after this call.
  */
 async function finishRun(runId: number): Promise<void> {
   await db().begin(async (tx) => {
@@ -133,8 +149,41 @@ test.describe('Chat', () => {
     await closeDb();
   });
 
-  test('流式回复与引用', async ({ page, request }) => {
-    await createThread(page);
+  test('新建研究后自动出现流式回复，刷新后仍在', async ({ page, request }) => {
+    const threadId = await createThread(page);
+
+    // No keystroke and no worker: the thread page asks the question itself.
+    const reply = page.locator('article').last();
+    await expect(reply).toContainText(REPLY);
+
+    // The stored question is shown once, not once from history plus once sent.
+    await expect(page.locator('article').filter({ hasText: IDEA })).toHaveCount(1);
+
+    // Proof the answer was streamed: the adapter asked the stub for SSE.
+    expect((await stubRequests(request)).filter(isStreamingChat)).toHaveLength(1);
+
+    // The reply must be in Postgres before the reload, otherwise this asserts
+    // nothing about persistence.
+    await expect
+      .poll(async () => (await storedMessages(threadId)).map((message) => message.role))
+      .toEqual(['user', 'assistant']);
+
+    await page.reload();
+    await expect(page.locator('article').last()).toContainText(REPLY);
+    await expect(page.locator('article').filter({ hasText: IDEA })).toHaveCount(1);
+    // A stored answer stops the auto prompt: the reload asks nothing.
+    expect((await stubRequests(request)).filter(isStreamingChat)).toHaveLength(1);
+  });
+
+  test('流式增量与引用', async ({ page, request }) => {
+    const threadId = await createThread(page);
+
+    // The automatic first answer has to be stored, so the reload below seeds the
+    // transcript and the composer starts idle.
+    await expect.poll(async () => (await storedMessages(threadId)).length).toBe(2);
+    await page.reload();
+    await expect(page.locator('article').last()).toContainText(REPLY);
+    await resetStub(request);
 
     const composer = page.getByLabel('输入消息');
     await composer.fill(IDEA);
@@ -146,7 +195,7 @@ test.describe('Chat', () => {
     await expect(reply).toContainText('先看证据：');
     expect(await reply.innerText()).not.toContain('付费信号');
 
-    await expect(reply).toContainText('付费信号只有 1 条有价格页');
+    await expect(reply).toContainText(REPLY);
 
     const chip = reply.getByRole('button', { name: '证据 e12' });
     await expect(chip).toBeVisible();
@@ -159,20 +208,10 @@ test.describe('Chat', () => {
     await expect(openEvidence).toBeVisible();
     await expect(openEvidence).toHaveAttribute('href', /\/runs\/\d+\/evidence$/);
 
-    // Proof the answer was streamed: the adapter asked the stub for SSE.
-    const requests = await stubRequests(request);
-    const streamed = requests.filter(
-      (entry) =>
-        entry.path === '/v1/chat/completions' &&
-        typeof entry.body === 'object' &&
-        entry.body !== null &&
-        'stream' in entry.body &&
-        entry.body.stream === true,
-    );
-    expect(streamed).toHaveLength(1);
+    expect((await stubRequests(request)).filter(isStreamingChat)).toHaveLength(1);
   });
 
-  test('右栏事件', async ({ page }) => {
+  test('右栏事件与研究进度', async ({ page }) => {
     const threadId = await createThread(page);
     const runId = await seedRun(threadId);
 
@@ -185,9 +224,16 @@ test.describe('Chat', () => {
     await expect(rail.getByText('stage: S1')).toBeVisible();
     await expect(rail.getByText('进行中')).toBeVisible();
 
-    // No reload here: only the insert, which the rail's SSE connection polls.
+    // The same log is told on the assistant side of the transcript.
+    const activity = page.getByRole('group', { name: '研究进度' });
+    await expect(activity).toContainText('S1 采集');
+    await expect(activity).toContainText('进行中');
+
+    // No reload here: only the insert, which both SSE connections poll.
     await finishRun(runId);
     await expect(rail.getByText('已结束')).toBeVisible({ timeout: 1_500 });
     await expect(rail.getByText('已完成')).toBeVisible({ timeout: 1_500 });
+    await expect(activity).toHaveCount(0);
+    await expect(page.getByText('研究完成', { exact: true })).toBeVisible({ timeout: 1_500 });
   });
 });

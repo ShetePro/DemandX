@@ -30,6 +30,9 @@ pnpm dev                  # 终端 1：http://127.0.0.1:3000
 pnpm worker               # 终端 2：消费 pipeline/s1 队列，跑 S1–S6
 ```
 
+只想开一个终端时用 `pnpm dev:all`：它在同一进程组里同时起 `dev` 与 `worker`，
+Ctrl-C 一起停；日志按前缀混排，调试单个进程时仍建议分开跑。
+
 `pnpm dev` 自己读取 `.env`；`pnpm worker`、`pnpm db:migrate` 与 `scripts/*` 通过
 `src/lib/db/load-env.ts` 读取同一份 `.env`。
 

@@ -847,6 +847,83 @@ export async function listRecentIdeaTitles(limit = RECENT_IDEA_LIMIT): Promise<R
   }
 }
 
+/**
+ * The two parts a conversation keeps after a reload: what the assistant said
+ * and how it got there. Tool calls and data parts are re-created per request, so
+ * persisting them would only store a stale UI fragment.
+ */
+export type AssistantMessagePart = { type: 'text' | 'reasoning'; text: string };
+
+export type AppendAssistantMessageResult = { inserted: boolean; id: number };
+
+/** Whether the thread already holds an assistant turn, i.e. a saved answer. */
+export async function hasAssistantMessage(threadId: number): Promise<Result<boolean>> {
+  if (!Number.isInteger(threadId) || threadId <= 0)
+    return fail('NOT_FOUND', `thread ${threadId} 不存在`);
+
+  try {
+    const rows = await db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(and(eq(messages.threadId, threadId), eq(messages.role, 'assistant')))
+      .limit(1);
+
+    return ok(rows.length > 0);
+  } catch (error) {
+    return storageFailure('读取消息', error);
+  }
+}
+
+/**
+ * Save the assistant's answer for a thread, at most once.
+ *
+ * The client calls this from `onFinish`, and a reloaded page may call it again
+ * for the same turn, so "second writer loses" is the contract: the thread row is
+ * locked, the existing assistant turn is read under that lock, and only a thread
+ * without one gets an insert. The lock is what makes check-then-insert atomic;
+ * no unique index is needed (and one on `role` would forbid a second turn).
+ */
+export async function appendAssistantMessage(
+  threadId: number,
+  parts: readonly AssistantMessagePart[],
+): Promise<Result<AppendAssistantMessageResult>> {
+  if (!Number.isInteger(threadId) || threadId <= 0)
+    return fail('NOT_FOUND', `thread ${threadId} 不存在`);
+  if (parts.length === 0) return fail('VALIDATION_FAILED', '回复内容不能为空');
+
+  try {
+    const stored = await db.transaction(async (tx) => {
+      const locked = await tx.execute<{ id: number }>(
+        sql`select id from threads where id = ${threadId} for update`,
+      );
+      if (locked.length === 0) return null;
+
+      const existing = await tx
+        .select({ id: messages.id })
+        .from(messages)
+        .where(and(eq(messages.threadId, threadId), eq(messages.role, 'assistant')))
+        .orderBy(asc(messages.id))
+        .limit(1);
+
+      const first = existing[0];
+      if (first !== undefined) return { inserted: false, id: first.id };
+
+      const row = firstRow(
+        await tx
+          .insert(messages)
+          .values({ threadId, role: 'assistant', parts })
+          .returning({ id: messages.id }),
+      );
+      return { inserted: true, id: row.id };
+    });
+
+    if (stored === null) return fail('NOT_FOUND', `thread ${threadId} 不存在`);
+    return ok(stored);
+  } catch (error) {
+    return storageFailure('保存助手回复', error);
+  }
+}
+
 /** Oldest first, with `id` as a tie-break for turns in the same millisecond. */
 export async function getMessages(threadId: number): Promise<Result<MessageRecord[]>> {
   try {

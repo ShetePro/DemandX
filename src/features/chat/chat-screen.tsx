@@ -3,18 +3,20 @@
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useStickToBottom } from 'use-stick-to-bottom';
 
 import type { ChatMessage } from '@/lib/chat/types';
 import type { RunEvent } from '@/lib/runs/event-reducer';
+import type { AssistantMessagePart } from '@/lib/runs/repository';
 import { cn } from '@/lib/utils/cn';
 
-import { createRunAction } from './actions';
+import { appendAssistantMessageAction, createRunAction } from './actions';
 import { CitationSheet } from './citation-sheet';
 import { Composer } from './composer';
 import { MessageParts } from './message-parts';
+import { RunActivity } from './run-activity';
 import { RunRail } from './run-rail';
 
 /**
@@ -42,6 +44,12 @@ export type ChatScreenProps = {
   threadId: number;
   /** Persisted history, already in `UIMessage` shape. */
   initialMessages: ChatMessage[];
+  /**
+   * The first question, sent automatically when the thread has no saved answer
+   * yet. The RSC only supplies it for a run whose assistant turn is missing, so
+   * a reloaded or finished conversation asks nothing.
+   */
+  autoPrompt?: string | undefined;
   /** Latest run of the thread, if one exists. */
   runId: number | null;
   /** Database status/stage for the rail seed. */
@@ -55,6 +63,31 @@ export type ChatScreenProps = {
 };
 
 /**
+ * Drop the last user turn before seeding `useChat` with the auto prompt. The
+ * pitch is already persisted (one user row), and `sendMessage` adds it again —
+ * keeping both would show the question twice.
+ */
+function withoutLastUserTurn(messages: ChatMessage[]): ChatMessage[] {
+  const last = messages[messages.length - 1];
+  return last !== undefined && last.role === 'user' ? messages.slice(0, -1) : messages;
+}
+
+/**
+ * What a refresh keeps: the answer's text and its reasoning. Tool and data
+ * parts are re-created by the next request, so storing them would only pin a
+ * stale fragment of the UI into history.
+ */
+function persistableParts(message: ChatMessage): AssistantMessagePart[] {
+  const parts: AssistantMessagePart[] = [];
+  for (const part of message.parts) {
+    if (part.type !== 'text' && part.type !== 'reasoning') continue;
+    if (part.text.trim() === '') continue;
+    parts.push({ type: part.type, text: part.text });
+  }
+  return parts;
+}
+
+/**
  * The whole `/threads/[id]` island: conversation on the left, live run state on
  * the right. The RSC owns history and the first run snapshot; everything after
  * that is `useChat` (messages) plus the SSE rail.
@@ -62,6 +95,7 @@ export type ChatScreenProps = {
 export function ChatScreen({
   threadId,
   initialMessages,
+  autoPrompt,
   runId,
   runStatus,
   runStage,
@@ -77,17 +111,52 @@ export function ChatScreen({
   }));
   const [citationId, setCitationId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  /** One auto prompt per mount, even if an effect runs twice in StrictMode. */
+  const autoSent = useRef(false);
+
+  const hasPersistedAssistant = initialMessages.some((message) => message.role === 'assistant');
+  // The seed is fixed for the life of the hook; a new array per render would
+  // only churn the transport's first-message bookkeeping.
+  const seededMessages = useMemo(
+    () =>
+      (autoPrompt === undefined
+        ? initialMessages
+        : withoutLastUserTurn(initialMessages)) as unknown as ChatHookMessage[],
+    [autoPrompt, initialMessages],
+  );
 
   const chat = useChat({
-    messages: initialMessages as unknown as ChatHookMessage[],
+    messages: seededMessages,
     transport,
     onError: () => toast.error('聊天请求失败，请重试'),
+    // The reply is only streamed; without this write a refresh would lose it.
+    onFinish: ({ message }) => {
+      const parts = persistableParts(message as unknown as ChatMessage);
+      if (parts.length === 0) return;
+
+      void appendAssistantMessageAction(threadId, parts).then(
+        (result) => {
+          if (result.ok) return;
+          toast.error(`保存回复失败：${result.message}`);
+        },
+        () => toast.error('保存回复失败：网络错误'),
+      );
+    },
   });
   const messages = chat.messages as unknown as ChatMessage[];
   const { sendMessage, status, stop } = chat;
 
   const { scrollRef, contentRef } = useStickToBottom({ initial: 'instant' });
   const isStreaming = status === 'submitted' || status === 'streaming';
+
+  // Ask the question the thread was created for. The server states it only when
+  // no answer is stored yet, and `hasPersistedAssistant` re-checks that here so
+  // a stale prop can never produce a second turn.
+  useEffect(() => {
+    if (autoPrompt === undefined || hasPersistedAssistant || autoSent.current) return;
+    autoSent.current = true;
+    void sendMessage({ text: autoPrompt });
+  }, [autoPrompt, hasPersistedAssistant, sendMessage]);
 
   async function handleStart(idea: string): Promise<void> {
     if (starting || run.id !== null) return;
@@ -153,6 +222,15 @@ export function ChatScreen({
                 </article>
               ))
             )}
+
+            {/* The run speaks on the assistant side of the transcript: stage,
+                progress and the last few queries, folded to one line at the end. */}
+            <RunActivity
+              runId={run.id}
+              initialEvents={run.events}
+              status={runStatus}
+              stage={runStage}
+            />
           </div>
         </div>
 

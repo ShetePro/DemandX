@@ -216,6 +216,41 @@ suite('run repository', () => {
     );
   });
 
+  it('stores the assistant turn once and reports the existing row afterwards', async () => {
+    const thread = unwrap(await repo.createThread({ title: '自动回复', idea: IDEA }));
+    expect(unwrap(await repo.hasAssistantMessage(thread.threadId))).toBe(false);
+
+    const first = unwrap(
+      await repo.appendAssistantMessage(thread.threadId, [
+        { type: 'reasoning', text: '先确认价格页。' },
+        { type: 'text', text: '付费意愿集中在旺季 [e12]。' },
+      ]),
+    );
+    expect(first.inserted).toBe(true);
+    expect(unwrap(await repo.hasAssistantMessage(thread.threadId))).toBe(true);
+
+    // A reloaded page may finish the same turn again; the second writer loses.
+    const second = unwrap(
+      await repo.appendAssistantMessage(thread.threadId, [{ type: 'text', text: '第二份答案' }]),
+    );
+    expect(second).toEqual({ inserted: false, id: first.id });
+
+    const stored = unwrap(await repo.getMessages(thread.threadId));
+    const assistant = stored.filter((message) => message.role === 'assistant');
+    expect(assistant).toHaveLength(1);
+    expect(assistant[0]?.parts).toEqual([
+      { type: 'reasoning', text: '先确认价格页。' },
+      { type: 'text', text: '付费意愿集中在旺季 [e12]。' },
+    ]);
+  });
+
+  it('reports a missing thread instead of storing an orphan answer', async () => {
+    const failure = expectFailure(
+      await repo.appendAssistantMessage(424_242, [{ type: 'text', text: '孤儿回复' }]),
+    );
+    expect(failure.code).toBe('NOT_FOUND');
+  });
+
   it('assigns unique consecutive seqs to concurrent appends', async () => {
     const { run } = await createThreadWithRun();
 

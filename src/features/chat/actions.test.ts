@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { startResearchAction } from './actions';
+import { appendAssistantMessageAction, startResearchAction } from './actions';
 
 const mocks = vi.hoisted(() => ({
   createResearch: vi.fn(),
+  appendAssistantMessage: vi.fn(),
   enqueueS1: vi.fn(),
 }));
 
 vi.mock('@/lib/runs/repository', () => ({
+  appendAssistantMessage: mocks.appendAssistantMessage,
   createResearch: mocks.createResearch,
   createRun: vi.fn(),
   createThread: vi.fn(),
@@ -18,6 +20,54 @@ vi.mock('@/lib/runs/repository', () => ({
 }));
 
 vi.mock('@/lib/runs/queue', () => ({ enqueueS1: mocks.enqueueS1 }));
+
+describe('appendAssistantMessageAction', () => {
+  it('rejects a part type the transcript cannot render', async () => {
+    await expect(
+      appendAssistantMessageAction(7, [{ type: 'image', text: 'x' }]),
+    ).resolves.toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    expect(mocks.appendAssistantMessage).not.toHaveBeenCalled();
+  });
+
+  it('rejects a message that is not an array', async () => {
+    await expect(appendAssistantMessageAction(7, '先看证据')).resolves.toMatchObject({
+      ok: false,
+      code: 'VALIDATION_FAILED',
+    });
+    expect(mocks.appendAssistantMessage).not.toHaveBeenCalled();
+  });
+
+  it('drops empty fragments and stores text and reasoning only', async () => {
+    mocks.appendAssistantMessage.mockResolvedValue({
+      ok: true,
+      value: { inserted: true, id: 11 },
+    });
+
+    await expect(
+      appendAssistantMessageAction(7, [
+        { type: 'reasoning', text: '先确认价格页' },
+        { type: 'text', text: '   ' },
+        { type: 'text', text: '付费意愿集中在旺季。', state: 'done' },
+      ]),
+    ).resolves.toEqual({ ok: true, value: { inserted: true, id: 11 } });
+
+    expect(mocks.appendAssistantMessage).toHaveBeenCalledWith(7, [
+      { type: 'reasoning', text: '先确认价格页' },
+      { type: 'text', text: '付费意愿集中在旺季。' },
+    ]);
+  });
+
+  it('reports a write that was already stored as not inserted', async () => {
+    mocks.appendAssistantMessage.mockResolvedValue({
+      ok: true,
+      value: { inserted: false, id: 11 },
+    });
+
+    await expect(
+      appendAssistantMessageAction(7, [{ type: 'text', text: '付费意愿集中在旺季。' }]),
+    ).resolves.toEqual({ ok: true, value: { inserted: false, id: 11 } });
+  });
+});
 
 describe('startResearchAction', () => {
   it('rejects an idea shorter than 8 characters before touching storage', async () => {

@@ -154,14 +154,44 @@ describe('MessageParts', () => {
     expect(screen.getByRole('button', { name: '证据 e15' })).toBeVisible();
   });
 
+  it('shows the reasoning while it streams, with the pulse and the text', () => {
+    const { container } = render(
+      <MessageParts
+        message={message([
+          { type: 'reasoning', text: '先看价格页，再看招聘帖。', state: 'streaming' },
+        ])}
+      />,
+    );
+
+    const details = container.querySelector('details');
+    expect(details).not.toBeNull();
+    expect(details).toHaveAttribute('open');
+    expect(screen.getByText('思考过程')).toBeVisible();
+    expect(screen.getByText('先看价格页，再看招聘帖。')).toBeVisible();
+  });
+
+  it('collapses the reasoning once the turn is done without losing the text', () => {
+    const { container } = render(
+      <MessageParts
+        message={message([{ type: 'reasoning', text: '先看价格页，再看招聘帖。', state: 'done' }])}
+      />,
+    );
+
+    const details = container.querySelector('details');
+    expect(details).not.toBeNull();
+    expect(details).not.toHaveAttribute('open');
+    expect(screen.getByText('思考过程')).toBeVisible();
+    expect(container.textContent).toContain('先看价格页，再看招聘帖。');
+  });
+
   it('skips an unknown part instead of throwing, warning once', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const unknown = message([{ type: 'reasoning', text: '先看付费证据' }]);
+    const unknown = message([{ type: 'source-url', sourceId: 's1', url: 'https://example.com' }]);
 
     expect(() => render(<MessageParts message={unknown} />)).not.toThrow();
     render(<MessageParts message={unknown} />);
 
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('reasoning'));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('source-url'));
   });
 });

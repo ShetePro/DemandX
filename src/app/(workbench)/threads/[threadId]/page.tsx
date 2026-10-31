@@ -14,7 +14,9 @@ import { toRunEvents, type RunEvent } from '@/lib/runs/event-reducer';
 import {
   getLatestRunForThread,
   getMessages,
+  getRunContext,
   getThread,
+  hasAssistantMessage,
   readEvents,
   type MessageRecord,
 } from '@/lib/runs/repository';
@@ -47,14 +49,29 @@ function toChatMessages(records: MessageRecord[]): ChatMessage[] {
   return messages;
 }
 
+/**
+ * The question the assistant must answer on first paint: the run's own idea.
+ * Only asked when the thread has no assistant turn yet, so a finished
+ * conversation never re-asks on every visit.
+ */
+async function firstPrompt(runId: number): Promise<string | undefined> {
+  const context = await getRunContext(runId);
+  if (!context.ok) throw new Error(context.message);
+
+  const idea = context.value?.idea.trim() ?? '';
+  return idea === '' ? undefined : idea;
+}
+
 /** The 对话 tab: history, the latest run and its event tail for the rail. */
 async function ChatView({ threadId, title }: { threadId: number; title: string }) {
-  const [messages, latestRun] = await Promise.all([
+  const [messages, latestRun, assistant] = await Promise.all([
     getMessages(threadId),
     getLatestRunForThread(threadId),
+    hasAssistantMessage(threadId),
   ]);
   if (!messages.ok) throw new Error(messages.message);
   if (!latestRun.ok) throw new Error(latestRun.message);
+  if (!assistant.ok) throw new Error(assistant.message);
 
   const run = latestRun.value;
   let events: RunEvent[] = [];
@@ -65,12 +82,15 @@ async function ChatView({ threadId, title }: { threadId: number; title: string }
     events = toRunEvents(storedEvents.value);
   }
 
+  const autoPrompt = run === null || assistant.value ? undefined : await firstPrompt(run.id);
+
   return (
     <ChatScreen
       key={threadId}
       threadId={threadId}
       title={title}
       initialMessages={toChatMessages(messages.value)}
+      autoPrompt={autoPrompt}
       runId={run?.id ?? null}
       runStatus={run?.status}
       runStage={run?.stage}
