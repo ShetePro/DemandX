@@ -229,19 +229,29 @@ suite('run repository', () => {
     expect(first.inserted).toBe(true);
     expect(unwrap(await repo.hasAssistantMessage(thread.threadId))).toBe(true);
 
-    // A reloaded page may finish the same turn again; the second writer loses.
+    // A reloaded page may finish the same turn again; the retry is dropped.
+    const retry = unwrap(
+      await repo.appendAssistantMessage(thread.threadId, [
+        { type: 'reasoning', text: '先确认价格页。' },
+        { type: 'text', text: '付费意愿集中在旺季 [e12]。' },
+      ]),
+    );
+    expect(retry).toEqual({ inserted: false, id: first.id });
+
+    // A later chat turn is a different answer and must be kept.
     const second = unwrap(
       await repo.appendAssistantMessage(thread.threadId, [{ type: 'text', text: '第二份答案' }]),
     );
-    expect(second).toEqual({ inserted: false, id: first.id });
+    expect(second.inserted).toBe(true);
 
     const stored = unwrap(await repo.getMessages(thread.threadId));
     const assistant = stored.filter((message) => message.role === 'assistant');
-    expect(assistant).toHaveLength(1);
+    expect(assistant).toHaveLength(2);
     expect(assistant[0]?.parts).toEqual([
       { type: 'reasoning', text: '先确认价格页。' },
       { type: 'text', text: '付费意愿集中在旺季 [e12]。' },
     ]);
+    expect(assistant[1]?.parts).toEqual([{ type: 'text', text: '第二份答案' }]);
   });
 
   it('reports a missing thread instead of storing an orphan answer', async () => {

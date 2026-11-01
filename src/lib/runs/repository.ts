@@ -992,6 +992,20 @@ export async function hasAssistantMessage(threadId: number): Promise<Result<bool
  * without one gets an insert. The lock is what makes check-then-insert atomic;
  * no unique index is needed (and one on `role` would forbid a second turn).
  */
+/** JSONB normalises key order, so compare the two fields that are stored. */
+function sameAssistantParts(
+  stored: unknown,
+  incoming: readonly AssistantMessagePart[],
+): boolean {
+  if (!Array.isArray(stored) || stored.length !== incoming.length) return false;
+  return incoming.every((part, index) => {
+    const row = stored[index];
+    if (typeof row !== 'object' || row === null) return false;
+    const record = row as { type?: unknown; text?: unknown };
+    return record.type === part.type && record.text === part.text;
+  });
+}
+
 export async function appendAssistantMessage(
   threadId: number,
   parts: readonly AssistantMessagePart[],
@@ -1007,15 +1021,20 @@ export async function appendAssistantMessage(
       );
       if (locked.length === 0) return null;
 
+      // Every assistant turn is kept, not just the first. Only an identical
+      // retry of the latest answer is skipped, so a duplicated `onFinish`
+      // cannot write the same reply twice.
       const existing = await tx
-        .select({ id: messages.id })
+        .select({ id: messages.id, parts: messages.parts })
         .from(messages)
         .where(and(eq(messages.threadId, threadId), eq(messages.role, 'assistant')))
-        .orderBy(asc(messages.id))
+        .orderBy(desc(messages.id))
         .limit(1);
 
       const first = existing[0];
-      if (first !== undefined) return { inserted: false, id: first.id };
+      if (first !== undefined && sameAssistantParts(first.parts, parts)) {
+        return { inserted: false, id: first.id };
+      }
 
       const row = firstRow(
         await tx

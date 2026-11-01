@@ -67,7 +67,7 @@ function LiveRunActivity({
 
   // Finished / cancelled keep the one-line summary. A failure keeps the card:
   // the stage that died and its code are the whole point of showing it inline.
-  if (state.terminal && !failed) return <TerminalLine state={state} />;
+  if (state.terminal && !failed) return <TerminalLine state={state} runId={runId} />;
 
   // Queued with nothing logged yet: an empty card would be a promise the page
   // cannot keep — unless no worker is running, which the card must explain.
@@ -94,6 +94,7 @@ function LiveRunActivity({
             />
           ) : null}
           实时研究
+          <span className="font-mono text-[10px] font-normal text-faint">run #{runId}</span>
         </span>
         <Badge tone={STATUS_META[state.status].tone}>{STATUS_META[state.status].label}</Badge>
       </div>
@@ -161,10 +162,11 @@ function LiveRunActivity({
 }
 
 /** One line for a run that is over: what it produced, and how it ended. */
-function TerminalLine({ state }: { state: RunStreamState }) {
+function TerminalLine({ state, runId }: { state: RunStreamState; runId: number }) {
   return (
     <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2/40 px-3.5 py-2 text-xs text-muted">
       <span aria-hidden="true" className="inline-block size-1.5 shrink-0 rounded-full bg-muted" />
+      <span className="shrink-0 font-mono text-[10.5px] text-faint">run #{runId}</span>
       <span className="min-w-0 truncate">{runSummary(state)}</span>
     </div>
   );
