@@ -2,6 +2,7 @@ import type { LlmPort } from '@/lib/llm/port';
 import type { SearchPort } from '@/lib/search/port';
 
 import { DISCOVERY_HITS_PER_QUERY, pickDiscoveryQueries } from './queries';
+import { hasBusinessSignal, quoteGrounded, selectSources } from './sources';
 import {
   discoverySchema,
   type DiscoveryResult,
@@ -11,6 +12,9 @@ import {
 
 /** Enough context for the model without turning the prompt into a crawl. */
 export const MAX_SOURCES = 30;
+
+/** At least this many sources must survive filtering, or the scan is too thin. */
+export const MIN_SOURCES = 5;
 
 /**
  * Discovery is an interactive scan: a model that has not answered in this long
@@ -26,6 +30,8 @@ export type DiscoveryPorts = {
   random?: () => number;
   /** Sources an earlier scan already used; a rescan must not repeat them. */
   excludeUrls?: readonly string[];
+  /** Injected queries (tests); production samples the pool instead. */
+  queries?: readonly string[];
 };
 
 export type DiscoveryOutcome =
@@ -40,7 +46,7 @@ export type DiscoveryOutcome =
 export async function findOpportunities(deps: DiscoveryPorts): Promise<DiscoveryOutcome> {
   const startedAt = Date.now();
   const excluded = new Set(deps.excludeUrls ?? []);
-  const queries = pickDiscoveryQueries(undefined, deps.random);
+  const queries = deps.queries ?? pickDiscoveryQueries(undefined, deps.random);
 
   // Queries run together: discovery is interactive, and the adapters' shared
   // limiter already serialises calls per host, so this does not burst.
@@ -74,29 +80,29 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
     }),
   );
 
-  const sources: DiscoverySource[] = [];
-  const seen = new Set<string>();
+  const candidates: { source: DiscoverySource; query: string }[] = [];
   const providers = new Set<string>();
 
-  for (const answered of perQuery) {
+  perQuery.forEach((answered, index) => {
+    const query = queries[index] ?? '';
     for (const { provider, hits } of answered) {
-      if (sources.length >= MAX_SOURCES) break;
       providers.add(provider);
-
       for (const hit of hits) {
-        if (sources.length >= MAX_SOURCES) break;
-        if (seen.has(hit.url) || excluded.has(hit.url)) continue;
-        seen.add(hit.url);
-        sources.push(hit);
+        if (excluded.has(hit.url)) continue;
+        candidates.push({ source: hit, query });
       }
     }
-  }
+  });
 
-  if (sources.length === 0) {
+  // Relevance gate: blocked farms, non-commercial strangers and near-duplicate
+  // pages are removed before the model ever sees them.
+  const sources = selectSources(candidates, MAX_SOURCES);
+
+  if (sources.length < MIN_SOURCES) {
     return {
       ok: false,
       code: 'NO_SOURCES',
-      message: '所有搜索源都没有返回结果：检查网络、平台会话或兜底搜索配置。',
+      message: `通过商业相关性筛选的片段只有 ${sources.length} 条，样本不足：换一轮或检查搜索配置。`,
     };
   }
 
@@ -119,18 +125,31 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
     return { ok: false, code: 'LLM_UNAVAILABLE', message: `机会分析失败：${asked.message}` };
   }
 
-  const allowed = new Set(sources.map((source) => source.url));
+  const allowed = new Map(sources.map((source) => [source.url, source]));
   const opportunities: Opportunity[] = [];
   for (const candidate of asked.value.data.opportunities) {
     // The model may copy a URL it was not given; such a citation cannot be
     // verified, so the whole candidate is dropped rather than shipped.
     const seenUrls = new Set<string>();
     const evidence = candidate.evidence.filter((item) => {
-      if (!allowed.has(item.url) || seenUrls.has(item.url)) return false;
+      const source = allowed.get(item.url);
+      if (source === undefined || seenUrls.has(item.url)) return false;
+      // The quote must exist in the source: URL-only citations let a model
+      // attach a fabricated sentence to a real page.
+      if (!quoteGrounded(item.quote, `${source.title}\n${source.snippet}`)) return false;
       seenUrls.add(item.url);
       return true;
     });
     if (evidence.length === 0) continue;
+
+    // Commercial anchoring: at least one cited page must talk about money,
+    // hiring or a paid alternative. Without it the idea is just a complaint.
+    const anchored = evidence.some((item) => {
+      const source = allowed.get(item.url);
+      return source !== undefined && hasBusinessSignal(`${source.title}\n${source.snippet}`);
+    });
+    if (!anchored) continue;
+
     opportunities.push({ ...candidate, evidence });
   }
 
@@ -168,8 +187,11 @@ function buildPrompt(sources: readonly DiscoverySource[]): { system: string; use
 要求：
 - problem 写用户的原话困境，不是功能清单。
 - signal 只能是 problem / seeking / paying / switching / recurring。
+- currentAlternative 写用户现在怎么解决；competitors 只写片段里点名的产品或服务，没有就空数组。
+- monetization 只能是 subscription / usage / one-time / service。
+- mvp 写一个人 1–2 周能上线的范围；需要牌照、硬件、双边市场或大规模数据的想法不要输出。
+- 证据里至少一条必须包含价格、付费、招聘、外包或替代方案等商业信息；只有情绪、没有商业线索的机会不要输出。
 - 片段之间互相矛盾或只是同一来源的重复，不要当成多个机会。
-- 如果证据只够支撑“有人在抱怨”，就如实写成 problem；不要升级为付费需求。
 - 全部用中文。`,
     user: `候选片段：\n\n${list}\n\n请输出 opportunities 数组。`,
   };

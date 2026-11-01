@@ -14,6 +14,18 @@ export interface SearchDeps {
 /** A hung result page must not stall the pipeline. */
 export const SEARCH_TIMEOUT_MS = 15_000;
 
+/**
+ * The scraped engines reject requests that do not look like a browser; a
+ * missing UA is why an otherwise valid query came back as a dictionary page or
+ * a 403. Callers can still override any header through `init.headers`.
+ */
+const DEFAULT_HEADERS: Readonly<Record<string, string>> = {
+  'User-Agent':
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+  Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+};
+
 export class SearchHttpError extends Error {
   constructor(
     readonly url: string,
@@ -45,6 +57,7 @@ export async function getText(
   const send = deps.fetch ?? fetch;
   const response = await send(url, {
     ...init,
+    headers: { ...DEFAULT_HEADERS, ...(init.headers as Record<string, string> | undefined) },
     signal: init.signal ?? AbortSignal.timeout(SEARCH_TIMEOUT_MS),
   });
   if (!response.ok) throw new SearchHttpError(url, response.status);
@@ -62,6 +75,7 @@ export async function requestJson(
   const send = deps.fetch ?? fetch;
   const response = await send(url, {
     ...init,
+    headers: { ...DEFAULT_HEADERS, ...(init.headers as Record<string, string> | undefined) },
     signal: init.signal ?? AbortSignal.timeout(SEARCH_TIMEOUT_MS),
   });
   if (!response.ok) throw new SearchHttpError(url, response.status);

@@ -9,7 +9,7 @@ function hit(n: number): SearchHit {
   return {
     url: `https://example.com/post-${n}`,
     title: `帖子 ${n}`,
-    snippet: '每天手工同步库存，太麻烦了，有没有推荐的工具？',
+    snippet: `案例 ${n}：卖家 ${'甲乙丙丁戊己庚辛'[n % 8]} 每天手工同步库存太麻烦，愿意付费买工具，预算 ${n}00 元。`,
     platform: 'web',
   };
 }
@@ -64,20 +64,25 @@ const OPPORTUNITY = {
   problem: '卖家在三个平台之间手工同步库存，经常超卖',
   audience: '跨境小卖家',
   signal: 'problem' as const,
-  evidence: [{ url: 'https://example.com/post-1', quote: '每天手工同步太麻烦' }],
+  currentAlternative: '每天手工复制表格',
+  competitors: ['同步工具 A'],
+  monetization: 'subscription' as const,
+  mvp: '先做两个平台的库存拉取与超卖提醒',
+  evidence: [{ url: 'https://example.com/post-1', quote: '愿意付费买工具' }],
 };
 
 describe('findOpportunities', () => {
   it('collects snippets from every port, then asks the model once', async () => {
     const structured = vi.fn(llmReturning({ opportunities: [OPPORTUNITY] }).structured);
     const result = await findOpportunities({
-      searchPorts: [port('ddg', [hit(1), hit(2)]), port('bing', [hit(3)])],
+      searchPorts: [port('ddg', [hit(1), hit(2), hit(3)]), port('bing', [hit(4), hit(5)])],
+      queries: ['库存 同步', '库存 卖家', '库存 超卖'],
       llm: { structured, text: vi.fn() } as unknown as LlmPort,
     });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.sources).toHaveLength(3);
+    expect(result.value.sources).toHaveLength(5);
     expect(result.value.providers).toEqual(['ddg', 'bing']);
     expect(result.value.opportunities).toEqual([OPPORTUNITY]);
 
@@ -89,6 +94,7 @@ describe('findOpportunities', () => {
     const many = Array.from({ length: 30 }, (_, index) => hit(index));
     const result = await findOpportunities({
       searchPorts: [port('a', many), port('b', many)],
+      queries: ['库存 同步', '库存 卖家', '库存 超卖'],
       llm: llmReturning({ opportunities: [OPPORTUNITY] }),
     });
 
@@ -98,7 +104,8 @@ describe('findOpportunities', () => {
 
   it('survives a blocked engine as long as another port answers', async () => {
     const result = await findOpportunities({
-      searchPorts: [brokenPort('ddg'), port('bing', [hit(1)])],
+      searchPorts: [brokenPort('ddg'), port('bing', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
+      queries: ['库存 同步', '库存 卖家', '库存 超卖'],
       llm: llmReturning({ opportunities: [OPPORTUNITY] }),
     });
 
@@ -109,13 +116,14 @@ describe('findOpportunities', () => {
   it('fails with NO_SOURCES when nothing answers', async () => {
     const result = await findOpportunities({
       searchPorts: [brokenPort('ddg'), port('bing', [])],
+      queries: ['库存 同步', '库存 卖家', '库存 超卖'],
       llm: llmReturning({ opportunities: [OPPORTUNITY] }),
     });
 
     expect(result).toEqual({
       ok: false,
       code: 'NO_SOURCES',
-      message: expect.stringContaining('没有返回结果'),
+      message: expect.stringContaining('样本不足'),
     });
   });
 
@@ -125,7 +133,8 @@ describe('findOpportunities', () => {
       evidence: [{ url: 'https://invented.example.com/x', quote: '编造的引文' }],
     };
     const mixed = await findOpportunities({
-      searchPorts: [port('ddg', [hit(1)])],
+      searchPorts: [port('ddg', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
+      queries: ['库存 同步', '库存 卖家', '库存 超卖'],
       llm: llmReturning({ opportunities: [invented, OPPORTUNITY] }),
     });
 
@@ -133,7 +142,8 @@ describe('findOpportunities', () => {
     if (mixed.ok) expect(mixed.value.opportunities).toEqual([OPPORTUNITY]);
 
     const onlyInvented = await findOpportunities({
-      searchPorts: [port('ddg', [hit(1)])],
+      searchPorts: [port('ddg', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
+      queries: ['库存 同步', '库存 卖家', '库存 超卖'],
       llm: llmReturning({ opportunities: [invented] }),
     });
     expect(onlyInvented.ok).toBe(false);
@@ -142,7 +152,8 @@ describe('findOpportunities', () => {
 
   it('reports the model failure as LLM_UNAVAILABLE', async () => {
     const result = await findOpportunities({
-      searchPorts: [port('ddg', [hit(1)])],
+      searchPorts: [port('ddg', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
+      queries: ['库存 同步', '库存 卖家', '库存 超卖'],
       llm: {
         async structured() {
           return { ok: false, code: 'NO_PROVIDER', message: '没有可用模型' } as never;
@@ -164,7 +175,8 @@ describe('findOpportunities', () => {
     vi.useFakeTimers();
     try {
       const pending = findOpportunities({
-        searchPorts: [port('ddg', [hit(1)])],
+        searchPorts: [port('ddg', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
+        queries: ['库存 同步', '库存 卖家', '库存 超卖'],
         llm: {
           structured: () => new Promise(() => undefined),
           text: () => new Promise(() => undefined),
@@ -188,12 +200,13 @@ describe('findOpportunities', () => {
     const duplicated = {
       ...OPPORTUNITY,
       evidence: [
-        { url: 'https://example.com/post-1', quote: '第一段' },
-        { url: 'https://example.com/post-1', quote: '同一链接的第二段' },
+        { url: 'https://example.com/post-1', quote: '愿意付费买工具' },
+        { url: 'https://example.com/post-1', quote: '每天手工同步库存太麻烦' },
       ],
     };
     const result = await findOpportunities({
-      searchPorts: [port('ddg', [hit(1)])],
+      searchPorts: [port('ddg', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
+      queries: ['库存 同步', '库存 卖家', '库存 超卖'],
       llm: llmReturning({ opportunities: [duplicated] }),
     });
 

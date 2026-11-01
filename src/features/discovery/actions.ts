@@ -10,7 +10,7 @@ import { resolveApiKey } from '@/lib/llm/repository';
 import { createResearch, type CreateResearchResult } from '@/lib/runs/repository';
 import { enqueueS1 } from '@/lib/runs/queue';
 import { createBingSearch } from '@/lib/search/bing';
-import { createDuckDuckGoSearch } from '@/lib/search/ddg';
+import { createHnCommentSearch } from '@/lib/discovery/hn-comments';
 import { createRateLimiter } from '@/lib/search/limiter';
 import { createResolvedWebSearchPort, resolveWebSearch } from '@/lib/search/web-search-config';
 
@@ -49,7 +49,10 @@ export async function findOpportunitiesAction(
   // enough that eight bilingual queries finish while the dialog is open.
   const limiter = createRateLimiter({ rps: 2, minDelayMs: 300, maxDelayMs: 800 });
   const deps = { limiter };
-  const ports = [createDuckDuckGoSearch(deps), createBingSearch(deps)];
+  // Discovery prefers real discussion over scraped advice pages: HN comments
+  // are structured and reliable, Bing covers Chinese vertical queries, and the
+  // keyed API (when configured) outranks both.
+  const ports = [createHnCommentSearch(deps), createBingSearch(deps)];
 
   const webSearch = await resolveWebSearch();
   if (webSearch.ok && webSearch.value !== null) {

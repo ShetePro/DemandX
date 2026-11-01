@@ -9,12 +9,21 @@ export const DISCOVERY_SIGNALS = [
   'recurring',
 ] as const;
 
+export const MONETIZATIONS = ['subscription', 'usage', 'one-time', 'service'] as const;
+
 export const opportunitySchema = z.object({
   title: z.string().trim().min(1).max(60),
   /** The user's problem in their own words, not a feature list. */
   problem: z.string().trim().min(1).max(240),
   audience: z.string().trim().min(1).max(80),
   signal: z.enum(DISCOVERY_SIGNALS),
+  /** What people do today instead — proves the problem already costs something. */
+  currentAlternative: z.string().trim().min(1).max(160),
+  /** Named tools/services the snippets mention; empty when none are named. */
+  competitors: z.array(z.string().trim().min(1).max(40)).max(3),
+  monetization: z.enum(MONETIZATIONS),
+  /** What a solo developer ships first; a platform play is not a valid answer. */
+  mvp: z.string().trim().min(1).max(200),
   evidence: z
     .array(
       z.object({

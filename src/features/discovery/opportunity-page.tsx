@@ -19,7 +19,18 @@ const SCAN_PHRASES = [
   '论坛 · “太麻烦 吐槽”',
 ] as const;
 
-const STEP_LABELS = ['检索中英文公开片段', '去重并截取上下文', '模型筛选值得验证的方向'] as const;
+const STEP_LABELS = [
+  '检索中英文公开片段',
+  '过滤内容农场与无商业线索页面',
+  '模型筛选可落地的方向',
+] as const;
+
+const MONETIZATION_LABELS: Readonly<Record<string, string>> = {
+  subscription: '订阅',
+  usage: '按量付费',
+  'one-time': '一次性买断',
+  service: '服务 + 软件',
+};
 
 type ScanState =
   | { kind: 'scanning' }
@@ -292,9 +303,24 @@ function Results({
 
               <p className="text-[13px] leading-6 text-muted">{opportunity.problem}</p>
 
-              <p className="text-[11px] text-faint">
-                目标人群：<span className="text-muted">{opportunity.audience}</span>
-              </p>
+              <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[11px] leading-5">
+                <dt className="text-faint">目标人群</dt>
+                <dd className="text-muted">{opportunity.audience}</dd>
+                <dt className="text-faint">现有替代</dt>
+                <dd className="text-muted">{opportunity.currentAlternative}</dd>
+                <dt className="text-faint">竞品</dt>
+                <dd className="text-muted">
+                  {opportunity.competitors.length === 0
+                    ? '片段未点名'
+                    : opportunity.competitors.join('、')}
+                </dd>
+                <dt className="text-faint">变现</dt>
+                <dd className="text-muted">
+                  {MONETIZATION_LABELS[opportunity.monetization] ?? opportunity.monetization}
+                </dd>
+                <dt className="text-faint">MVP</dt>
+                <dd className="text-muted">{opportunity.mvp}</dd>
+              </dl>
 
               <div className="flex flex-col gap-1.5 border-t border-border pt-3">
                 <p className="text-[11px] font-medium tracking-wide text-faint">原始证据</p>

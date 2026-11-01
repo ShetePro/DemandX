@@ -1,39 +1,40 @@
 /**
- * A pool, not a fixed list: people phrase the same need in many ways, and two
- * scans that issued identical queries would return identical snippets (and so
- * identical ideas). Each scan samples a slice of the pool, so "再扫一轮"
- * actually looks somewhere else.
+ * Vertical pain queries, not generic complaints. Each line names a concrete
+ * workflow plus its buyer (财务/HR/卖家/门店…), which is what makes a result
+ * both relevant and commercially meaningful; "太麻烦了" alone returns advice
+ * columns and unrelated forum threads.
  *
- * Domestic phrases are Chinese; overseas ones lean on the sentence shapes that
- * forum posts actually use ("I wish there was", "anyone know a tool").
+ * Every scan samples a slice, so "再扫一轮" looks at a different set.
  */
 export const DISCOVERY_QUERY_POOL: readonly string[] = [
-  '有没有 推荐 工具 太麻烦',
-  '为什么 没有 一个 软件 解决',
-  '每天 手工 表格 太麻烦 吐槽',
-  '求推荐 好用 工具 付费',
-  '太难用了 想换 一个 工具',
-  '有没有 替代 的 工具',
-  '谁能 做个 这样 的 小程序',
-  '这个 需求 有人 做 吗',
-  '找了 一圈 没有 合适 的 工具',
-  '每次 都要 手动 复制 粘贴 崩溃',
-  '这个 痛点 有没有 人 解决',
-  '想找 一个 能 自动 的 工具',
-  '"I wish there was" app tool reddit',
-  '"is there a tool" site:twitter.com',
-  '"why is there no" app',
-  '"looking for a tool to" reddit',
-  '"anyone know a tool" reddit',
-  '"I hate that I have to" manual',
-  '"shut up and take my money" tool',
-  '"alternative to" app site:reddit.com',
-  '"recommend an app for" reddit',
-  '"does anyone else" manually site:reddit.com',
-  '"there should be an app"',
-  '"I would pay for" tool',
-  '"manual work" spreadsheet frustration',
-  '"no good tool" site:news.ycombinator.com',
+  '发票 报销 手工 excel 小公司 财务',
+  '对账 手工 excel 电商 财务 工具',
+  '库存 同步 多平台 卖家 超卖',
+  '客户 管理 excel 销售 小团队 跟进',
+  '排班 excel 手工 门店 店长',
+  '合同 审批 手工 小公司 用印',
+  '简历 筛选 手工 hr 小公司 招聘',
+  '报价单 手工 excel 小公司 销售',
+  '采购 询价 excel 比价 小公司',
+  '项目 工时 统计 excel 外包 团队',
+  '账单 催收 手工 自由职业 收款',
+  '数据 录入 手工 重复 小企业 软件',
+  'inventory sync spreadsheet sellers oversell tool',
+  'invoice reconciliation spreadsheet small business software',
+  'scheduling spreadsheet small business staff',
+  'manual data entry small business software pay',
+  'customer support tickets spreadsheet small team',
+  'quote estimate spreadsheet contractor software',
+  'timesheet tracking excel agency billing',
+  'invoice chasing freelance tool pay',
+  'purchase order approval small business software',
+  'contract renewal tracking spreadsheet saas',
+  'reconcile payments stripe xero manual',
+  'hiring screening spreadsheet recruiter tool',
+  'reddit small business spreadsheet automate',
+  'reddit freelance invoice chasing tool',
+  '知乎 发票 报销 太麻烦 小公司',
+  'v2ex 库存 同步 工具 收费',
 ];
 
 /** Queries per scan; enough breadth without spending the whole pool at once. */
@@ -53,7 +54,6 @@ export function pickDiscoveryQueries(
   const pool = [...DISCOVERY_QUERY_POOL];
   const take = Math.min(Math.max(1, count), pool.length);
 
-  // Fisher–Yates: every query is equally likely, no repeats within a scan.
   for (let index = pool.length - 1; index > 0; index -= 1) {
     const swap = Math.floor(random() * (index + 1));
     const current = pool[index];

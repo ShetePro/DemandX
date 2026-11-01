@@ -34,7 +34,7 @@ const RESULT: DiscoveryResult = {
     {
       url: 'https://example.com/post-1',
       title: '小店主的吐槽',
-      snippet: '每天手工同步库存太麻烦',
+      snippet: '愿意付费买一个库存同步工具',
       platform: 'web',
     },
     {
@@ -50,7 +50,11 @@ const RESULT: DiscoveryResult = {
       problem: '卖家在三个平台之间手工同步库存，经常超卖',
       audience: '跨境小卖家',
       signal: 'problem',
-      evidence: [{ url: 'https://example.com/post-1', quote: '每天手工同步太麻烦' }],
+      currentAlternative: '每天手工复制三个平台的表格',
+      competitors: ['库存同步助手'],
+      monetization: 'subscription',
+      mvp: '两个平台的库存拉取与超卖提醒',
+      evidence: [{ url: 'https://example.com/post-1', quote: '愿意付费买一个工具' }],
     },
   ],
 };
@@ -76,7 +80,10 @@ describe('OpportunityPage', () => {
     expect(screen.getByText('16.6s')).toBeVisible();
     expect(screen.getByText('glm-5.3-flash')).toBeVisible();
     expect(screen.getByText('ddg · bing')).toBeVisible();
-    expect(screen.getByText('“每天手工同步太麻烦”')).toBeVisible();
+    expect(screen.getByText('“愿意付费买一个工具”')).toBeVisible();
+    expect(screen.getByText('每天手工复制三个平台的表格')).toBeVisible();
+    expect(screen.getByText('订阅')).toBeVisible();
+    expect(screen.getByText('两个平台的库存拉取与超卖提醒')).toBeVisible();
     expect(screen.getByText('查看本次扫描的 2 条原始片段')).toBeVisible();
   });
 
