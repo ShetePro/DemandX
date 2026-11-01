@@ -211,29 +211,22 @@ test.describe('Chat', () => {
     expect((await stubRequests(request)).filter(isStreamingChat)).toHaveLength(1);
   });
 
-  test('右栏事件与研究进度', async ({ page }) => {
+  test('对话内实时研究进度，不再有右侧事件栏', async ({ page }) => {
     const threadId = await createThread(page);
     const runId = await seedRun(threadId);
 
     // First paint comes from the RSC snapshot of the run log.
     await page.reload();
-    const rail = page.getByRole('complementary', { name: '运行详情' });
+    await expect(page.getByRole('complementary', { name: '运行详情' })).toHaveCount(0);
 
-    await expect(rail.locator('li[aria-current="step"]')).toContainText('S1 采集');
-    await expect(rail.getByText('run.created')).toBeVisible();
-    await expect(rail.getByText('stage: S1')).toBeVisible();
-    await expect(rail.getByText('进行中')).toBeVisible();
+    const card = page.getByRole('group', { name: '实时研究' });
+    await expect(card.locator('li[aria-current="step"]')).toContainText('S1 采集');
+    await expect(card).toContainText('进行中');
+    await expect(card).toContainText('当前阶段：S1 采集');
 
-    // The same log is told on the assistant side of the transcript.
-    const activity = page.getByRole('group', { name: '研究进度' });
-    await expect(activity).toContainText('S1 采集');
-    await expect(activity).toContainText('进行中');
-
-    // No reload here: only the insert, which both SSE connections poll.
+    // No reload here: only the insert, which the card's SSE connection polls.
     await finishRun(runId);
-    await expect(rail.getByText('已结束')).toBeVisible({ timeout: 1_500 });
-    await expect(rail.getByText('已完成')).toBeVisible({ timeout: 1_500 });
-    await expect(activity).toHaveCount(0);
+    await expect(card).toHaveCount(0, { timeout: 1_500 });
     await expect(page.getByText('研究完成', { exact: true })).toBeVisible({ timeout: 1_500 });
   });
 

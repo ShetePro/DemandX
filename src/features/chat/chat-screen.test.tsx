@@ -54,12 +54,6 @@ vi.mock('use-stick-to-bottom', () => ({
   useStickToBottom: () => ({ scrollRef: { current: null }, contentRef: { current: null } }),
 }));
 
-vi.mock('./run-rail', () => ({
-  RunRail: ({ runId }: { runId: number | null }) => (
-    <div data-testid="run-rail">{runId === null ? '尚未开始研究' : `run-${runId}`}</div>
-  ),
-}));
-
 // The live card owns its SSE connection; its own suite covers that.
 vi.mock('./run-activity', () => ({
   RunActivity: ({ runId }: { runId: number | null }) =>
@@ -113,7 +107,6 @@ describe('ChatScreen', () => {
     );
 
     expect(container.querySelector('aside[aria-label="运行详情"]')).toBeNull();
-    expect(screen.queryByTestId('run-rail')).not.toBeInTheDocument();
     expect(screen.queryByTestId('run-activity')).not.toBeInTheDocument();
   });
 
@@ -143,7 +136,7 @@ describe('ChatScreen', () => {
     );
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
     expect(mocks.success).toHaveBeenCalledWith('研究已开始');
-    await waitFor(() => expect(screen.getByTestId('run-rail')).toHaveTextContent('run-42'));
+    await waitFor(() => expect(screen.getByTestId('run-activity')).toHaveTextContent('run-42'));
   });
 
   it('keeps the old state and reports the failure when the run cannot be created', async () => {

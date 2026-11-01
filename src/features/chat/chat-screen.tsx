@@ -17,7 +17,6 @@ import { CitationSheet } from './citation-sheet';
 import { Composer } from './composer';
 import { MessageParts } from './message-parts';
 import { RunActivity } from './run-activity';
-import { RunRail } from './run-rail';
 
 /**
  * `@ai-sdk/react` pins its own copy of `ai` (7.0.15) while the app depends on
@@ -222,14 +221,7 @@ export function ChatScreen({
   }
 
   return (
-    <div
-      className={cn(
-        'grid h-full min-h-0 transition-[grid-template-columns] duration-200 ease-out',
-        run.id === null
-          ? 'grid-cols-1'
-          : 'grid-cols-[minmax(0,1fr)_312px] max-lg:grid-cols-1 max-lg:grid-rows-[minmax(0,1fr)_auto]',
-      )}
-    >
+    <div className="grid h-full min-h-0 grid-cols-1">
       <section aria-label="对话" className="relative flex min-h-0 flex-col">
         <header className="flex h-12 shrink-0 items-center border-b border-border px-4">
           <h1 className="truncate text-sm font-semibold text-fg">{title}</h1>
@@ -289,21 +281,6 @@ export function ChatScreen({
           </div>
         </div>
       </section>
-
-      {run.id !== null && (
-        <aside
-          aria-label="运行详情"
-          className="min-h-0 overflow-y-auto border-l border-border bg-surface px-3.5 py-4 max-lg:border-t max-lg:border-l-0"
-        >
-          <RunRail
-            runId={run.id}
-            runStatus={runStatus}
-            runStage={runStage}
-            initialEvents={run.events}
-            workerOnline={workerOnline}
-          />
-        </aside>
-      )}
 
       <CitationSheet
         citationId={citationId}

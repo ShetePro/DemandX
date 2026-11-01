@@ -1,9 +1,12 @@
 'use client';
 
+import { Check, X } from 'lucide-react';
+
 import { Badge } from '@/components/ui/badge';
 import { useRunStream } from '@/lib/hooks/use-run-stream';
 import type { RunEvent, RunStateSeed, RunStreamState } from '@/lib/runs/event-reducer';
-import { STATUS_META, stageLabel } from '@/lib/runs/stages';
+import { RUN_STAGES, STATUS_META, stageLabel, stageMark } from '@/lib/runs/stages';
+import { cn } from '@/lib/utils/cn';
 
 export type RunActivityProps = {
   /** `null` until the operator confirms the approval card. */
@@ -60,12 +63,15 @@ function LiveRunActivity({
   const { state } = useRunStream(runId, initialEvents, seed);
 
   const stalled = !workerOnline && state.status === 'queued';
+  const failed = state.terminal && state.status === 'failed';
+
+  // Finished / cancelled keep the one-line summary. A failure keeps the card:
+  // the stage that died and its code are the whole point of showing it inline.
+  if (state.terminal && !failed) return <TerminalLine state={state} />;
 
   // Queued with nothing logged yet: an empty card would be a promise the page
   // cannot keep — unless no worker is running, which the card must explain.
   if (state.events.length === 0 && !state.terminal && !stalled) return null;
-
-  if (state.terminal) return <TerminalLine state={state} />;
 
   const progress = stageProgress(state);
   const activity = recentActivity(state.events);
@@ -73,36 +79,70 @@ function LiveRunActivity({
   return (
     <div
       role="group"
-      aria-label="研究进度"
-      className="rounded-xl border border-border bg-surface-2/40 px-3.5 py-3"
+      aria-label="实时研究"
+      className={cn(
+        'rounded-xl border px-3.5 py-3',
+        failed ? 'border-danger/40 bg-danger-soft/30' : 'border-border bg-surface-2/40',
+      )}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-xs font-semibold text-fg">
-          <span
-            aria-hidden="true"
-            className="inline-block size-1.5 animate-pulse rounded-full bg-accent"
-          />
-          研究进度
+          {!state.terminal ? (
+            <span
+              aria-hidden="true"
+              className="inline-block size-1.5 animate-pulse rounded-full bg-accent"
+            />
+          ) : null}
+          实时研究
         </span>
         <Badge tone={STATUS_META[state.status].tone}>{STATUS_META[state.status].label}</Badge>
       </div>
 
+      <ol aria-label="研究阶段" className="mt-2.5 flex flex-wrap items-center gap-1">
+        {RUN_STAGES.map((stage, index) => {
+          const mark = stageMark(index, state);
+          return (
+            <li
+              key={stage.id}
+              aria-current={mark === 'current' ? 'step' : undefined}
+              className={cn(
+                'flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px]',
+                mark === 'done' && 'text-muted',
+                mark === 'current' && 'bg-accent-soft font-semibold text-accent',
+                mark === 'failed' && 'bg-danger-soft font-semibold text-danger',
+                mark === 'pending' && 'text-faint',
+              )}
+            >
+              {mark === 'done' ? <Check className="size-3" aria-hidden="true" /> : null}
+              {mark === 'failed' ? <X className="size-3" aria-hidden="true" /> : null}
+              {stage.label}
+            </li>
+          );
+        })}
+      </ol>
+
       <p className="mt-2 text-[11.5px] text-muted">
-        当前阶段：{stageLabel(state.stage) ?? '等待 worker 开始'}
+        当前阶段：{stageLabel(state.stage) ?? (stalled ? '等待 worker 启动' : '等待开始')}
       </p>
+
+      {progress !== null ? <p className="mt-1 text-[11.5px] text-muted">{progress}</p> : null}
+
+      {failed && state.error !== null ? (
+        <p className="mt-2 rounded-lg border border-danger/40 bg-danger-soft px-2.5 py-2 text-[11.5px] leading-5 text-danger">
+          失败原因：{state.error}
+        </p>
+      ) : null}
 
       {stalled ? (
         <p className="mt-2 rounded-lg border border-warning/40 bg-warning-soft px-2.5 py-2 text-[11.5px] leading-5 text-warning">
           worker 未运行，任务不会自动开始。请在终端执行{' '}
-          <code className="font-mono">pnpm worker</code>
-          （或 <code className="font-mono">pnpm dev:all</code>）。
+          <code className="font-mono">pnpm worker</code>（或{' '}
+          <code className="font-mono">pnpm dev:all</code>）。
         </p>
       ) : null}
 
-      {progress !== null && <p className="mt-1 text-[11.5px] text-muted">{progress}</p>}
-
       {activity.length > 0 && (
-        <ul aria-label="最近活动" className="mt-2 flex flex-col gap-1">
+        <ul aria-label="最近查询与来源" className="mt-2.5 flex flex-col gap-1">
           {activity.map((event) => (
             <li
               key={event.seq}
@@ -207,6 +247,14 @@ function describe(event: RunEvent): string {
     const query = stringField(payload, 'query') ?? '';
     const message = stringField(payload, 'message') ?? '未知错误';
     return `查询失败 ${query} · ${message}`;
+  }
+
+  if (event.type === 'query.fallback') {
+    const query = stringField(payload, 'query') ?? '';
+    const providers = Array.isArray(payload.providers)
+      ? payload.providers.filter((value): value is string => typeof value === 'string').join('/')
+      : '兜底';
+    return `查询回退 ${query} · ${providers}`;
   }
 
   if (event.type === 'query.unrecorded') {

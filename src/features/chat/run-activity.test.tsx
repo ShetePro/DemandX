@@ -54,7 +54,7 @@ describe('RunActivity', () => {
   it('shows the current stage and the latest progress counts', () => {
     render(<RunActivity runId={7} initialEvents={[CREATED, S1_STARTED, S1_PROGRESS]} />);
 
-    const card = screen.getByRole('group', { name: '研究进度' });
+    const card = screen.getByRole('group', { name: '实时研究' });
     expect(card).toHaveTextContent('S1 采集');
     expect(card).toHaveTextContent('已处理 12/40 · 新来源 5');
     expect(card).toHaveTextContent('进行中');
@@ -74,7 +74,7 @@ describe('RunActivity', () => {
       />,
     );
 
-    const items = screen.getByRole('list', { name: '最近活动' }).querySelectorAll('li');
+    const items = screen.getByRole('list', { name: '最近查询与来源' }).querySelectorAll('li');
     expect(items).toHaveLength(5);
     // Six activity events exist; the oldest is gone, the newest five remain.
     expect(screen.queryByText('采集 V2EX · 手工对账帖子')).toBeNull();
@@ -100,14 +100,14 @@ describe('RunActivity', () => {
       />,
     );
 
-    expect(screen.queryByRole('group', { name: '研究进度' })).toBeNull();
+    expect(screen.queryByRole('group', { name: '实时研究' })).toBeNull();
     expect(screen.getByText('研究完成：12 条证据 · 决策 建议先验证，再开发')).toBeVisible();
   });
 
   it('takes the queued verdict from the run row, not from run.created', () => {
     render(<RunActivity runId={7} initialEvents={[CREATED]} status="queued" stage="S0" />);
 
-    const card = screen.getByRole('group', { name: '研究进度' });
+    const card = screen.getByRole('group', { name: '实时研究' });
     expect(card).toHaveTextContent('排队中');
     expect(card).toHaveTextContent('S0 检索角度');
     expect(card).not.toHaveTextContent('进行中');
@@ -116,7 +116,7 @@ describe('RunActivity', () => {
   it('folds to the summary line when the row is finished even without its terminal event', () => {
     render(<RunActivity runId={7} initialEvents={[CREATED]} status="finished" stage="S2" />);
 
-    expect(screen.queryByRole('group', { name: '研究进度' })).toBeNull();
+    expect(screen.queryByRole('group', { name: '实时研究' })).toBeNull();
     expect(screen.getByText('研究完成')).toBeVisible();
   });
 
@@ -132,7 +132,9 @@ describe('RunActivity', () => {
       />,
     );
 
-    expect(screen.getByText('研究失败：SEARCH_UNAVAILABLE')).toBeVisible();
+    const card = screen.getByRole('group', { name: '实时研究' });
+    expect(card).toHaveTextContent('失败原因：SEARCH_UNAVAILABLE');
+    expect(card).toHaveTextContent('S1 采集');
   });
 
   it('explains a stalled queued run when no worker is online', () => {
