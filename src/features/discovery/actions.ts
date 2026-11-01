@@ -30,7 +30,21 @@ export type DiscoveryErrorCode =
  * the keyed fallback is appended when configured, so a blocked scraper does
  * not turn discovery into an error.
  */
-export async function findOpportunitiesAction(): Promise<DiscoveryActionResult<DiscoveryResult>> {
+const findInputSchema = z
+  .object({
+    /** URLs an earlier scan already showed; the rescan must look elsewhere. */
+    excludeUrls: z.array(z.string().trim().max(2000)).max(300, '最多排除 300 条来源').optional(),
+  })
+  .strict();
+
+export async function findOpportunitiesAction(
+  raw?: unknown,
+): Promise<DiscoveryActionResult<DiscoveryResult>> {
+  const parsed = findInputSchema.safeParse(raw ?? {});
+  if (!parsed.success) {
+    return { ok: false, code: 'VALIDATION_FAILED', message: '扫描参数无效' };
+  }
+
   // Discovery is an interactive scan, not a crawl: keep the per-host gap short
   // enough that eight bilingual queries finish while the dialog is open.
   const limiter = createRateLimiter({ rps: 2, minDelayMs: 300, maxDelayMs: 800 });
@@ -43,7 +57,11 @@ export async function findOpportunitiesAction(): Promise<DiscoveryActionResult<D
   }
 
   const llm = createLlmPort({ loadChain: getChain, resolveApiKey });
-  const result = await findOpportunities({ searchPorts: ports, llm });
+  const result = await findOpportunities({
+    searchPorts: ports,
+    llm,
+    excludeUrls: parsed.data.excludeUrls ?? [],
+  });
   if (!result.ok) return { ok: false, code: result.code, message: result.message };
   return { ok: true, value: result.value };
 }

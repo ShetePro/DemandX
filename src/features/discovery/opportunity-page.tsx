@@ -28,9 +28,9 @@ type ScanState =
 
 export interface OpportunityPageProps {
   /** Injected in tests; the page uses the real server actions by default. */
-  find?: () => Promise<
-    { ok: true; value: DiscoveryResult } | { ok: false; code: string; message: string }
-  >;
+  find?: (
+    excludeUrls: readonly string[],
+  ) => Promise<{ ok: true; value: DiscoveryResult } | { ok: false; code: string; message: string }>;
   start?: (
     idea: string,
   ) => Promise<
@@ -44,7 +44,7 @@ export interface OpportunityPageProps {
  * opportunities with their quotes all need room to be read side by side.
  */
 export function OpportunityPage({
-  find = findOpportunitiesAction,
+  find = (excludeUrls) => findOpportunitiesAction({ excludeUrls: [...excludeUrls] }),
   start = startDiscoveredResearchAction,
 }: OpportunityPageProps) {
   const router = useRouter();
@@ -53,6 +53,8 @@ export function OpportunityPage({
   const [phrase, setPhrase] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const requestId = useRef(0);
+  /** URLs shown by earlier scans this visit; the next scan excludes them. */
+  const seenUrls = useRef<string[]>([]);
 
   async function scan(): Promise<void> {
     const id = ++requestId.current;
@@ -60,10 +62,14 @@ export function OpportunityPage({
     setElapsed(0);
 
     try {
-      const result = await find();
+      const result = await find(seenUrls.current);
       if (id !== requestId.current) return;
-      if (result.ok) setState({ kind: 'ready', result: result.value });
-      else setState({ kind: 'error', message: result.message });
+      if (result.ok) {
+        seenUrls.current = [
+          ...new Set([...seenUrls.current, ...result.value.sources.map((source) => source.url)]),
+        ].slice(-300);
+        setState({ kind: 'ready', result: result.value });
+      } else setState({ kind: 'error', message: result.message });
     } catch {
       if (id === requestId.current) {
         setState({ kind: 'error', message: '扫描失败：网络或服务端错误，请重试。' });

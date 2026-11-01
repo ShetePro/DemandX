@@ -27,7 +27,7 @@ export const opportunitySchema = z.object({
 });
 
 export const discoverySchema = z.object({
-  opportunities: z.array(opportunitySchema).min(1).max(5),
+  opportunities: z.array(opportunitySchema).min(1).max(8),
 });
 
 export type Opportunity = z.infer<typeof opportunitySchema>;

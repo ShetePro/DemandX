@@ -107,4 +107,19 @@ describe('OpportunityPage', () => {
     expect(await screen.findByText('跨境库存同步')).toBeVisible();
     expect(find).toHaveBeenCalledTimes(2);
   });
+
+  it('excludes sources from earlier scans when rescanning', async () => {
+    const user = userEvent.setup();
+    const find = vi.fn(async () => ({ ok: true as const, value: RESULT }));
+    render(<OpportunityPage find={find} start={vi.fn()} />);
+
+    await screen.findByText('跨境库存同步');
+    expect(find).toHaveBeenLastCalledWith([]);
+
+    await user.click(screen.getByRole('button', { name: '再扫一轮' }));
+    await waitFor(() => expect(find).toHaveBeenCalledTimes(2));
+    expect(find).toHaveBeenLastCalledWith(
+      expect.arrayContaining(['https://example.com/post-1', 'https://example.com/post-2']),
+    );
+  });
 });

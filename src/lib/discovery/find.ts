@@ -1,7 +1,7 @@
 import type { LlmPort } from '@/lib/llm/port';
 import type { SearchPort } from '@/lib/search/port';
 
-import { DISCOVERY_HITS_PER_QUERY, DISCOVERY_QUERIES } from './queries';
+import { DISCOVERY_HITS_PER_QUERY, pickDiscoveryQueries } from './queries';
 import {
   discoverySchema,
   type DiscoveryResult,
@@ -10,7 +10,7 @@ import {
 } from './types';
 
 /** Enough context for the model without turning the prompt into a crawl. */
-export const MAX_SOURCES = 18;
+export const MAX_SOURCES = 30;
 
 /**
  * Discovery is an interactive scan: a model that has not answered in this long
@@ -22,6 +22,10 @@ export type DiscoveryPorts = {
   /** Scraped engines and the keyed fallback, already ordered by preference. */
   searchPorts: readonly SearchPort[];
   llm: LlmPort;
+  /** Injected so tests can pin the sampled queries. */
+  random?: () => number;
+  /** Sources an earlier scan already used; a rescan must not repeat them. */
+  excludeUrls?: readonly string[];
 };
 
 export type DiscoveryOutcome =
@@ -35,10 +39,13 @@ export type DiscoveryOutcome =
  */
 export async function findOpportunities(deps: DiscoveryPorts): Promise<DiscoveryOutcome> {
   const startedAt = Date.now();
+  const excluded = new Set(deps.excludeUrls ?? []);
+  const queries = pickDiscoveryQueries(undefined, deps.random);
+
   // Queries run together: discovery is interactive, and the adapters' shared
   // limiter already serialises calls per host, so this does not burst.
   const perQuery = await Promise.all(
-    DISCOVERY_QUERIES.map(async (query) => {
+    queries.map(async (query) => {
       const answered: {
         provider: string;
         hits: { url: string; title: string; snippet: string; platform: string }[];
@@ -78,7 +85,7 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
 
       for (const hit of hits) {
         if (sources.length >= MAX_SOURCES) break;
-        if (seen.has(hit.url)) continue;
+        if (seen.has(hit.url) || excluded.has(hit.url)) continue;
         seen.add(hit.url);
         sources.push(hit);
       }
@@ -157,7 +164,7 @@ function buildPrompt(sources: readonly DiscoverySource[]): { system: string; use
 
   return {
     system: `你是独立开发者的机会侦察员。只根据给定片段判断，不得补充搜索。
-输出 1–5 个值得验证的产品机会，每个机会必须引用片段里的 URL，并给出原文短句作为 quote。
+输出 4–8 个值得验证的产品机会，尽量覆盖不同领域（中文与海外各至少两个），不要反复描述同一个问题来凑数；每条都必须引用片段里的 URL，并给出原文短句作为 quote。
 要求：
 - problem 写用户的原话困境，不是功能清单。
 - signal 只能是 problem / seeking / paying / switching / recurring。
