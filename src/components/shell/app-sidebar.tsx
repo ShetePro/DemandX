@@ -1,6 +1,6 @@
 'use client';
 
-import { Layers, Plus } from 'lucide-react';
+import { Layers, Lightbulb, Plus, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -9,7 +9,6 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import type { ThreadSummaryRecord } from '@/lib/runs/repository';
 
 import { NavLink } from './nav-links';
-import { OpportunityFinder, type FindResult, type StartResult } from './opportunity-finder';
 import { SETTINGS_ITEM } from './nav-items';
 import { ThreadList } from './thread-list';
 import type { DeleteThreadHandler } from './thread-row';
@@ -19,9 +18,6 @@ export interface AppSidebarProps {
   threads: readonly ThreadSummaryRecord[];
   /** Supplied by the layout: feature actions cannot be imported from here. */
   onDelete: DeleteThreadHandler;
-  /** Opportunity scan and its "start research" follow-up. */
-  onFindOpportunities: () => Promise<FindResult>;
-  onStartResearch: (idea: string) => Promise<StartResult>;
 }
 
 /**
@@ -30,12 +26,7 @@ export interface AppSidebarProps {
  *
  * Brand → 新建研究 → the conversation list (the primary navigation) → settings.
  */
-export function AppSidebar({
-  threads,
-  onDelete,
-  onFindOpportunities,
-  onStartResearch,
-}: AppSidebarProps) {
+export function AppSidebar({ threads, onDelete }: AppSidebarProps) {
   const pathname = usePathname();
 
   return (
@@ -60,11 +51,23 @@ export function AppSidebar({
         </Link>
       </Button>
 
-      <OpportunityFinder
-        onFind={onFindOpportunities}
-        onStart={onStartResearch}
-        className="-mt-1.5"
-      />
+      <Link
+        href="/discover"
+        className="group relative isolate -mt-1.5 flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-accent/50 bg-accent-soft text-[13px] font-medium text-accent transition-colors hover:bg-accent/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+      >
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute -inset-px -z-10 rounded-lg bg-accent/25 opacity-70 blur-md motion-safe:animate-[opportunity-glow_2.8s_ease-in-out_infinite]"
+        />
+        <span className="relative grid size-4 place-items-center">
+          <Lightbulb className="size-4 text-warning motion-safe:animate-[opportunity-lean_3.6s_ease-in-out_infinite]" />
+          <Sparkles
+            aria-hidden="true"
+            className="absolute -top-1.5 -right-1.5 size-2.5 text-accent opacity-0 motion-safe:animate-[opportunity-spark_2.8s_ease-in-out_infinite]"
+          />
+        </span>
+        寻找机会
+      </Link>
 
       <ThreadList threads={threads} onDelete={onDelete} className="min-h-0 flex-1" />
 

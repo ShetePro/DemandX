@@ -45,4 +45,8 @@ export interface DiscoveryResult {
   opportunities: Opportunity[];
   /** Providers that answered at least one query, for the UI's status line. */
   providers: string[];
+  /** Wall-clock time of the whole scan, search included. */
+  elapsedMs: number;
+  /** Model that wrote the analysis, so a slow scan can be explained later. */
+  model: string;
 }

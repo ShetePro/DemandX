@@ -34,6 +34,7 @@ export type DiscoveryOutcome =
  * operator's crawl budget before the user has chosen an idea.
  */
 export async function findOpportunities(deps: DiscoveryPorts): Promise<DiscoveryOutcome> {
+  const startedAt = Date.now();
   // Queries run together: discovery is interactive, and the adapters' shared
   // limiter already serialises calls per host, so this does not burst.
   const perQuery = await Promise.all(
@@ -116,7 +117,12 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
   for (const candidate of asked.value.data.opportunities) {
     // The model may copy a URL it was not given; such a citation cannot be
     // verified, so the whole candidate is dropped rather than shipped.
-    const evidence = candidate.evidence.filter((item) => allowed.has(item.url));
+    const seenUrls = new Set<string>();
+    const evidence = candidate.evidence.filter((item) => {
+      if (!allowed.has(item.url) || seenUrls.has(item.url)) return false;
+      seenUrls.add(item.url);
+      return true;
+    });
     if (evidence.length === 0) continue;
     opportunities.push({ ...candidate, evidence });
   }
@@ -131,7 +137,13 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
 
   return {
     ok: true,
-    value: { sources, opportunities, providers: [...providers] },
+    value: {
+      sources,
+      opportunities,
+      providers: [...providers],
+      elapsedMs: Date.now() - startedAt,
+      model: asked.value.used.modelId,
+    },
   };
 }
 

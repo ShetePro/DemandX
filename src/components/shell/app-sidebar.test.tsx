@@ -51,12 +51,7 @@ const THREADS: ThreadSummaryRecord[] = [
 function renderSidebar(threads: ThreadSummaryRecord[] = THREADS) {
   return render(
     <ThemeProvider>
-      <AppSidebar
-        threads={threads}
-        onDelete={vi.fn()}
-        onFindOpportunities={vi.fn()}
-        onStartResearch={vi.fn()}
-      />
+      <AppSidebar threads={threads} onDelete={vi.fn()} />
     </ThemeProvider>,
   );
 }

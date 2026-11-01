@@ -183,4 +183,21 @@ describe('findOpportunities', () => {
       vi.useRealTimers();
     }
   });
+
+  it('keeps one citation per URL inside an opportunity', async () => {
+    const duplicated = {
+      ...OPPORTUNITY,
+      evidence: [
+        { url: 'https://example.com/post-1', quote: '第一段' },
+        { url: 'https://example.com/post-1', quote: '同一链接的第二段' },
+      ],
+    };
+    const result = await findOpportunities({
+      searchPorts: [port('ddg', [hit(1)])],
+      llm: llmReturning({ opportunities: [duplicated] }),
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.opportunities[0]?.evidence).toHaveLength(1);
+  });
 });
