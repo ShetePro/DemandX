@@ -5,6 +5,8 @@ import { LimitsForm } from '@/features/settings/crawl/limits-form';
 import { PlatformCard } from '@/features/settings/crawl/platform-card';
 import { PLATFORM_LABELS } from '@/features/settings/crawl/platforms';
 import { getCrawlSettingsAction } from '@/features/settings/crawl/actions';
+import { WebSearchForm } from '@/features/settings/crawl/web-search-form';
+import { getWebSearchSettingsAction } from '@/features/settings/crawl/web-search-actions';
 import {
   PLATFORMS,
   platformProfileDir,
@@ -42,16 +44,18 @@ async function readSessions(): Promise<{ sessions: SessionStatus[]; errors: stri
 }
 
 export default async function CrawlSettingsPage() {
-  const [settingsResult, queueResult, sessionsResult] = await Promise.all([
+  const [settingsResult, queueResult, sessionsResult, webSearchResult] = await Promise.all([
     getCrawlSettingsAction(),
     listNeedsHuman(),
     readSessions(),
+    getWebSearchSettingsAction(),
   ]);
 
   const errors = [
     ...sessionsResult.errors,
     ...(settingsResult.ok ? [] : [`采集设置：${settingsResult.message}`]),
     ...(queueResult.ok ? [] : [`待人工队列：${queueResult.message}`]),
+    ...(webSearchResult.ok ? [] : [`兜底搜索：${webSearchResult.message}`]),
   ];
 
   const settings = settingsResult.ok ? settingsResult.value : null;
@@ -97,13 +101,16 @@ export default async function CrawlSettingsPage() {
           </p>
         </section>
 
-        {settings ? (
-          <LimitsForm defaults={settings} />
-        ) : (
-          <section className="rounded-xl border border-border bg-surface p-4 text-sm text-muted">
-            采集设置读取失败，暂时无法编辑。请先修复上方错误。
-          </section>
-        )}
+        <div className="flex flex-col gap-4">
+          {settings ? (
+            <LimitsForm defaults={settings} />
+          ) : (
+            <section className="rounded-xl border border-border bg-surface p-4 text-sm text-muted">
+              采集设置读取失败，暂时无法编辑。请先修复上方错误。
+            </section>
+          )}
+          {webSearchResult.ok ? <WebSearchForm status={webSearchResult.value} /> : null}
+        </div>
       </div>
 
       <div className="mt-6">

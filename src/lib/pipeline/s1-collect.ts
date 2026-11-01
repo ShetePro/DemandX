@@ -118,188 +118,225 @@ export async function collectS1(ctx: RunContext, deps: CollectDeps): Promise<Res
   let needsHuman = 0;
   let done = 0;
 
-  outer: for (const group of groups) {
-    for (const query of group.queries) {
-      const aliveHere = assertAlive(ctx.deadlineAt, now());
-      if (!aliveHere.ok) return aliveHere;
+  /** One port sweep: records queries, crawls hits, and reports what happened. */
+  async function collectFromPorts(
+    query: string,
+    angle: string,
+    ports: readonly SearchPort[],
+  ): Promise<{ ok: true; hits: number; capped: boolean } | { ok: false; failure: Result<never> }> {
+    let hitsFound = 0;
 
-      for (const port of deps.searchPorts) {
-        const claimed = await deps.quota.claim(port.id);
-        if (!claimed.ok) {
+    for (const port of ports) {
+      const claimed = await deps.quota.claim(port.id);
+      if (!claimed.ok) {
+        skipped += 1;
+        continue;
+      }
+
+      let hits: SearchHit[];
+      try {
+        hits = await port.search(query, { limit: SEARCH_LIMIT });
+      } catch (error) {
+        skipped += 1;
+        await emit(deps, 'query.failed', {
+          stage: 'S1',
+          angle,
+          query,
+          provider: port.id,
+          message: messageOf(error),
+        });
+        continue;
+      }
+      hitsFound += hits.length;
+
+      if (deps.recordQuery) {
+        const recorded = await deps.recordQuery({
+          runId: ctx.runId,
+          angle,
+          provider: port.id,
+          text: query,
+          resultCount: hits.length,
+        });
+        // The query table is an audit trail; losing an entry never loses a source.
+        if (!recorded.ok) {
+          await emit(deps, 'query.unrecorded', { provider: port.id, query });
+        }
+      }
+
+      for (const hit of hits) {
+        const canonical = canonicalizeUrl(hit.url);
+        if (canonical === null) {
           skipped += 1;
+          await emit(deps, 'source.skipped', {
+            stage: 'S1',
+            url: hit.url,
+            reason: 'invalid_url',
+          });
           continue;
         }
+        // Already stored by this run (or a previous attempt of it): no re-fetch.
+        if (seen.has(canonical)) continue;
 
-        let hits: SearchHit[];
+        // The cap is a run budget, not a per-query one: once it is reached the
+        // remaining hits are not fetched at all.
+        if (fetched >= maxPages) return { ok: true, hits: hitsFound, capped: true };
+
+        const aliveHit = assertAlive(ctx.deadlineAt, now());
+        if (!aliveHit.ok) return { ok: false, failure: aliveHit };
+
+        if (fetched > 0 && delayMs > 0) await sleep(delayMs);
+        fetched += 1;
+
+        let crawled;
         try {
-          hits = await port.search(query, { limit: SEARCH_LIMIT });
+          crawled = await deps.crawl.crawl(hit.url);
         } catch (error) {
           skipped += 1;
-          await emit(deps, 'query.failed', {
+          await emit(deps, 'source.failed', {
             stage: 'S1',
-            angle: group.angle,
-            query,
-            provider: port.id,
+            url: canonical,
+            code: 'CRAWL_ERROR',
             message: messageOf(error),
           });
           continue;
         }
 
-        if (deps.recordQuery) {
-          const recorded = await deps.recordQuery({
-            runId: ctx.runId,
-            angle: group.angle,
-            provider: port.id,
-            text: query,
-            resultCount: hits.length,
-          });
-          // The query table is an audit trail; losing an entry never loses a source.
-          if (!recorded.ok) {
-            await emit(deps, 'query.unrecorded', { provider: port.id, query });
-          }
-        }
-
-        for (const hit of hits) {
-          const canonical = canonicalizeUrl(hit.url);
-          if (canonical === null) {
-            skipped += 1;
-            await emit(deps, 'source.skipped', {
-              stage: 'S1',
-              url: hit.url,
-              reason: 'invalid_url',
-            });
-            continue;
-          }
-          // Already stored by this run (or a previous attempt of it): no re-fetch.
-          if (seen.has(canonical)) continue;
-
-          // The cap is a run budget, not a per-query one: once it is reached the
-          // remaining hits are not fetched at all.
-          if (fetched >= maxPages) {
-            capped = true;
-            break outer;
-          }
-
-          const aliveHit = assertAlive(ctx.deadlineAt, now());
-          if (!aliveHit.ok) return aliveHit;
-
-          if (fetched > 0 && delayMs > 0) await sleep(delayMs);
-          fetched += 1;
-
-          let crawled;
-          try {
-            crawled = await deps.crawl.crawl(hit.url);
-          } catch (error) {
-            skipped += 1;
-            await emit(deps, 'source.failed', {
-              stage: 'S1',
-              url: canonical,
-              code: 'CRAWL_ERROR',
-              message: messageOf(error),
-            });
-            continue;
-          }
-
-          if (crawled.status === 'needs_human') {
-            needsHuman += 1;
-            // Queued for a person: re-fetching it for the next query in this run
-            // would only re-detect the same wall.
-            seen.add(canonical);
-            await emit(deps, 'source.needs_human', {
-              stage: 'S1',
-              url: canonical,
-              platform: hit.platform,
-              reason: crawled.reason,
-            });
-            continue;
-          }
-
-          if (crawled.status === 'skipped') {
-            skipped += 1;
-            // A policy skip is terminal by definition; never fetch it again here.
-            seen.add(canonical);
-            await emit(deps, 'source.skipped', {
-              stage: 'S1',
-              url: canonical,
-              platform: hit.platform,
-              reason: crawled.reason,
-            });
-            continue;
-          }
-
-          if (crawled.status === 'error') {
-            skipped += 1;
-            await emit(deps, 'source.failed', {
-              stage: 'S1',
-              url: canonical,
-              platform: hit.platform,
-              code: crawled.code,
-            });
-            continue;
-          }
-
-          const { snapshot } = crawled;
-          const fingerprint = simhash64(snapshot.text);
-          if (
-            fingerprints.some(
-              (stored) => hammingDistance(stored, fingerprint) <= SIMHASH_DUPLICATE_THRESHOLD,
-            )
-          ) {
-            skipped += 1;
-            seen.add(canonical);
-            await emit(deps, 'source.skipped', {
-              stage: 'S1',
-              url: canonical,
-              platform: hit.platform,
-              reason: 'near_duplicate',
-            });
-            continue;
-          }
-
-          let written;
-          try {
-            written = await writeSnapshot({
-              text: snapshot.text,
-              html: snapshot.html,
-              url: canonical,
-              ...(deps.snapshotDir === undefined ? {} : { dir: deps.snapshotDir }),
-            });
-          } catch (error) {
-            skipped += 1;
-            await emit(deps, 'source.failed', {
-              stage: 'S1',
-              url: canonical,
-              code: 'SNAPSHOT_FAILED',
-              message: messageOf(error),
-            });
-            continue;
-          }
-
-          const inserted = await deps.repo.insertSource({
-            runId: ctx.runId,
-            canonicalUrl: canonical,
-            platform: hit.platform,
-            contentHash: written.hash,
-            snapshotPath: written.textPath,
-            crawlTier: crawled.settled === undefined ? 'static' : 'browser',
-            fetchedAt: now(),
-          });
-          // A storage failure is not one bad source: nothing after it can be trusted.
-          if (!inserted.ok) return inserted;
-
+        if (crawled.status === 'needs_human') {
+          needsHuman += 1;
+          // Queued for a person: re-fetching it for the next query in this run
+          // would only re-detect the same wall.
           seen.add(canonical);
-          fingerprints.push(fingerprint);
-          if (inserted.value.inserted) sources += 1;
-
-          await emit(deps, 'source.added', {
+          await emit(deps, 'source.needs_human', {
             stage: 'S1',
             url: canonical,
             platform: hit.platform,
-            title: hit.title,
-            sourceId: inserted.value.id,
-            snapshotHash: written.hash,
-            duplicate: !inserted.value.inserted,
+            reason: crawled.reason,
           });
+          continue;
+        }
+
+        if (crawled.status === 'skipped') {
+          skipped += 1;
+          // A policy skip is terminal by definition; never fetch it again here.
+          seen.add(canonical);
+          await emit(deps, 'source.skipped', {
+            stage: 'S1',
+            url: canonical,
+            platform: hit.platform,
+            reason: crawled.reason,
+          });
+          continue;
+        }
+
+        if (crawled.status === 'error') {
+          skipped += 1;
+          await emit(deps, 'source.failed', {
+            stage: 'S1',
+            url: canonical,
+            platform: hit.platform,
+            code: crawled.code,
+          });
+          continue;
+        }
+
+        const { snapshot } = crawled;
+        const fingerprint = simhash64(snapshot.text);
+        if (
+          fingerprints.some(
+            (stored) => hammingDistance(stored, fingerprint) <= SIMHASH_DUPLICATE_THRESHOLD,
+          )
+        ) {
+          skipped += 1;
+          seen.add(canonical);
+          await emit(deps, 'source.skipped', {
+            stage: 'S1',
+            url: canonical,
+            platform: hit.platform,
+            reason: 'near_duplicate',
+          });
+          continue;
+        }
+
+        let written;
+        try {
+          written = await writeSnapshot({
+            text: snapshot.text,
+            html: snapshot.html,
+            url: canonical,
+            ...(deps.snapshotDir === undefined ? {} : { dir: deps.snapshotDir }),
+          });
+        } catch (error) {
+          skipped += 1;
+          await emit(deps, 'source.failed', {
+            stage: 'S1',
+            url: canonical,
+            code: 'SNAPSHOT_FAILED',
+            message: messageOf(error),
+          });
+          continue;
+        }
+
+        const inserted = await deps.repo.insertSource({
+          runId: ctx.runId,
+          canonicalUrl: canonical,
+          platform: hit.platform,
+          contentHash: written.hash,
+          snapshotPath: written.textPath,
+          crawlTier: crawled.settled === undefined ? 'static' : 'browser',
+          fetchedAt: now(),
+        });
+        // A storage failure is not one bad source: nothing after it can be trusted.
+        if (!inserted.ok) return { ok: false, failure: inserted };
+
+        seen.add(canonical);
+        fingerprints.push(fingerprint);
+        if (inserted.value.inserted) sources += 1;
+
+        await emit(deps, 'source.added', {
+          stage: 'S1',
+          url: canonical,
+          platform: hit.platform,
+          title: hit.title,
+          sourceId: inserted.value.id,
+          snapshotHash: written.hash,
+          duplicate: !inserted.value.inserted,
+        });
+      }
+    }
+
+    return { ok: true, hits: hitsFound, capped: false };
+  }
+
+  const primaryPorts = deps.searchPorts.filter((port) => port.fallback !== true);
+  const fallbackPorts = deps.searchPorts.filter((port) => port.fallback === true);
+
+  outer: for (const group of groups) {
+    for (const query of group.queries) {
+      const aliveHere = assertAlive(ctx.deadlineAt, now());
+      if (!aliveHere.ok) return aliveHere;
+
+      const primary = await collectFromPorts(query, group.angle, primaryPorts);
+      if (!primary.ok) return primary.failure;
+      if (primary.capped) {
+        capped = true;
+        break outer;
+      }
+
+      // Platform adapters reached nothing usable — sessions, keys or markup
+      // may all be missing — so the keyed web search answers this query.
+      if (primary.hits === 0 && fallbackPorts.length > 0) {
+        await emit(deps, 'query.fallback', {
+          stage: 'S1',
+          angle: group.angle,
+          query,
+          providers: fallbackPorts.map((port) => port.id),
+        });
+
+        const fallback = await collectFromPorts(query, group.angle, fallbackPorts);
+        if (!fallback.ok) return fallback.failure;
+        if (fallback.capped) {
+          capped = true;
+          break outer;
         }
       }
 

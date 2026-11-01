@@ -31,6 +31,7 @@ import { S1_EXPIRE_SECONDS, S1_QUEUE, S1_RETRY_LIMIT } from '@/lib/runs/queue';
 import { listScores, replaceScores } from '@/lib/runs/scores-repository';
 import { insertSource, listSourceUrls, recordQuery } from '@/lib/runs/sources-repository';
 import { createAppStoreSearch } from '@/lib/search/appstore';
+import { resolveWebSearch, createResolvedWebSearchPort } from '@/lib/search/web-search-config';
 import { createBingSearch } from '@/lib/search/bing';
 import { createDuckDuckGoSearch } from '@/lib/search/ddg';
 import { createGitHubSearch } from '@/lib/search/github';
@@ -68,15 +69,32 @@ const BROWSER_DIR = browserRoot();
 /** Profile for URLs that belong to no platform. */
 const PROFILE_DIR = process.env.CRAWL_PROFILE_DIR?.trim() || path.join(BROWSER_DIR, 'pipeline');
 
-const searchPorts: SearchPort[] = [
-  createDuckDuckGoSearch(),
-  createBingSearch(),
-  createHnSearch(),
-  createGitHubSearch(),
-];
+/**
+ * Scraped and platform adapters, plus the optional keyed web search. The keyed
+ * port is resolved per run (settings can rotate the key without a restart) and
+ * marked as a fallback, so it only pays for queries the primaries left empty.
+ */
+async function buildSearchPorts(): Promise<SearchPort[]> {
+  const ports: SearchPort[] = [
+    createDuckDuckGoSearch(),
+    createBingSearch(),
+    createHnSearch(),
+    createGitHubSearch(),
+  ];
 
-const appStoreAppId = process.env.APPSTORE_APP_ID?.trim() ?? '';
-if (appStoreAppId !== '') searchPorts.push(createAppStoreSearch({ appId: appStoreAppId }));
+  const appStoreAppId = process.env.APPSTORE_APP_ID?.trim() ?? '';
+  if (appStoreAppId !== '') ports.push(createAppStoreSearch({ appId: appStoreAppId }));
+
+  const webSearch = await resolveWebSearch();
+  if (!webSearch.ok) {
+    console.error(`⚠️ 兜底搜索不可用: ${webSearch.message}`);
+  } else if (webSearch.value !== null) {
+    ports.push(createResolvedWebSearchPort(webSearch.value));
+    console.log(`🔎 兜底搜索已启用: ${webSearch.value.provider}（${webSearch.value.source}）`);
+  }
+
+  return ports;
+}
 
 /**
  * S2's model surface. Constructed once: the port keeps provider cooldowns in
@@ -193,6 +211,7 @@ async function runStages(runId: number): Promise<void> {
   let stage: 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6' = 'S1';
 
   const crawler = createRunCrawler(settings);
+  const searchPorts = await buildSearchPorts();
   let outcome;
   try {
     outcome = await runPipeline(ctx, {

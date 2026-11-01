@@ -51,6 +51,23 @@ export async function getText(
   return response.text();
 }
 
+/** Rate-limited request parsed as JSON; non-2xx responses throw. */
+export async function requestJson(
+  url: string,
+  deps: SearchDeps = {},
+  init: RequestInit = {},
+): Promise<unknown> {
+  await limiterFor(deps).acquire(new URL(url).host);
+
+  const send = deps.fetch ?? fetch;
+  const response = await send(url, {
+    ...init,
+    signal: init.signal ?? AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new SearchHttpError(url, response.status);
+  return response.json();
+}
+
 /** JSON object narrowing for responses typed `unknown`. */
 export function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

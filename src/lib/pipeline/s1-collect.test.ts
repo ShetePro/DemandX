@@ -40,10 +40,16 @@ function createCrawl(
   };
 }
 
-function createPort(id: string, hits: readonly SearchHit[], calls?: string[]): SearchPort {
+function createPort(
+  id: string,
+  hits: readonly SearchHit[],
+  calls?: string[],
+  fallback = false,
+): SearchPort {
   return {
     id,
     platform: 'web',
+    ...(fallback ? { fallback: true } : {}),
     async search(query) {
       calls?.push(query);
       return [...hits];
@@ -335,8 +341,8 @@ describe('collectS1', () => {
     );
 
     expect(summary.skipped).toBe(0);
-    // Five classes × three queries.
-    expect(searchCalls).toHaveLength(15);
+    // Five signal classes plus the competitor scan, three queries each.
+    expect(searchCalls).toHaveLength(18);
   });
 
   it('stops fetching once the page cap is reached and records it', async () => {
@@ -378,5 +384,73 @@ describe('collectS1', () => {
       stage: 'S1',
       maxPages: 2,
     });
+  });
+
+  it('skips the fallback port when a primary adapter returned hits', async () => {
+    const repo = createRepo();
+    const crawlCalls: string[] = [];
+    const fallbackCalls: string[] = [];
+    const url = 'https://example.com/post';
+    const primary = createPort('hn', [hit(url, 'hn')]);
+    const fallback = createPort('web-api-tavily', [], fallbackCalls, true);
+    const crawl = createCrawl(
+      { [url]: okSnapshot(url, 'Show HN: 我做了库存同步工具') },
+      crawlCalls,
+    );
+
+    const summary = expectOk(
+      await collectS1(context(), deps(primary, crawl, repo, { searchPorts: [primary, fallback] })),
+    );
+
+    expect(summary.sources).toBe(1);
+    expect(fallbackCalls).toEqual([]);
+  });
+
+  it('uses the fallback port for a query the primaries left empty', async () => {
+    const repo = createRepo();
+    const crawlCalls: string[] = [];
+    const fallbackCalls: string[] = [];
+    const url = 'https://blog.example.com/compare';
+    const primary = createPort('hn', []);
+    const fallback = createPort('web-api-tavily', [hit(url)], fallbackCalls, true);
+    const crawl = createCrawl(
+      { [url]: okSnapshot(url, '对比了三个库存同步工具的定价，最便宜的每月 29 美元。') },
+      crawlCalls,
+    );
+
+    const summary = expectOk(
+      await collectS1(context(), deps(primary, crawl, repo, { searchPorts: [primary, fallback] })),
+    );
+
+    // One selected angle has three queries; each falls back once.
+    expect(fallbackCalls).toHaveLength(3);
+    expect(summary.sources).toBe(1);
+  });
+
+  it('falls back when the primary adapter throws', async () => {
+    const repo = createRepo();
+    const crawlCalls: string[] = [];
+    const fallbackCalls: string[] = [];
+    const url = 'https://blog.example.com/post';
+    const primary: SearchPort = {
+      id: 'hn',
+      platform: 'hn',
+      async search() {
+        throw new Error('HTTP 429');
+      },
+    };
+    const fallback = createPort('web-api-tavily', [hit(url)], fallbackCalls, true);
+    const crawl = createCrawl(
+      { [url]: okSnapshot(url, '库存同步工具的真实报价与用户评价整理。') },
+      crawlCalls,
+    );
+
+    const summary = expectOk(
+      await collectS1(context(), deps(primary, crawl, repo, { searchPorts: [primary, fallback] })),
+    );
+
+    expect(fallbackCalls).toHaveLength(3);
+    expect(summary.sources).toBe(1);
+    expect(summary.skipped).toBe(3);
   });
 });

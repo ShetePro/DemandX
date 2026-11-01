@@ -6,6 +6,12 @@
 export type Platform =
   'xiaohongshu' | 'douyin' | 'zhihu' | 'v2ex' | 'reddit' | 'hn' | 'appstore' | 'github' | 'web';
 
+/** Web-search APIs the fallback can talk to. Kept here so client code importing
+ * the settings schema does not pull the adapter (and its fetch plumbing) in. */
+export const WEB_SEARCH_PROVIDERS = ['tavily', 'brave', 'serper'] as const;
+
+export type WebSearchProvider = (typeof WEB_SEARCH_PROVIDERS)[number];
+
 /** One search result, already normalised to the shape the pipeline consumes. */
 export interface SearchHit {
   url: string;
@@ -27,5 +33,11 @@ export interface SearchOptions {
 export interface SearchPort {
   id: string;
   platform: Platform;
+  /**
+   * Fallback ports run only after every primary port returned no hit for a
+   * query. That is what keeps a keyed web API off the hot path while still
+   * covering queries the platform adapters cannot reach.
+   */
+  fallback?: boolean;
   search(q: string, opts: SearchOptions): Promise<SearchHit[]>;
 }

@@ -6,7 +6,7 @@
  */
 
 /** The five signals, graded separately and never merged. */
-export type AngleKind = 'problem' | 'seeking' | 'paying' | 'switching' | 'frequency';
+export type AngleKind = 'problem' | 'seeking' | 'paying' | 'switching' | 'frequency' | 'competitor';
 
 export interface AngleGroup {
   angle: AngleKind;
@@ -25,6 +25,9 @@ const TEMPLATES: ReadonlyArray<{ angle: AngleKind; suffixes: readonly string[] }
   { angle: 'paying', suffixes: ['付费', '价格 多少钱', '订阅 值得吗'] },
   { angle: 'switching', suffixes: ['替代 现有工具', '换掉 之前用的', '不满意 迁移'] },
   { angle: 'frequency', suffixes: ['每天 都要用', '高频 使用', '一周 几次'] },
+  // Feasibility is not only about demand: the report must name what already
+  // exists, what it charges and how the new product would differ.
+  { angle: 'competitor', suffixes: ['竞品 对比', '替代方案 有哪些', '定价 方案 对比'] },
 ];
 
 /**

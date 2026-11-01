@@ -5,7 +5,7 @@ import { buildAngles } from './angles';
 const IDEA = '跨境库存同步';
 
 describe('buildAngles', () => {
-  it('covers the five signal classes', () => {
+  it('covers the five signal classes and the competitor scan', () => {
     const groups = buildAngles(IDEA);
     expect(groups.map((group) => group.angle)).toEqual([
       'problem',
@@ -13,6 +13,7 @@ describe('buildAngles', () => {
       'paying',
       'switching',
       'frequency',
+      'competitor',
     ]);
   });
 
@@ -30,7 +31,7 @@ describe('buildAngles', () => {
   it('never repeats a query, within a class or across classes', () => {
     const queries = buildAngles(IDEA).flatMap((group) => group.queries);
     expect(new Set(queries).size).toBe(queries.length);
-    expect(queries.length).toBeGreaterThanOrEqual(10);
+    expect(queries.length).toBeGreaterThanOrEqual(13);
   });
 
   it('is deterministic and collapses whitespace in the idea', () => {
