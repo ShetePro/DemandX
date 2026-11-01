@@ -9,7 +9,8 @@ import { SignalBadge } from '@/components/common/signal-badge';
 import type { DiscoveryResult, Opportunity } from '@/lib/discovery/types';
 import { cn } from '@/lib/utils/cn';
 
-import { findOpportunitiesAction, startDiscoveredResearchAction } from './actions';
+import { startDiscoveredResearchAction } from './actions';
+import { streamDiscoveryScan, type ScanPhase } from './stream';
 
 const SCAN_PHRASES = [
   'Reddit · “I wish there was…”',
@@ -41,6 +42,7 @@ export interface OpportunityPageProps {
   /** Injected in tests; the page uses the real server actions by default. */
   find?: (
     excludeUrls: readonly string[],
+    onPhase: (phase: ScanPhase) => void,
   ) => Promise<{ ok: true; value: DiscoveryResult } | { ok: false; code: string; message: string }>;
   start?: (
     idea: string,
@@ -55,7 +57,7 @@ export interface OpportunityPageProps {
  * opportunities with their quotes all need room to be read side by side.
  */
 export function OpportunityPage({
-  find = (excludeUrls) => findOpportunitiesAction({ excludeUrls: [...excludeUrls] }),
+  find = streamDiscoveryScan,
   start = startDiscoveredResearchAction,
 }: OpportunityPageProps) {
   const router = useRouter();
@@ -63,6 +65,7 @@ export function OpportunityPage({
   const [starting, setStarting] = useState<string | null>(null);
   const [phrase, setPhrase] = useState(0);
   const [elapsed, setElapsed] = useState(0);
+  const [step, setStep] = useState(0);
   const requestId = useRef(0);
   /** URLs shown by earlier scans this visit; the next scan excludes them. */
   const seenUrls = useRef<string[]>([]);
@@ -71,14 +74,19 @@ export function OpportunityPage({
     const id = ++requestId.current;
     setState({ kind: 'scanning' });
     setElapsed(0);
+    setStep(0);
 
     try {
-      const result = await find(seenUrls.current);
+      const result = await find(seenUrls.current, (phase: ScanPhase) => {
+        const index = phase === 'search' ? 0 : phase === 'filter' ? 1 : 2;
+        setStep((current) => Math.max(current, index));
+      });
       if (id !== requestId.current) return;
       if (result.ok) {
         seenUrls.current = [
           ...new Set([...seenUrls.current, ...result.value.sources.map((source) => source.url)]),
         ].slice(-300);
+        setStep(STEP_LABELS.length);
         setState({ kind: 'ready', result: result.value });
       } else setState({ kind: 'error', message: result.message });
     } catch {
@@ -154,7 +162,9 @@ export function OpportunityPage({
         </button>
       </header>
 
-      {state.kind === 'scanning' ? <Scanning elapsedMs={elapsed} phrase={phrase} /> : null}
+      {state.kind === 'scanning' ? (
+        <Scanning elapsedMs={elapsed} phrase={phrase} step={step} />
+      ) : null}
 
       {state.kind === 'error' ? (
         <section
@@ -192,7 +202,15 @@ function formatElapsed(ms: number): string {
  * wait feel like coverage, and the elapsed timer stays honest about how long
  * it has actually been running.
  */
-function Scanning({ elapsedMs, phrase }: { elapsedMs: number; phrase: number }) {
+function Scanning({
+  elapsedMs,
+  phrase,
+  step,
+}: {
+  elapsedMs: number;
+  phrase: number;
+  step: number;
+}) {
   return (
     <section
       aria-live="polite"
@@ -240,25 +258,42 @@ function Scanning({ elapsedMs, phrase }: { elapsedMs: number; phrase: number }) 
         </p>
 
         <ol className="flex flex-col gap-2.5">
-          {STEP_LABELS.map((label, index) => (
-            <li key={label} className="flex items-center gap-3 text-[13px] text-muted">
-              <span
+          {STEP_LABELS.map((label, index) => {
+            const done = index < step;
+            const active = index === step;
+            return (
+              <li
+                key={label}
+                data-done={done ? 'true' : undefined}
+                aria-current={active ? 'step' : undefined}
                 className={cn(
-                  'grid size-5 shrink-0 place-items-center rounded-full border',
-                  index === 0
-                    ? 'border-accent/50 bg-accent-soft text-accent'
-                    : 'border-border text-faint',
+                  'flex items-center gap-3 text-[13px] transition-colors',
+                  done ? 'text-muted' : active ? 'text-fg' : 'text-faint',
                 )}
               >
-                {index === 0 ? (
-                  <span className="size-1.5 rounded-full bg-accent motion-safe:animate-ping" />
-                ) : (
-                  <span className="size-1 rounded-full bg-current opacity-40" />
-                )}
-              </span>
-              <span className="flex-1">{label}</span>
-            </li>
-          ))}
+                <span
+                  className={cn(
+                    'grid size-5 shrink-0 place-items-center rounded-full border',
+                    done
+                      ? 'border-success/50 bg-success-soft text-success'
+                      : active
+                        ? 'border-accent/50 bg-accent-soft text-accent'
+                        : 'border-border text-faint',
+                  )}
+                >
+                  {done ? (
+                    <Check className="size-3" aria-hidden="true" />
+                  ) : active ? (
+                    <span className="size-1.5 rounded-full bg-accent motion-safe:animate-ping" />
+                  ) : (
+                    <span className="size-1 rounded-full bg-current opacity-40" />
+                  )}
+                </span>
+                <span className="flex-1">{label}</span>
+                {active ? <span className="text-[11px] text-accent">进行中</span> : null}
+              </li>
+            );
+          })}
         </ol>
 
         <p className="text-[11px] text-faint">通常需要 15–30 秒；超过 45 秒会明确提示超时。</p>

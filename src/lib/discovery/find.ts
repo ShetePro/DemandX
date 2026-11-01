@@ -32,6 +32,8 @@ export type DiscoveryPorts = {
   excludeUrls?: readonly string[];
   /** Injected queries (tests); production samples the pool instead. */
   queries?: readonly string[];
+  /** Streaming progress: search → filter → model. */
+  onPhase?: (phase: 'search' | 'filter' | 'model', detail?: number) => void;
 };
 
 export type DiscoveryOutcome =
@@ -45,6 +47,7 @@ export type DiscoveryOutcome =
  */
 export async function findOpportunities(deps: DiscoveryPorts): Promise<DiscoveryOutcome> {
   const startedAt = Date.now();
+  deps.onPhase?.('search');
   const excluded = new Set(deps.excludeUrls ?? []);
   const queries = deps.queries ?? pickDiscoveryQueries(undefined, deps.random);
 
@@ -96,7 +99,9 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
 
   // Relevance gate: blocked farms, non-commercial strangers and near-duplicate
   // pages are removed before the model ever sees them.
+  deps.onPhase?.('filter');
   const sources = selectSources(candidates, MAX_SOURCES);
+  deps.onPhase?.('filter', sources.length);
 
   if (sources.length < MIN_SOURCES) {
     return {
@@ -105,6 +110,8 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
       message: `通过商业相关性筛选的片段只有 ${sources.length} 条，样本不足：换一轮或检查搜索配置。`,
     };
   }
+
+  deps.onPhase?.('model', sources.length);
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   const asked = await Promise.race([

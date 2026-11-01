@@ -30,4 +30,3 @@ export function usageWindowStart(now: Date, window: UsageWindow): Date {
 
   return start;
 }
-

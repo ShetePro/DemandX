@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiscoveryResult } from '@/lib/discovery/types';
 
 import { OpportunityPage } from './opportunity-page';
+import type { ScanPhase } from './stream';
 
 const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
 
@@ -117,16 +118,45 @@ describe('OpportunityPage', () => {
 
   it('excludes sources from earlier scans when rescanning', async () => {
     const user = userEvent.setup();
-    const find = vi.fn(async () => ({ ok: true as const, value: RESULT }));
+    const find = vi.fn(
+      async (_excludeUrls: readonly string[], _onPhase: (phase: ScanPhase) => void) => {
+        void _excludeUrls;
+        void _onPhase;
+        return { ok: true as const, value: RESULT };
+      },
+    );
     render(<OpportunityPage find={find} start={vi.fn()} />);
 
     await screen.findByText('跨境库存同步');
-    expect(find).toHaveBeenLastCalledWith([]);
+    expect(find.mock.calls.at(-1)?.[0]).toEqual([]);
 
     await user.click(screen.getByRole('button', { name: '再扫一轮' }));
     await waitFor(() => expect(find).toHaveBeenCalledTimes(2));
-    expect(find).toHaveBeenLastCalledWith(
+    expect(find.mock.calls.at(-1)?.[0]).toEqual(
       expect.arrayContaining(['https://example.com/post-1', 'https://example.com/post-2']),
     );
+  });
+
+  it('marks search as done and filtering as active when the phase advances', async () => {
+    const pending = deferred<{ ok: true; value: DiscoveryResult }>();
+    const find = vi.fn(
+      async (_excludeUrls: readonly string[], onPhase: (phase: ScanPhase) => void) => {
+        onPhase('search');
+        onPhase('filter');
+        return pending.promise;
+      },
+    );
+    render(<OpportunityPage find={find} start={vi.fn()} />);
+
+    const searchStep = (await screen.findByText('检索中英文公开片段')).closest('li');
+    const filterStep = screen.getByText('过滤内容农场与无商业线索页面').closest('li');
+    const modelStep = screen.getByText('模型筛选可落地的方向').closest('li');
+
+    await waitFor(() => expect(searchStep).toHaveAttribute('data-done', 'true'));
+    expect(filterStep).toHaveAttribute('aria-current', 'step');
+    expect(modelStep).not.toHaveAttribute('aria-current');
+
+    pending.resolve({ ok: true, value: RESULT });
+    expect(await screen.findByText('跨境库存同步')).toBeVisible();
   });
 });

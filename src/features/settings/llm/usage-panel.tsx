@@ -70,7 +70,7 @@ export function UsagePanel({ provider, usage }: UsagePanelProps) {
         </div>
         <div className="grid grid-cols-[48px_minmax(0,1fr)] items-center gap-2 border-t border-border pt-2">
           <dt className="text-[11px] text-muted">本月 tokens</dt>
-          <dd className="text-[11px] tabular-nums text-fg">
+          <dd className="text-[11px] text-fg tabular-nums">
             入 {formatTokens(usage.monthlyPromptTokens)} · 出{' '}
             {formatTokens(usage.monthlyCompletionTokens)}
           </dd>

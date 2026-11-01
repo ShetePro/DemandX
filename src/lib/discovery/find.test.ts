@@ -213,4 +213,20 @@ describe('findOpportunities', () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.opportunities[0]?.evidence).toHaveLength(1);
   });
+
+  it('reports search → filter → model phases in order', async () => {
+    const phases: string[] = [];
+    const result = await findOpportunities({
+      searchPorts: [port('ddg', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
+      llm: llmReturning({ opportunities: [OPPORTUNITY] }),
+      queries: ['库存 同步'],
+      onPhase: (phase) => phases.push(phase),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(phases[0]).toBe('search');
+    expect(phases).toContain('filter');
+    expect(phases).toContain('model');
+    expect(phases.lastIndexOf('filter')).toBeLessThan(phases.indexOf('model'));
+  });
 });
