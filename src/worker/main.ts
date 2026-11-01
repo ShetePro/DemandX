@@ -29,6 +29,7 @@ import {
 } from '@/lib/runs/opportunities-repository';
 import { appendEvent, getRunContext, setRunState } from '@/lib/runs/repository';
 import { S1_EXPIRE_SECONDS, S1_QUEUE, S1_RETRY_LIMIT } from '@/lib/runs/queue';
+import { touchWorkerHeartbeat } from '@/lib/runs/worker-heartbeat';
 import { listScores, replaceScores } from '@/lib/runs/scores-repository';
 import { insertSource, listSourceUrls, recordQuery } from '@/lib/runs/sources-repository';
 import { createAppStoreSearch } from '@/lib/search/appstore';
@@ -367,6 +368,11 @@ async function main(): Promise<void> {
       }
     }
   });
+
+  // The UI reads this to distinguish "排队中" from "no worker is running".
+  await touchWorkerHeartbeat();
+  const heartbeat = setInterval(() => void touchWorkerHeartbeat(), 15_000);
+  heartbeat.unref();
 
   console.log(`✅ worker ready — 队列 ${S1_QUEUE}（CRAWL_ENABLED=${CRAWL_ENABLED}）`);
 }

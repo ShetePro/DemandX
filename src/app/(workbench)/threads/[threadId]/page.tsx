@@ -20,6 +20,7 @@ import {
   readEvents,
   type MessageRecord,
 } from '@/lib/runs/repository';
+import { readWorkerStatus } from '@/lib/runs/worker-heartbeat';
 
 // History and the run snapshot must reflect the database on every request.
 export const dynamic = 'force-dynamic';
@@ -64,10 +65,11 @@ async function firstPrompt(runId: number): Promise<string | undefined> {
 
 /** The 对话 tab: history, the latest run and its event tail for the rail. */
 async function ChatView({ threadId, title }: { threadId: number; title: string }) {
-  const [messages, latestRun, assistant] = await Promise.all([
+  const [messages, latestRun, assistant, worker] = await Promise.all([
     getMessages(threadId),
     getLatestRunForThread(threadId),
     hasAssistantMessage(threadId),
+    readWorkerStatus(),
   ]);
   if (!messages.ok) throw new Error(messages.message);
   if (!latestRun.ok) throw new Error(latestRun.message);
@@ -96,6 +98,7 @@ async function ChatView({ threadId, title }: { threadId: number; title: string }
       runStage={run?.stage}
       evidenceHref={run === null ? null : `/runs/${run.id}/evidence`}
       initialRunEvents={events}
+      workerOnline={worker.online}
     />
   );
 }

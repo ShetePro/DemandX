@@ -61,6 +61,8 @@ export type ChatScreenProps = {
   evidenceHref: string | null;
   /** First-paint snapshot for the rail, oldest first. */
   initialRunEvents?: RunEvent[];
+  /** False when the worker has not checked in; queued runs are then stalled. */
+  workerOnline?: boolean | undefined;
   title?: string;
 };
 
@@ -103,6 +105,7 @@ export function ChatScreen({
   runStage,
   evidenceHref,
   initialRunEvents = [],
+  workerOnline = true,
   title = '研究对话',
 }: ChatScreenProps) {
   const router = useRouter();
@@ -270,6 +273,7 @@ export function ChatScreen({
               initialEvents={run.events}
               status={runStatus}
               stage={runStage}
+              workerOnline={workerOnline}
             />
           </div>
         </div>
@@ -296,6 +300,7 @@ export function ChatScreen({
             runStatus={runStatus}
             runStage={runStage}
             initialEvents={run.events}
+            workerOnline={workerOnline}
           />
         </aside>
       )}

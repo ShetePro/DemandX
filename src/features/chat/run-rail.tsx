@@ -22,13 +22,21 @@ export type RunRailProps = {
   runStage?: string | null | undefined;
   /** First-paint snapshot from the RSC, oldest first. */
   initialEvents?: RunEvent[];
+  /** False when the worker heartbeat is stale; a queued run then will not start. */
+  workerOnline?: boolean | undefined;
 };
 
 /**
  * Right-hand run monitor. The empty branch is the honest state before a run
  * exists: no stage is guessed, because no worker has touched one yet.
  */
-export function RunRail({ runId, runStatus, runStage, initialEvents = [] }: RunRailProps) {
+export function RunRail({
+  runId,
+  runStatus,
+  runStage,
+  initialEvents = [],
+  workerOnline = true,
+}: RunRailProps) {
   if (runId === null) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-1 px-2 text-center">
@@ -44,6 +52,7 @@ export function RunRail({ runId, runStatus, runStage, initialEvents = [] }: RunR
       runId={runId}
       initialEvents={initialEvents}
       seed={{ status: runStatus, stage: runStage }}
+      workerOnline={workerOnline}
     />
   );
 }
@@ -52,10 +61,12 @@ function LiveRunRail({
   runId,
   initialEvents,
   seed,
+  workerOnline,
 }: {
   runId: number;
   initialEvents: RunEvent[];
   seed: RunStateSeed;
+  workerOnline: boolean;
 }) {
   const { state, connected, retries } = useRunStream(runId, initialEvents, seed);
 
@@ -65,6 +76,12 @@ function LiveRunRail({
         <span className="text-xs font-semibold text-fg">运行详情</span>
         <Badge tone={STATUS_META[state.status].tone}>{STATUS_META[state.status].label}</Badge>
       </div>
+
+      {!workerOnline && state.status === 'queued' ? (
+        <p className="mt-2 rounded-lg border border-warning/40 bg-warning-soft px-2 py-1.5 text-[11px] leading-4 text-warning">
+          worker 未运行：排队中的任务不会开始。运行 <code className="font-mono">pnpm worker</code>。
+        </p>
+      ) : null}
 
       <ol className="mt-3 flex flex-col gap-0.5">
         {RUN_STAGES.map((stage, index) => {

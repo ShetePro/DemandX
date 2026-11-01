@@ -17,6 +17,8 @@ export type RunActivityProps = {
    */
   status?: string | undefined;
   stage?: string | null | undefined;
+  /** False when the worker heartbeat is stale; a queued run then will not start. */
+  workerOnline?: boolean | undefined;
 };
 
 /**
@@ -25,7 +27,13 @@ export type RunActivityProps = {
  * only shows while there is something to say and folds back to a single line
  * once the run is over.
  */
-export function RunActivity({ runId, initialEvents = [], status, stage }: RunActivityProps) {
+export function RunActivity({
+  runId,
+  initialEvents = [],
+  status,
+  stage,
+  workerOnline = true,
+}: RunActivityProps) {
   if (runId === null) return null;
   return (
     <LiveRunActivity
@@ -33,6 +41,7 @@ export function RunActivity({ runId, initialEvents = [], status, stage }: RunAct
       runId={runId}
       initialEvents={initialEvents}
       seed={{ status, stage }}
+      workerOnline={workerOnline}
     />
   );
 }
@@ -41,16 +50,20 @@ function LiveRunActivity({
   runId,
   initialEvents,
   seed,
+  workerOnline,
 }: {
   runId: number;
   initialEvents: RunEvent[];
   seed: RunStateSeed;
+  workerOnline: boolean;
 }) {
   const { state } = useRunStream(runId, initialEvents, seed);
 
+  const stalled = !workerOnline && state.status === 'queued';
+
   // Queued with nothing logged yet: an empty card would be a promise the page
-  // cannot keep. The rail already says 排队中.
-  if (state.events.length === 0 && !state.terminal) return null;
+  // cannot keep — unless no worker is running, which the card must explain.
+  if (state.events.length === 0 && !state.terminal && !stalled) return null;
 
   if (state.terminal) return <TerminalLine state={state} />;
 
@@ -77,6 +90,14 @@ function LiveRunActivity({
       <p className="mt-2 text-[11.5px] text-muted">
         当前阶段：{stageLabel(state.stage) ?? '等待 worker 开始'}
       </p>
+
+      {stalled ? (
+        <p className="mt-2 rounded-lg border border-warning/40 bg-warning-soft px-2.5 py-2 text-[11.5px] leading-5 text-warning">
+          worker 未运行，任务不会自动开始。请在终端执行{' '}
+          <code className="font-mono">pnpm worker</code>
+          （或 <code className="font-mono">pnpm dev:all</code>）。
+        </p>
+      ) : null}
 
       {progress !== null && <p className="mt-1 text-[11.5px] text-muted">{progress}</p>}
 

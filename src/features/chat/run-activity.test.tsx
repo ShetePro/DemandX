@@ -134,4 +134,27 @@ describe('RunActivity', () => {
 
     expect(screen.getByText('研究失败：SEARCH_UNAVAILABLE')).toBeVisible();
   });
+
+  it('explains a stalled queued run when no worker is online', () => {
+    render(
+      <RunActivity
+        runId={7}
+        initialEvents={[CREATED]}
+        status="queued"
+        stage="S0"
+        workerOnline={false}
+      />,
+    );
+
+    expect(screen.getByText(/worker 未运行/)).toBeVisible();
+    expect(screen.getByText(/pnpm worker/)).toBeVisible();
+  });
+
+  it('does not show the worker warning when the heartbeat is fresh', () => {
+    render(
+      <RunActivity runId={7} initialEvents={[CREATED]} status="queued" stage="S0" workerOnline />,
+    );
+
+    expect(screen.queryByText(/worker 未运行/)).toBeNull();
+  });
 });

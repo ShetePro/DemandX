@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { initialRunState, type RunEvent } from '@/lib/runs/event-reducer';
+import { initialRunState, type RunEvent, type RunStateSeed } from '@/lib/runs/event-reducer';
 
 import { RunRail } from './run-rail';
 
@@ -10,11 +10,13 @@ const mocks = vi.hoisted(() => ({ useRunStream: vi.fn() }));
 vi.mock('@/lib/hooks/use-run-stream', () => ({ useRunStream: mocks.useRunStream }));
 
 beforeEach(() => {
-  mocks.useRunStream.mockImplementation((_runId: number, initialEvents: RunEvent[] = []) => ({
-    state: initialRunState(initialEvents),
-    connected: true,
-    retries: 0,
-  }));
+  mocks.useRunStream.mockImplementation(
+    (_runId: number, initialEvents: RunEvent[] = [], seed: RunStateSeed = {}) => ({
+      state: initialRunState(initialEvents, seed),
+      connected: true,
+      retries: 0,
+    }),
+  );
 });
 
 const RUN_CREATED: RunEvent = { seq: 1, type: 'run.created', payload: { idea: '库存同步' } };
@@ -62,5 +64,17 @@ describe('RunRail', () => {
     expect(screen.getByText('已完成')).toBeVisible();
     expect(stageItem('S1 采集')).not.toHaveAttribute('aria-current');
     expect(screen.getByText('已结束')).toBeVisible();
+  });
+
+  it('warns that a queued run will not start while the worker is offline', () => {
+    render(<RunRail runId={7} runStatus="queued" runStage="S0" workerOnline={false} />);
+
+    expect(screen.getByText(/worker 未运行/)).toBeVisible();
+  });
+
+  it('stays quiet about the worker when the heartbeat is fresh', () => {
+    render(<RunRail runId={7} runStatus="queued" runStage="S0" workerOnline />);
+
+    expect(screen.queryByText(/worker 未运行/)).toBeNull();
   });
 });
