@@ -9,6 +9,7 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import type { ThreadSummaryRecord } from '@/lib/runs/repository';
 
 import { NavLink } from './nav-links';
+import { OpportunityFinder, type FindResult, type StartResult } from './opportunity-finder';
 import { SETTINGS_ITEM } from './nav-items';
 import { ThreadList } from './thread-list';
 import type { DeleteThreadHandler } from './thread-row';
@@ -18,6 +19,9 @@ export interface AppSidebarProps {
   threads: readonly ThreadSummaryRecord[];
   /** Supplied by the layout: feature actions cannot be imported from here. */
   onDelete: DeleteThreadHandler;
+  /** Opportunity scan and its "start research" follow-up. */
+  onFindOpportunities: () => Promise<FindResult>;
+  onStartResearch: (idea: string) => Promise<StartResult>;
 }
 
 /**
@@ -26,7 +30,12 @@ export interface AppSidebarProps {
  *
  * Brand → 新建研究 → the conversation list (the primary navigation) → settings.
  */
-export function AppSidebar({ threads, onDelete }: AppSidebarProps) {
+export function AppSidebar({
+  threads,
+  onDelete,
+  onFindOpportunities,
+  onStartResearch,
+}: AppSidebarProps) {
   const pathname = usePathname();
 
   return (
@@ -50,6 +59,12 @@ export function AppSidebar({ threads, onDelete }: AppSidebarProps) {
           新建研究
         </Link>
       </Button>
+
+      <OpportunityFinder
+        onFind={onFindOpportunities}
+        onStart={onStartResearch}
+        className="-mt-1.5"
+      />
 
       <ThreadList threads={threads} onDelete={onDelete} className="min-h-0 flex-1" />
 

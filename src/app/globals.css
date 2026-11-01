@@ -262,3 +262,41 @@ html {
 *::-webkit-scrollbar-thumb:hover {
   background-color: color-mix(in oklab, var(--fg) 28%, transparent);
 }
+
+/* Sidebar "find an opportunity": a slow breathing halo plus a spark that only
+   appears at the peak, so the button reads as live without flashing. */
+@keyframes opportunity-glow {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.02);
+  }
+}
+
+@keyframes opportunity-lean {
+  0%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+
+@keyframes opportunity-spark {
+  0%,
+  55%,
+  100% {
+    opacity: 0;
+    transform: scale(0.5) rotate(0deg);
+  }
+  70%,
+  85% {
+    opacity: 1;
+    transform: scale(1) rotate(20deg);
+  }
+}

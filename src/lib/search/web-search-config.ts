@@ -8,6 +8,7 @@ import {
   type WebSearchSettings,
 } from '@/lib/settings/web-search-settings';
 
+import type { SearchDeps } from './http';
 import { WEB_SEARCH_PROVIDERS, type WebSearchProvider, type SearchPort } from './port';
 import { createWebApiSearch } from './web-api';
 
@@ -72,13 +73,19 @@ export async function resolveWebSearch(): Promise<
 }
 
 /** Builds the fallback port; the pipeline only calls it when primaries are empty. */
-export function createResolvedWebSearchPort(config: ResolvedWebSearch): SearchPort {
+export function createResolvedWebSearchPort(
+  config: ResolvedWebSearch,
+  deps: SearchDeps = {},
+): SearchPort {
   const baseUrl = process.env.WEB_SEARCH_BASE_URL?.trim();
-  return createWebApiSearch({
-    provider: config.provider,
-    apiKey: config.apiKey,
-    ...(baseUrl === undefined || baseUrl === '' ? {} : { baseUrl }),
-  });
+  return createWebApiSearch(
+    {
+      provider: config.provider,
+      apiKey: config.apiKey,
+      ...(baseUrl === undefined || baseUrl === '' ? {} : { baseUrl }),
+    },
+    deps,
+  );
 }
 
 /** Encrypts a new key and derives the mask shown back in the settings form. */

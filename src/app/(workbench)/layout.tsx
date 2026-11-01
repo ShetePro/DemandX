@@ -3,6 +3,10 @@ import type { ReactNode } from 'react';
 import { AppSidebar } from '@/components/shell/app-sidebar';
 import { CommandPalette } from '@/components/shell/command-palette';
 import { MobileNav } from '@/components/shell/mobile-nav';
+import {
+  findOpportunitiesAction,
+  startDiscoveredResearchAction,
+} from '@/features/discovery/actions';
 import { deleteThreadAction } from '@/features/threads/actions';
 import { listThreadSummaries } from '@/lib/runs/repository';
 
@@ -23,7 +27,12 @@ export default async function WorkbenchLayout({ children }: { children: ReactNod
 
   return (
     <div className="grid h-dvh grid-cols-[244px_minmax(0,1fr)] overflow-hidden max-md:grid-cols-1 max-md:grid-rows-[auto_minmax(0,1fr)] print:block print:h-auto print:overflow-visible">
-      <AppSidebar threads={threads.value} onDelete={deleteThreadAction} />
+      <AppSidebar
+        threads={threads.value}
+        onDelete={deleteThreadAction}
+        onFindOpportunities={findOpportunitiesAction}
+        onStartResearch={startDiscoveredResearchAction}
+      />
       <MobileNav threads={threads.value} onDelete={deleteThreadAction} />
       <main className="h-dvh overflow-y-auto max-md:h-full print:h-auto print:overflow-visible">
         {children}
