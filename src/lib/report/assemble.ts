@@ -23,6 +23,8 @@ export const MAX_CLAIMS_PER_SECTION = 6;
 export const MAX_CLAIM_TEXT = 400;
 export const MAX_UNKNOWNS_PER_SECTION = 12;
 export const MAX_UNKNOWN_TEXT = 200;
+export const MAX_INFERENCES_PER_SECTION = 3;
+export const MAX_INFERENCE_TEXT = 300;
 
 /** A claim moved out of the body keeps its text, marked as uncited. */
 export const UNREFERENCED_PREFIX = '[未引用] ';
@@ -85,6 +87,11 @@ const claimSchema = z.object({
 const sectionSchema = z.object({
   claims: z.array(claimSchema).min(1).max(MAX_CLAIMS_PER_SECTION),
   unknowns: z.array(z.string().trim().min(1).max(MAX_UNKNOWN_TEXT)).max(MAX_UNKNOWNS_PER_SECTION),
+  /** Explicit analysis; no citations required, but no invented numbers either. */
+  inferences: z
+    .array(z.string().trim().min(1).max(MAX_INFERENCE_TEXT))
+    .max(MAX_INFERENCES_PER_SECTION)
+    .default([]),
 });
 
 /**
@@ -156,16 +163,17 @@ export function buildReportPrompt(input: AssembleInput): Prompt {
   const { opportunity, evidence, derivation } = input;
 
   const system = [
-    '你是商业研究报告撰写器。你唯一的任务是把给定的证据与评分整理成八部分中文报告；你不是分析师，不得补充新的市场判断。',
+    '你是一名资深市场分析师，同时具备独立开发者、创业者与早期投资人的判断视角。你的任务是把给定证据与评分整理成八部分中文报告：先用证据陈述事实，再做明确标注的推断分析（市场是否成立、卖点、护城河、获客、单位经济、风险），最后给出可执行的验证建议。',
     '',
     '硬性规则：',
-    '1. 只能使用输入证据列表里的事实；每条 claim 的 evidenceIds 至少 1 个，且只能填列表中出现过的 id。',
-    '2. 证据无法支撑的结论写进该节的 unknowns，不得写进 claims，也不得把猜测写成事实。',
-    `3. 不得新增任何数字：分数、占比、价格、用户数、市场规模只能原样引用输入。`,
-    `4. 总分只能原样写成 “${derivation.total}/100”，不得改写、不得四舍五入、不得给出别的分数或优先级。`,
-    '5. 决策只能原样引用输入中的决策，不得自行选择另一个决策。',
-    '6. 八节齐全（summary、evidence、competitors、ranking、bestDirection、finance、plan、decision），每节 1–6 条 claim。',
-    '7. 竞品、财务、14 天计划缺少证据时，把缺口写进 unknowns，不要编造竞品、价格或收入。',
+    '1. 事实只能使用输入证据列表里的事实；每条 claim 的 evidenceIds 至少 1 个，且只能填列表中出现过的 id。',
+    '2. 证据无法支撑的事实结论写进该节的 unknowns，不得写进 claims；不要把猜测伪装成事实。',
+    '3. inferences 是分析判断，不是事实：每条以“推断：”开头，说明推理依据（例如“推断：竞品都按席位收费，说明…，但仍需验证…”）。允许讨论市场、卖点、护城河、获客与风险，但不得编造证据没有的数字、用户量、收入或市场规模。',
+    `4. 不得新增任何数字：分数、占比、价格、用户数、市场规模只能原样引用输入。`,
+    `5. 总分只能原样写成 “${derivation.total}/100”，不得改写、不得四舍五入、不得给出别的分数或优先级。`,
+    '6. 决策只能原样引用输入中的决策，不得自行选择另一个决策。',
+    '7. 八节齐全（summary、evidence、competitors、ranking、bestDirection、finance、plan、decision），每节 1–6 条 claim、0–3 条 inferences。',
+    '8. 各节分析重点：summary 说清结论与为什么现在；competitors 说清替代方案、差异化与护城河；bestDirection 说清目标人群、卖点与定价假设；finance 说清成本结构与单用户经济；decision 给出投资人视角的风险、反方观点与什么情况下应放弃（kill criteria）；plan 给出可验证的实验。',
   ].join('\n');
 
   const user = [
@@ -182,7 +190,7 @@ export function buildReportPrompt(input: AssembleInput): Prompt {
     '证据列表（每行一条，只能引用这些 id）：',
     ...evidence.map(summarizeEvidence),
     '',
-    '请返回 JSON：{"sections":{"summary":{"claims":[{"text":"...","evidenceIds":[1]}],"unknowns":[]},"evidence":{...},"competitors":{...},"ranking":{...},"bestDirection":{...},"finance":{...},"plan":{...},"decision":{...}}}',
+    '请返回 JSON：{"sections":{"summary":{"claims":[{"text":"...","evidenceIds":[1]}],"unknowns":[],"inferences":["推断：..."]},"evidence":{...},"competitors":{...},"ranking":{...},"bestDirection":{...},"finance":{...},"plan":{...},"decision":{...}}}',
   ].join('\n');
 
   return { system, user };
@@ -234,6 +242,9 @@ function sanitizeSection(
 ): ReportSectionBody {
   const claims: ReportSectionBody['claims'] = [];
   const unknowns = [...body.unknowns];
+  const inferences = dedupeStrings(body.inferences).filter((text) =>
+    isTraceable(text, whitelist, total),
+  );
 
   for (const claim of body.claims) {
     const evidenceIds = [...new Set(claim.evidenceIds)];
@@ -247,7 +258,11 @@ function sanitizeSection(
     claims.push({ text: claim.text, evidenceIds });
   }
 
-  return { claims, unknowns: dedupeStrings(unknowns) };
+  return {
+    claims,
+    unknowns: dedupeStrings(unknowns),
+    ...(inferences.length === 0 ? {} : { inferences }),
+  };
 }
 
 /**

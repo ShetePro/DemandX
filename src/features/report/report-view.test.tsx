@@ -210,4 +210,29 @@ describe('ReportView', () => {
     expect(click).toHaveBeenCalled();
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:report');
   });
+
+  it('renders analyst inferences apart from cited claims', () => {
+    render(
+      <ReportView
+        runId={7}
+        ideaTitle="跨境卖家库存同步"
+        report={{
+          ...REPORT,
+          sections: sections({
+            summary: {
+              claims: [{ text: '手工对账每天三小时', evidenceIds: [12] }],
+              unknowns: [],
+              inferences: ['推断：竞品按席位收费，说明按人头定价是主流，但样本只有 3 家'],
+            },
+          }),
+        }}
+        scores={[]}
+        evidenceMap={{ 12: E12, 19: E19 }}
+      />,
+    );
+
+    expect(screen.getByText('分析判断（推断，非事实）')).toBeVisible();
+    expect(screen.getByText(/竞品按席位收费/)).toBeVisible();
+    expect(screen.getByText('手工对账每天三小时')).toBeInTheDocument();
+  });
 });

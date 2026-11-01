@@ -34,6 +34,11 @@ export interface ReportSectionBody {
   claims: ReportClaim[];
   /** What this part could not establish, rendered as 未知 rather than guessed. */
   unknowns: string[];
+  /**
+   * Analyst judgement, explicitly inference rather than evidence: market read,
+   * wedge, moat, risks. Never rendered with the same weight as a cited claim.
+   */
+  inferences?: string[];
 }
 
 /** What the validator reads: the stored shape of `reports` plus the score total. */

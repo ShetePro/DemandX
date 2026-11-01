@@ -174,6 +174,31 @@ describe('buildReportSections', () => {
     ).toEqual({ ok: true });
   });
 
+  it('keeps labelled inferences separate from cited claims', async () => {
+    const { deps } = setup({
+      reply: () =>
+        answer({
+          summary: {
+            claims: [{ text: '卖家在多个平台之间手工同步库存', evidenceIds: [1] }],
+            unknowns: [],
+            inferences: [
+              '推断：竞品都按席位收费，说明按人头定价是主流，但仍需验证样本',
+              '推断：这个市场至少 99/100 的份额可以拿下',
+            ],
+          },
+        }),
+    });
+
+    const report = expectOk(await buildReportSections(deps));
+
+    expect(report.sections.summary.inferences).toEqual([
+      '推断：竞品都按席位收费，说明按人头定价是主流，但仍需验证样本',
+    ]);
+    expect(report.sections.summary.claims).toEqual([
+      { text: '卖家在多个平台之间手工同步库存', evidenceIds: [1] },
+    ]);
+  });
+
   it('moves a claim citing an id from another run into unknowns', async () => {
     const { deps } = setup({
       reply: () => answer({ summary: body('卖家普遍愿意为库存同步付费', [99]) }),

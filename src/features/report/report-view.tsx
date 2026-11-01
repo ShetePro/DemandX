@@ -82,6 +82,25 @@ function collectCitedIds(sections: ReportRecord['sections']): number[] {
   return ids;
 }
 
+/**
+ * Explicit analysis, set apart from cited claims: the reader must be able to
+ * tell an investor-style judgement from a fact with a source.
+ */
+function SectionInferences({ items }: { items: readonly string[] }) {
+  if (items.length === 0) return null;
+
+  return (
+    <div className="mt-4 rounded-xl border border-accent/30 bg-accent-soft/40 p-3">
+      <p className="mb-1.5 text-xs font-semibold text-accent">分析判断（推断，非事实）</p>
+      <ul className="flex list-disc flex-col gap-1.5 pl-4 text-[13px] leading-6 text-muted">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function SectionUnknowns({ items }: { items: readonly string[] }) {
   const [open, setOpen] = useState(false);
 
@@ -319,6 +338,7 @@ export function ReportView({ runId, ideaTitle, report, scores, evidenceMap }: Re
             const body = report.sections[section];
             const claims = body?.claims ?? [];
             const unknowns = body?.unknowns ?? [];
+            const inferences = body?.inferences ?? [];
 
             return (
               <section
@@ -354,6 +374,7 @@ export function ReportView({ runId, ideaTitle, report, scores, evidenceMap }: Re
                   </figure>
                 ) : null}
 
+                <SectionInferences items={inferences} />
                 <SectionUnknowns items={unknowns} />
               </section>
             );
