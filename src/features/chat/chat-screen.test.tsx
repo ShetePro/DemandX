@@ -57,10 +57,16 @@ vi.mock('use-stick-to-bottom', () => ({
   useStickToBottom: () => ({ scrollRef: { current: null }, contentRef: { current: null } }),
 }));
 
-// The live card owns its SSE connection; its own suite covers that.
-vi.mock('./run-activity', () => ({
-  RunActivity: ({ runId }: { runId: number | null }) =>
-    runId === null ? null : <div data-testid="run-activity">{`run-${runId}`}</div>,
+// The live components own their SSE connections; their own suites cover that.
+vi.mock('./run-inline', () => ({
+  RunInlineProgress: ({ runId }: { runId: number }) => (
+    <div data-testid="run-activity">{`run-${runId}`}</div>
+  ),
+}));
+vi.mock('./run-deck', () => ({
+  RunDeck: ({ runs }: { runs: { id: number }[] }) => (
+    <div data-testid="run-deck">{runs.map((run) => `run-${run.id}`).join(',')}</div>
+  ),
 }));
 
 const IDEA = '跨境卖家的多平台库存同步工具';

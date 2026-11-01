@@ -16,7 +16,8 @@ import { appendAssistantMessageAction, appendUserMessageAction, createRunAction 
 import { CitationSheet } from './citation-sheet';
 import { Composer } from './composer';
 import { MessageParts } from './message-parts';
-import { RunActivity } from './run-activity';
+import { RunDeck } from './run-deck';
+import { RunInlineProgress } from './run-inline';
 
 /**
  * `@ai-sdk/react` pins its own copy of `ai` (7.0.15) while the app depends on
@@ -298,7 +299,14 @@ export function ChatScreen({
   }));
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1">
+    <div
+      className={cn(
+        'grid h-full min-h-0',
+        runCards.length === 0
+          ? 'grid-cols-1'
+          : 'grid-cols-[minmax(0,1fr)_320px] max-lg:grid-cols-1',
+      )}
+    >
       <section aria-label="对话" className="relative flex min-h-0 flex-col">
         <header className="flex h-12 shrink-0 items-center border-b border-border px-4">
           <h1 className="truncate text-sm font-semibold text-fg">{title}</h1>
@@ -322,10 +330,10 @@ export function ChatScreen({
                   {placed
                     .filter((card) => card.after === index)
                     .map((card) => (
-                      <RunActivity
+                      <RunInlineProgress
                         key={card.id}
                         runId={card.id}
-                        initialEvents={card.events}
+                        events={card.events}
                         status={card.status}
                         stage={card.stage}
                         workerOnline={workerOnline}
@@ -351,10 +359,10 @@ export function ChatScreen({
             {placed
               .filter((card) => card.after >= messages.length)
               .map((card) => (
-                <RunActivity
+                <RunInlineProgress
                   key={card.id}
                   runId={card.id}
-                  initialEvents={card.events}
+                  events={card.events}
                   status={card.status}
                   stage={card.stage}
                   workerOnline={workerOnline}
@@ -388,6 +396,15 @@ export function ChatScreen({
           </div>
         </div>
       </section>
+
+      {runCards.length > 0 ? (
+        <aside
+          aria-label="研究卡片"
+          className="no-print hidden min-h-0 overflow-y-auto border-l border-border bg-surface/60 px-3 py-4 lg:block"
+        >
+          <RunDeck runs={runCards} workerOnline={workerOnline} />
+        </aside>
+      ) : null}
 
       <CitationSheet
         citationId={citationId}

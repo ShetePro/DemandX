@@ -211,7 +211,7 @@ test.describe('Chat', () => {
     expect((await stubRequests(request)).filter(isStreamingChat)).toHaveLength(1);
   });
 
-  test('对话内实时研究进度，不再有右侧事件栏', async ({ page }) => {
+  test('对话内实时进度 + 右侧研究卡片', async ({ page }) => {
     const threadId = await createThread(page);
     const runId = await seedRun(threadId);
 
@@ -219,16 +219,18 @@ test.describe('Chat', () => {
     await page.reload();
     await expect(page.getByRole('complementary', { name: '运行详情' })).toHaveCount(0);
 
-    // The thread also owns the run created by `createThread`; scope to this one.
-    const card = page.getByRole('group', { name: '实时研究' }).filter({ hasText: `run #${runId}` });
-    await expect(card.locator('li[aria-current="step"]')).toContainText('S1 采集');
-    await expect(card).toContainText('进行中');
-    await expect(card).toContainText('当前阶段：S1 采集');
+    // Progress streams inline in the chat; the full card lives in the side deck.
+    const inline = page.getByRole('status', { name: `研究进度 run #${runId}` });
+    await expect(inline).toContainText('S1 采集');
+    await expect(inline).toContainText('进行中');
+    await expect(page.getByRole('complementary', { name: '研究卡片' })).toBeVisible();
 
-    // No reload here: only the insert, which the card's SSE connection polls.
+    // No reload here: only the insert, which the inline SSE connection polls.
     await finishRun(runId);
-    await expect(card).toHaveCount(0, { timeout: 1_500 });
-    const result = page.getByRole('group', { name: `研究结果 run #${runId}` });
+    await expect(inline).toHaveCount(0, { timeout: 1_500 });
+    const result = page
+      .getByRole('complementary', { name: '研究卡片' })
+      .getByRole('group', { name: `研究结果 run #${runId}` });
     await expect(result).toBeVisible({ timeout: 1_500 });
     await expect(result).toContainText('命中证据');
   });

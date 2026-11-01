@@ -157,8 +157,8 @@ function LiveRunActivity({
               className="flex min-w-0 items-baseline gap-2 text-[11px] text-muted"
             >
               <span className="shrink-0 font-mono text-[10.5px] text-faint">#{event.seq}</span>
-              <span className="truncate" title={describe(event)}>
-                {describe(event)}
+              <span className="truncate" title={describeEvent(event)}>
+                {describeEvent(event)}
               </span>
             </li>
           ))}
@@ -245,12 +245,12 @@ function TerminalLine({ state, runId }: { state: RunStreamState; runId: number }
     <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2/40 px-3.5 py-2 text-xs text-muted">
       <span aria-hidden="true" className="inline-block size-1.5 shrink-0 rounded-full bg-muted" />
       <span className="shrink-0 font-mono text-[10.5px] text-faint">run #{runId}</span>
-      <span className="min-w-0 truncate">{runSummary(state)}</span>
+      <span className="min-w-0 truncate">{summarizeState(state)}</span>
     </div>
   );
 }
 
-function runSummary(state: RunStreamState): string {
+export function summarizeState(state: RunStreamState): string {
   if (state.status === 'failed') {
     return state.error === null ? '研究失败' : `研究失败：${state.error}`;
   }
@@ -307,7 +307,7 @@ function recentActivity(events: readonly RunEvent[]): RunEvent[] {
     .slice(-5);
 }
 
-function describe(event: RunEvent): string {
+export function describeEvent(event: RunEvent): string {
   const payload = event.payload;
 
   if (event.type === 'source.added') {
