@@ -228,10 +228,9 @@ test.describe('Chat', () => {
     // No reload here: only the insert, which the card's SSE connection polls.
     await finishRun(runId);
     await expect(card).toHaveCount(0, { timeout: 1_500 });
-    await expect(page.getByText(`run #${runId}`)).toBeVisible({ timeout: 1_500 });
-    await expect(page.getByText('研究完成', { exact: true }).first()).toBeVisible({
-      timeout: 1_500,
-    });
+    const result = page.getByRole('group', { name: `研究结果 run #${runId}` });
+    await expect(result).toBeVisible({ timeout: 1_500 });
+    await expect(result).toContainText('命中证据');
   });
 
   test('输入框增高时，对话底部留出同等距离', async ({ page }) => {

@@ -2,7 +2,12 @@ import { tool, type Tool } from 'ai';
 import { z } from 'zod';
 
 import { signalEnum } from '@/lib/db/schema/evidence';
-import { createRerun } from '@/lib/runs/repository';
+import {
+  createRerun,
+  getRun,
+  listRunsForThread,
+  readEvents,
+} from '@/lib/runs/repository';
 import { enqueueS1 } from '@/lib/runs/queue';
 
 /** The five signal classes, kept in the database's order (see `evidence.ts`). */
@@ -48,6 +53,27 @@ export type RerunResearchOutput =
   | { status: 'unavailable'; message: string }
   | { status: 'failed'; message: string };
 
+export const runStatusInputSchema = z.object({
+  /** Defaults to the newest run of the current thread. */
+  runId: z.number().int().positive().optional(),
+});
+
+export type RunStatusInput = z.infer<typeof runStatusInputSchema>;
+
+export type RunStatusOutput =
+  | {
+      status: 'ok';
+      runId: number;
+      state: string;
+      stage: string | null;
+      accepted: number | null;
+      decision: string | null;
+      reportId: number | null;
+      /** True while the worker still owns the run. */
+      active: boolean;
+    }
+  | { status: 'unavailable'; message: string };
+
 export type StartResearchOutput = {
   status: 'needs_confirmation';
   idea: string;
@@ -59,6 +85,7 @@ export type ChatTools = {
   query_evidence: Tool<QueryEvidenceInput, { items: EvidenceItem[] }>;
   start_research: Tool<StartResearchInput, StartResearchOutput>;
   rerun_research: Tool<RerunResearchInput, RerunResearchOutput>;
+  get_run_status: Tool<RunStatusInput, RunStatusOutput>;
 };
 
 /**
@@ -87,6 +114,51 @@ export async function prepareStartResearch({
 export function createChatTools(options: { threadId?: number | undefined } = {}): ChatTools {
   const threadId = options.threadId;
 
+  async function runStatus(input: RunStatusInput): Promise<RunStatusOutput> {
+    let runId = input.runId;
+    if (runId === undefined) {
+      if (threadId === undefined) {
+        return { status: 'unavailable', message: '当前对话没有关联会话' };
+      }
+      const runs = await listRunsForThread(threadId);
+      if (!runs.ok) return { status: 'unavailable', message: runs.message };
+      runId = runs.value[runs.value.length - 1]?.id;
+      if (runId === undefined) return { status: 'unavailable', message: '该会话还没有研究' };
+    }
+
+    const run = await getRun(runId);
+    if (!run.ok) return { status: 'unavailable', message: run.message };
+    if (run.value === null) return { status: 'unavailable', message: `run #${runId} 不存在` };
+
+    const events = await readEvents(runId, 0);
+    if (!events.ok) return { status: 'unavailable', message: events.message };
+
+    let accepted: number | null = null;
+    let decision: string | null = null;
+    let reportId: number | null = null;
+    for (const event of events.value) {
+      const payload = (event.payload ?? {}) as Record<string, unknown>;
+      if (event.type === 'run.finished' && typeof payload.accepted === 'number') {
+        accepted = payload.accepted;
+      }
+      if (event.type === 'report.ready') {
+        if (typeof payload.decision === 'string') decision = payload.decision;
+        if (typeof payload.reportId === 'number') reportId = payload.reportId;
+      }
+    }
+
+    return {
+      status: 'ok',
+      runId,
+      state: run.value.status,
+      stage: run.value.stage,
+      accepted,
+      decision,
+      reportId,
+      active: run.value.status === 'queued' || run.value.status === 'running',
+    };
+  }
+
   async function rerunResearch(): Promise<RerunResearchOutput> {
     if (threadId === undefined) {
       return { status: 'unavailable', message: '当前对话没有关联会话，无法重新发起研究' };
@@ -114,6 +186,12 @@ export function createChatTools(options: { threadId?: number | undefined } = {})
         '为一次完整研究准备参数并请求用户确认。不创建 run、不启动采集；用户确认后才由界面创建。',
       inputSchema: startResearchInputSchema,
       execute: prepareStartResearch,
+    }),
+    get_run_status: tool({
+      description:
+        '查询某个 run 的当前状态、阶段、命中证据数与报告决策。用户询问“跑到哪了 / 完成了吗 / 要不要重跑”时先调用它，按返回的真实状态回答，不得凭印象声称还在跑或已完成；不传 runId 时查当前会话最新的 run。',
+      inputSchema: runStatusInputSchema,
+      execute: runStatus,
     }),
     rerun_research: tool({
       description:

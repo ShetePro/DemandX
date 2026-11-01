@@ -1,6 +1,7 @@
 'use client';
 
 import { Check, X } from 'lucide-react';
+import Link from 'next/link';
 
 import { Badge } from '@/components/ui/badge';
 import { useRunStream } from '@/lib/hooks/use-run-stream';
@@ -67,7 +68,13 @@ function LiveRunActivity({
 
   // Finished / cancelled keep the one-line summary. A failure keeps the card:
   // the stage that died and its code are the whole point of showing it inline.
-  if (state.terminal && !failed) return <TerminalLine state={state} runId={runId} />;
+  if (state.terminal && !failed) {
+    return state.status === 'finished' ? (
+      <CompletedCard state={state} runId={runId} />
+    ) : (
+      <TerminalLine state={state} runId={runId} />
+    );
+  }
 
   // Queued with nothing logged yet: an empty card would be a promise the page
   // cannot keep — unless no worker is running, which the card must explain.
@@ -157,6 +164,77 @@ function LiveRunActivity({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/**
+ * A finished run is a result, not a footnote: the evidence count, decision and
+ * links to the report/evidence stay visible in the transcript so each historic
+ * run can be compared without opening another page.
+ */
+function CompletedCard({ state, runId }: { state: RunStreamState; runId: number }) {
+  const finished = lastEvent(state.events, (event) => event.type === 'run.finished');
+  const accepted = numberField(finished?.payload, 'accepted');
+  const ready = lastEvent(state.events, (event) => event.type === 'report.ready');
+  const decision = stringField(ready?.payload, 'decision');
+  const reportId = numberField(ready?.payload, 'reportId');
+
+  return (
+    <div
+      role="group"
+      aria-label={`研究结果 run #${runId}`}
+      className="rounded-xl border border-border bg-surface px-3.5 py-3"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-xs font-semibold text-fg">
+          <Check className="size-3.5 text-success" aria-hidden="true" />
+          研究结果
+          <span className="font-mono text-[10px] font-normal text-faint">run #{runId}</span>
+        </span>
+        <Badge tone={STATUS_META[state.status].tone}>{STATUS_META[state.status].label}</Badge>
+      </div>
+
+      <ol aria-label="研究阶段" className="mt-2.5 flex flex-wrap items-center gap-1">
+        {RUN_STAGES.map((stage, index) => (
+          <li
+            key={stage.id}
+            className={cn(
+              'flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px]',
+              stageMark(index, state) === 'failed'
+                ? 'bg-danger-soft text-danger'
+                : 'text-muted',
+            )}
+          >
+            <Check className="size-3" aria-hidden="true" />
+            {stage.label}
+          </li>
+        ))}
+      </ol>
+
+      <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1 text-[11.5px]">
+        <dt className="text-faint">命中证据</dt>
+        <dd className="text-fg">{accepted === null ? '未知' : `${accepted} 条`}</dd>
+        <dt className="text-faint">报告决策</dt>
+        <dd className="text-fg">{decision ?? '未生成报告'}</dd>
+        <dt className="text-faint">报告编号</dt>
+        <dd className="text-fg">{reportId === null ? '—' : `#${reportId}`}</dd>
+      </dl>
+
+      <div className="mt-2.5 flex flex-wrap gap-2 text-[12px]">
+        <Link
+          href={`/runs/${runId}/report`}
+          className="rounded-lg border border-border px-2.5 py-1 text-accent hover:bg-surface-2"
+        >
+          查看报告
+        </Link>
+        <Link
+          href={`/runs/${runId}/evidence`}
+          className="rounded-lg border border-border px-2.5 py-1 text-accent hover:bg-surface-2"
+        >
+          查看证据
+        </Link>
+      </div>
     </div>
   );
 }

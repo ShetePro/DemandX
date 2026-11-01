@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { initialRunState, type RunEvent, type RunStateSeed } from '@/lib/runs/event-reducer';
@@ -82,7 +82,7 @@ describe('RunActivity', () => {
     expect(screen.getByText('聚类 方向0 · 1 个独立来源')).toBeVisible();
   });
 
-  it('folds to one summary line when the run finishes', () => {
+  it('keeps a full result card with evidence, decision and links', () => {
     render(
       <RunActivity
         runId={7}
@@ -100,8 +100,18 @@ describe('RunActivity', () => {
       />,
     );
 
-    expect(screen.queryByRole('group', { name: '实时研究' })).toBeNull();
-    expect(screen.getByText('研究完成：12 条证据 · 决策 建议先验证，再开发')).toBeVisible();
+    const card = screen.getByRole('group', { name: '研究结果 run #7' });
+    expect(card).toHaveTextContent('12 条');
+    expect(card).toHaveTextContent('建议先验证，再开发');
+    expect(card).toHaveTextContent('#3');
+    expect(within(card).getByRole('link', { name: '查看报告' })).toHaveAttribute(
+      'href',
+      '/runs/7/report',
+    );
+    expect(within(card).getByRole('link', { name: '查看证据' })).toHaveAttribute(
+      'href',
+      '/runs/7/evidence',
+    );
   });
 
   it('takes the queued verdict from the run row, not from run.created', () => {
@@ -113,11 +123,13 @@ describe('RunActivity', () => {
     expect(card).not.toHaveTextContent('进行中');
   });
 
-  it('folds to the summary line when the row is finished even without its terminal event', () => {
+  it('still shows the result card when only the row says finished', () => {
     render(<RunActivity runId={7} initialEvents={[CREATED]} status="finished" stage="S2" />);
 
     expect(screen.queryByRole('group', { name: '实时研究' })).toBeNull();
-    expect(screen.getByText('研究完成')).toBeVisible();
+    const card = screen.getByRole('group', { name: '研究结果 run #7' });
+    expect(card).toHaveTextContent('未知');
+    expect(card).toHaveTextContent('未生成报告');
   });
 
   it('says how a failed run ended', () => {

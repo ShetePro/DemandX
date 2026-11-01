@@ -94,6 +94,9 @@ export function MessageParts({
             );
           case 'tool-query_evidence':
             return <QueryEvidenceCard key={index} part={part} />;
+          case 'tool-get_run_status':
+            // Status is spoken in the reply; the card would duplicate it.
+            return null;
           case 'tool-rerun_research':
             // The tool only switches the live run card; a duplicate "重新验证"
             // card here would just repeat that state.
