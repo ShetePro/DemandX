@@ -66,7 +66,7 @@ export function AppSidebar({ threads, onDelete }: AppSidebarProps) {
             className="absolute -top-1.5 -right-1.5 size-2.5 text-accent opacity-0 motion-safe:animate-[opportunity-spark_2.8s_ease-in-out_infinite]"
           />
         </span>
-        寻找机会
+        寻找灵感
       </Link>
 
       <ThreadList threads={threads} onDelete={onDelete} className="min-h-0 flex-1" />

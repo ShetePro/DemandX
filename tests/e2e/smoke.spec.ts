@@ -49,12 +49,12 @@ test.describe('Shell', () => {
     await closeDb();
   });
 
-  test('侧栏「寻找机会」打开独立的机会雷达页', async ({ page }) => {
+  test('侧栏「寻找灵感」打开独立的灵感雷达页', async ({ page }) => {
     await page.goto('/threads/new');
-    await page.getByRole('link', { name: '寻找机会' }).click();
+    await page.getByRole('link', { name: '寻找灵感' }).click();
 
     await expect(page).toHaveURL(/\/discover$/);
-    await expect(page.getByRole('heading', { level: 1, name: '机会雷达' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: '灵感雷达' })).toBeVisible();
     // The scan starts on mount; the radar (not a dialog) is the loading state.
     await expect(page.getByText('正在扫描')).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);

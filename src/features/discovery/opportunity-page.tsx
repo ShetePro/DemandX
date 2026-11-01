@@ -141,7 +141,7 @@ export function OpportunityPage({
             <span className="grid size-8 place-items-center rounded-lg bg-accent-soft text-accent">
               <Radar className="size-4" aria-hidden="true" />
             </span>
-            机会雷达
+            灵感雷达
           </h1>
           <p className="max-w-2xl text-sm leading-6 text-muted">
             扫描中英文公开网页里的抱怨、求推荐与付费线索，再由模型筛出值得验证的产品方向。每条结论都能回到原始链接核对。

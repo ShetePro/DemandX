@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 
 import { OpportunityPage } from '@/features/discovery/opportunity-page';
 
-export const metadata: Metadata = { title: '机会雷达 · DemandX' };
+export const metadata: Metadata = { title: '灵感雷达 · DemandX' };
 export const dynamic = 'force-dynamic';
 
 /**

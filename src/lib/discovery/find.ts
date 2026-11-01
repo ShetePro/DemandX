@@ -132,7 +132,7 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
     return {
       ok: false,
       code: 'LLM_UNAVAILABLE',
-      message: `机会分析失败：${asked.message}${failureHint(asked.message)}`,
+      message: `灵感分析失败：${asked.message}${failureHint(asked.message)}`,
     };
   }
 
@@ -211,16 +211,16 @@ function buildPrompt(sources: readonly DiscoverySource[]): { system: string; use
     .join('\n\n');
 
   return {
-    system: `你是独立开发者的机会侦察员。只根据给定片段判断，不得补充搜索。
-输出 4–8 个值得验证的产品机会，尽量覆盖不同领域（中文与海外各至少两个），不要反复描述同一个问题来凑数；每条都必须引用片段里的 URL，并给出原文短句作为 quote。
+    system: `你是独立开发者的灵感侦察员。只根据给定片段判断，不得补充搜索。
+输出 4–8 个值得验证的产品灵感，尽量覆盖不同领域（中文与海外各至少两个），不要反复描述同一个问题来凑数；每条都必须引用片段里的 URL，并给出原文短句作为 quote。
 要求：
 - problem 写用户的原话困境，不是功能清单。
 - signal 只能是 problem / seeking / paying / switching / recurring。
 - currentAlternative 写用户现在怎么解决；competitors 只写片段里点名的产品或服务，没有就空数组。
 - monetization 只能是 subscription / usage / one-time / service。
 - mvp 写一个人 1–2 周能上线的范围；需要牌照、硬件、双边市场或大规模数据的想法不要输出。
-- 证据里至少一条必须包含价格、付费、招聘、外包或替代方案等商业信息；只有情绪、没有商业线索的机会不要输出。
-- 片段之间互相矛盾或只是同一来源的重复，不要当成多个机会。
+- 证据里至少一条必须包含价格、付费、招聘、外包或替代方案等商业信息；只有情绪、没有商业线索的灵感不要输出。
+- 片段之间互相矛盾或只是同一来源的重复，不要当成多个灵感。
 - 全部用中文。`,
     user: `候选片段：\n\n${list}\n\n请输出 opportunities 数组。`,
   };
