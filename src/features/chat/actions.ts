@@ -58,10 +58,19 @@ export async function createRunAction(raw: unknown): Promise<Result<CreateRunRes
  * than the text (state, ids, provider metadata); only these two fields decide
  * what is saved, so a changed part shape elsewhere cannot break persistence.
  */
-const assistantPartSchema = z.object({
-  type: z.enum(['text', 'reasoning']),
-  text: z.string(),
+const assistantOptionSchema = z.object({
+  id: z.string().trim().min(1).max(24),
+  label: z.string().trim().min(1).max(30),
+  description: z.string().trim().max(120).optional(),
 });
+
+const assistantPartSchema = z.union([
+  z.object({ type: z.enum(['text', 'reasoning']), text: z.string() }),
+  z.object({
+    type: z.literal('tool-present_options'),
+    options: z.array(assistantOptionSchema).min(2).max(4),
+  }),
+]);
 
 const appendAssistantMessageInputSchema = z.strictObject({
   threadId: z.number().int('threadId 必须是整数').positive('threadId 必须为正数'),
@@ -85,6 +94,10 @@ export async function appendAssistantMessageAction(
 
   const storable: AssistantMessagePart[] = [];
   for (const part of parsed.data.parts) {
+    if (part.type === 'tool-present_options') {
+      storable.push({ type: part.type, options: part.options });
+      continue;
+    }
     if (part.text.trim() === '') continue;
     storable.push({ type: part.type, text: part.text });
   }

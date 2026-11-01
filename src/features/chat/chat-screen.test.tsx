@@ -319,8 +319,15 @@ describe('ChatScreen', () => {
     mocks.sendMessage.mockClear();
 
     act(() => mocks.options?.onError?.(new Error('timeout')));
-    expect(screen.getByRole('alert')).toHaveTextContent('回复失败');
+    expect(screen.getByRole('alert')).toHaveTextContent('重试');
+    await waitFor(
+      () => expect(mocks.sendMessage).toHaveBeenCalledWith({ text: '帮我重新验证下' }),
+      { timeout: 3_000 },
+    );
 
+    // A second failure gives up on the silent retry and shows the button.
+    mocks.sendMessage.mockClear();
+    act(() => mocks.options?.onError?.(new Error('timeout')));
     await user.click(screen.getByRole('button', { name: '重试' }));
     expect(mocks.sendMessage).toHaveBeenCalledWith({ text: '帮我重新验证下' });
   });

@@ -96,6 +96,20 @@ function withoutLastUserTurn(messages: ChatMessage[]): ChatMessage[] {
 function persistableParts(message: ChatMessage): AssistantMessagePart[] {
   const parts: AssistantMessagePart[] = [];
   for (const part of message.parts) {
+    if (part.type === 'tool-present_options') {
+      const options = (part.input?.options ?? []).flatMap((option) => {
+        if (option?.id === undefined || option.label === undefined) return [];
+        return [
+          {
+            id: option.id,
+            label: option.label,
+            ...(option.description === undefined ? {} : { description: option.description }),
+          },
+        ];
+      });
+      if (options.length > 0) parts.push({ type: part.type, options });
+      continue;
+    }
     if (part.type !== 'text' && part.type !== 'reasoning') continue;
     if (part.text.trim() === '') continue;
     parts.push({ type: part.type, text: part.text });
@@ -156,11 +170,21 @@ export function ChatScreen({
 
   const [chatError, setChatError] = useState<string | null>(null);
   const lastSent = useRef<string | null>(null);
+  const autoRetried = useRef(false);
 
   const chat = useChat({
     messages: seededMessages,
     transport,
     onError: () => {
+      const text = lastSent.current;
+      // One silent retry rides out a provider blip; after that the user gets
+      // the explicit retry button instead of an endless spinner.
+      if (text !== null && !autoRetried.current) {
+        autoRetried.current = true;
+        setTimeout(() => void sendMessage({ text }), 1500);
+        setChatError('回复中断，正在自动重试一次…');
+        return;
+      }
       setChatError('回复失败：模型请求中断或超时。可以重试，或检查 /settings/llm 的链。');
       toast.error('聊天请求失败，请重试');
     },
@@ -227,6 +251,7 @@ export function ChatScreen({
     if (body === '') return;
     setChatError(null);
     lastSent.current = body;
+    autoRetried.current = false;
     void appendUserMessageAction(threadId, body).then(
       (result) => {
         if (!result.ok) toast.error(`保存消息失败：${result.message}`);
@@ -350,6 +375,13 @@ export function ChatScreen({
                       message={message}
                       onOpenCitation={setCitationId}
                       onStart={starting || run.id !== null ? undefined : handleStart}
+                      onChooseOption={(option) =>
+                        sendUserTurn(
+                          option.description === undefined
+                            ? `选择：${option.label}`
+                            : `选择：${option.label} —— ${option.description}`,
+                        )
+                      }
                     />
                   </article>
                 </Fragment>

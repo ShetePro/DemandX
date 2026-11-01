@@ -387,7 +387,10 @@ export type RerunResult = { runId: number; threadId: number };
  * adding the pitch again would print a duplicate turn. The run still gets its
  * `run.created` event so the SSE rail paints immediately.
  */
-export async function createRerun(threadId: number): Promise<Result<RerunResult>> {
+export async function createRerun(
+  threadId: number,
+  focus?: string,
+): Promise<Result<RerunResult>> {
   if (!Number.isInteger(threadId) || threadId <= 0)
     return fail('VALIDATION_FAILED', 'threadId 必须是正整数');
 
@@ -404,7 +407,10 @@ export async function createRerun(threadId: number): Promise<Result<RerunResult>
       const thread = rows[0];
       if (thread === undefined) return null;
 
-      const idea = thread.rawInput.trim() === '' ? thread.title : thread.rawInput;
+      const base = thread.rawInput.trim() === '' ? thread.title : thread.rawInput;
+      const trimmedFocus = focus?.trim() ?? '';
+      const idea =
+        trimmedFocus === '' ? base : `${base}\n\n本次调整方向：${trimmedFocus.slice(0, 500)}`;
       const runId = await insertRunWithPitch(tx, {
         ideaId: thread.ideaId,
         threadId,
@@ -989,7 +995,16 @@ export async function listRecentIdeaTitles(limit = RECENT_IDEA_LIMIT): Promise<R
  * and how it got there. Tool calls and data parts are re-created per request, so
  * persisting them would only store a stale UI fragment.
  */
-export type AssistantMessagePart = { type: 'text' | 'reasoning'; text: string };
+export type AssistantOption = {
+  id: string;
+  label: string;
+  description?: string | undefined;
+};
+
+/** What the chat persists: prose, thinking, and the option panel. */
+export type AssistantMessagePart =
+  | { type: 'text' | 'reasoning'; text: string }
+  | { type: 'tool-present_options'; options: AssistantOption[] };
 
 export type AppendAssistantMessageResult = { inserted: boolean; id: number };
 
@@ -1029,7 +1044,11 @@ function sameAssistantParts(
   return incoming.every((part, index) => {
     const row = stored[index];
     if (typeof row !== 'object' || row === null) return false;
-    const record = row as { type?: unknown; text?: unknown };
+    const record = row as { type?: unknown; text?: unknown; options?: unknown };
+
+    if (part.type === 'tool-present_options') {
+      return record.type === part.type && JSON.stringify(record.options) === JSON.stringify(part.options);
+    }
     return record.type === part.type && record.text === part.text;
   });
 }

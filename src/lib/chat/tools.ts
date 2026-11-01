@@ -45,9 +45,26 @@ export type StartResearchInput = z.infer<typeof startResearchInputSchema>;
 
 export const rerunResearchInputSchema = z.object({
   reason: z.string().trim().max(200).optional(),
+  /** A narrower angle chosen from the option panel; appended to the pitch. */
+  focus: z.string().trim().max(500).optional(),
 });
 
 export type RerunResearchInput = z.infer<typeof rerunResearchInputSchema>;
+
+export const presentOptionsInputSchema = z.object({
+  options: z
+    .array(
+      z.object({
+        id: z.string().trim().min(1).max(24),
+        label: z.string().trim().min(1).max(30),
+        description: z.string().trim().max(120).optional(),
+      }),
+    )
+    .min(2)
+    .max(4),
+});
+
+export type PresentOptionsInput = z.infer<typeof presentOptionsInputSchema>;
 
 export type RerunResearchOutput =
   | { status: 'started'; runId: number }
@@ -87,6 +104,7 @@ export type ChatTools = {
   start_research: Tool<StartResearchInput, StartResearchOutput>;
   rerun_research: Tool<RerunResearchInput, RerunResearchOutput>;
   get_run_status: Tool<RunStatusInput, RunStatusOutput>;
+  present_options: Tool<PresentOptionsInput, { status: 'shown' }>;
 };
 
 /** Reads real evidence rows for this conversation; empty when none exist. */
@@ -183,12 +201,12 @@ export function createChatTools(options: { threadId?: number | undefined } = {})
     };
   }
 
-  async function rerunResearch(): Promise<RerunResearchOutput> {
+  async function rerunResearch(input: RerunResearchInput): Promise<RerunResearchOutput> {
     if (threadId === undefined) {
       return { status: 'unavailable', message: '当前对话没有关联会话，无法重新发起研究' };
     }
 
-    const created = await createRerun(threadId);
+    const created = await createRerun(threadId, input.focus);
     if (!created.ok) return { status: 'failed', message: created.message };
 
     const queued = await enqueueS1(created.value.runId);
@@ -210,6 +228,12 @@ export function createChatTools(options: { threadId?: number | undefined } = {})
         '为一次完整研究准备参数并请求用户确认。不创建 run、不启动采集；用户确认后才由界面创建。',
       inputSchema: startResearchInputSchema,
       execute: prepareStartResearch,
+    }),
+    present_options: tool({
+      description:
+        '当回答的结论包含 2–4 个可行下一步时调用，在消息末尾生成可点击的操作面板。用户点击后会以“选择：<label>”作为下一条消息发回。只用于真正的分叉选择，不要用来问开放式问题。',
+      inputSchema: presentOptionsInputSchema,
+      execute: async () => ({ status: 'shown' }),
     }),
     get_run_status: tool({
       description:

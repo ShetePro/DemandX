@@ -42,7 +42,7 @@ describe('rerun_research tool', () => {
 
     const result = await executeRerun(createChatTools({ threadId: 7 }));
 
-    expect(mocks.createRerun).toHaveBeenCalledWith(7);
+    expect(mocks.createRerun).toHaveBeenCalledWith(7, undefined);
     expect(mocks.enqueueS1).toHaveBeenCalledWith(42);
     expect(result).toEqual({ status: 'started', runId: 42 });
   });
@@ -71,6 +71,19 @@ describe('rerun_research tool', () => {
 
     expect(result.status).toBe('failed');
     if (result.status === 'failed') expect(result.message).toContain('入队失败');
+  });
+
+  it('passes a chosen focus to the rerun', async () => {
+    mocks.createRerun.mockResolvedValue({ ok: true, value: { runId: 50, threadId: 7 } });
+    mocks.enqueueS1.mockResolvedValue({ ok: true, value: { jobId: 'job-2' } });
+
+    const tools = createChatTools({ threadId: 7 });
+    const tool = tools.rerun_research as unknown as {
+      execute: (input: { focus?: string }) => Promise<RerunResearchOutput>;
+    };
+    await tool.execute({ focus: '只验证发票收款环节' });
+
+    expect(mocks.createRerun).toHaveBeenCalledWith(7, '只验证发票收款环节');
   });
 
   describe('get_run_status tool', () => {
@@ -200,6 +213,26 @@ describe('rerun_research tool', () => {
 
       expect(result.items).toEqual([]);
       expect(mocks.searchThreadEvidence).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('present_options tool', () => {
+    it('acknowledges the panel without side effects', async () => {
+      const tools = createChatTools({ threadId: 7 });
+      const tool = tools.present_options as unknown as {
+        execute: (input: {
+          options: { id: string; label: string }[];
+        }) => Promise<{ status: string }>;
+      };
+
+      await expect(
+        tool.execute({
+          options: [
+            { id: 'a', label: '继续' },
+            { id: 'b', label: '放弃' },
+          ],
+        }),
+      ).resolves.toEqual({ status: 'shown' });
     });
   });
 });

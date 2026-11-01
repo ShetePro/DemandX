@@ -208,4 +208,37 @@ describe('MessageParts', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('source-url'));
   });
+
+  it('renders the option panel and reports the chosen label', async () => {
+    const user = userEvent.setup();
+    const choose = vi.fn();
+    render(
+      <MessageParts
+        message={message([
+          {
+            type: 'tool-present_options',
+            toolCallId: 'call-options',
+            state: 'output-available',
+            input: {
+              options: [
+                { id: 'narrow', label: '收窄到发票收款', description: '只验证计费环节' },
+                { id: 'stop', label: '放弃这个方向', description: '结束验证' },
+              ],
+            },
+            output: { status: 'shown' },
+          },
+        ])}
+        onChooseOption={choose}
+      />,
+    );
+
+    const panel = screen.getByRole('group', { name: '下一步选项' });
+    expect(panel).toHaveTextContent('收窄到发票收款');
+    await user.click(screen.getByRole('button', { name: /收窄到发票收款/ }));
+    expect(choose).toHaveBeenCalledWith({
+      label: '收窄到发票收款',
+      description: '只验证计费环节',
+    });
+    expect(screen.getByRole('button', { name: /收窄到发票收款/ })).toBeDisabled();
+  });
 });

@@ -1,7 +1,7 @@
 'use client';
 
 import { cjk } from '@streamdown/cjk';
-import { useMemo, type ComponentProps } from 'react';
+import { useMemo, useState, type ComponentProps } from 'react';
 import { harden } from 'rehype-harden';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ChatMessage } from '@/lib/chat/types';
 import { useCodeHighlighter } from '@/lib/hooks/use-code-highlighter';
+import { cn } from '@/lib/utils/cn';
 
 import { CITATION_TAG, citationRehypePlugin, citationSanitizeSchema } from './citations';
 
@@ -45,6 +46,7 @@ type ChatPart = ChatMessage['parts'][number];
 type StartResearchPart = Extract<ChatPart, { type: 'tool-start_research' }>;
 type QueryEvidencePart = Extract<ChatPart, { type: 'tool-query_evidence' }>;
 type EvidenceDataPart = Extract<ChatPart, { type: 'data-evidence' }>;
+type PresentOptionsPart = Extract<ChatPart, { type: 'tool-present_options' }>;
 
 export type MessagePartsProps = {
   message: ChatMessage;
@@ -53,6 +55,8 @@ export type MessagePartsProps = {
   /** Confirmed in the approval card — the caller creates the run. */
   onStart?: ((idea: string) => void) | undefined;
   onAdjustAngles?: ((idea: string) => void) | undefined;
+  /** Sends the chosen option (label + hint) back to the agent as a user turn. */
+  onChooseOption?: ((option: { label: string; description?: string }) => void) | undefined;
 };
 
 export function MessageParts({
@@ -60,6 +64,7 @@ export function MessageParts({
   onOpenCitation,
   onStart,
   onAdjustAngles,
+  onChooseOption,
 }: MessagePartsProps) {
   return (
     <div className="flex max-w-full min-w-0 flex-col gap-3">
@@ -92,6 +97,8 @@ export function MessageParts({
                 onAdjustAngles={onAdjustAngles}
               />
             );
+          case 'tool-present_options':
+            return <OptionsCard key={index} part={part} onChoose={onChooseOption} />;
           case 'tool-query_evidence':
             return <QueryEvidenceCard key={index} part={part} />;
           case 'tool-get_run_status':
@@ -351,6 +358,66 @@ function QueryEvidenceCard({ part }: { part: QueryEvidencePart }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * The action panel that closes an answer: the agent states a conclusion, then
+ * offers the concrete next steps as buttons instead of a prose list.
+ */
+function OptionsCard({
+  part,
+  onChoose,
+}: {
+  part: PresentOptionsPart;
+  onChoose?: ((option: { label: string; description?: string }) => void) | undefined;
+}) {
+  const [chosen, setChosen] = useState<string | null>(null);
+  type OptionShape = { id: string; label: string; description?: string };
+  const input = part.input as { options?: OptionShape[] } | undefined;
+  const stored = part as unknown as { options?: OptionShape[] };
+  const options = input?.options ?? stored.options ?? [];
+  if (options.length === 0) return null;
+
+  return (
+    <div
+      role="group"
+      aria-label="下一步选项"
+      className="rounded-xl border border-accent/40 bg-accent-soft/30 p-3"
+    >
+      <p className="mb-2 text-[11px] font-semibold text-accent">选择一个方向继续</p>
+      <div className="flex flex-col gap-2">
+        {options.map((option) => {
+          const disabled = onChoose === undefined || chosen !== null;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              disabled={disabled}
+              onClick={() => {
+                setChosen(option.label);
+                onChoose?.({
+                  label: option.label,
+                  ...(option.description === undefined ? {} : { description: option.description }),
+                });
+              }}
+              className={cn(
+                'flex flex-col items-start gap-0.5 rounded-lg border border-border bg-surface px-3 py-2 text-left transition-colors',
+                disabled ? 'opacity-60' : 'hover:border-accent/50 hover:bg-surface-2',
+              )}
+            >
+              <span className="text-[13px] font-medium text-fg">
+                {chosen === option.label ? '已选择 · ' : ''}
+                {option.label}
+              </span>
+              {option.description === undefined ? null : (
+                <span className="text-[11px] leading-5 text-muted">{option.description}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
