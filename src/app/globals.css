@@ -334,3 +334,16 @@ html {
     transform: translateY(0);
   }
 }
+
+/* Run deck: cards rise into place once, then hover lifts the chosen one while
+   the rest of the hand dims. */
+@keyframes deck-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

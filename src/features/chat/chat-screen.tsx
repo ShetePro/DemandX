@@ -304,7 +304,7 @@ export function ChatScreen({
         'grid h-full min-h-0',
         runCards.length === 0
           ? 'grid-cols-1'
-          : 'grid-cols-[minmax(0,1fr)_320px] max-lg:grid-cols-1',
+          : 'grid-cols-[minmax(0,1fr)_332px] max-lg:grid-cols-1',
       )}
     >
       <section aria-label="对话" className="relative flex min-h-0 flex-col">
@@ -400,7 +400,7 @@ export function ChatScreen({
       {runCards.length > 0 ? (
         <aside
           aria-label="研究卡片"
-          className="no-print hidden min-h-0 overflow-y-auto border-l border-border bg-surface/60 px-3 py-4 lg:block"
+          className="no-print relative hidden min-h-0 items-center justify-center py-6 lg:flex"
         >
           <RunDeck runs={runCards} workerOnline={workerOnline} />
         </aside>

@@ -36,7 +36,10 @@ export function RunDeck({ runs, workerOnline = true }: RunDeckProps) {
   const ordered = [...runs].reverse();
 
   return (
-    <div aria-label="研究卡片" className="group/deck flex flex-col pb-4">
+    <div
+      aria-label="研究卡片"
+      className="group/deck flex max-h-[82vh] w-[316px] [scrollbar-width:thin] flex-col overflow-y-auto px-3 py-4"
+    >
       {ordered.map((run, index) => (
         <div
           key={run.id}
