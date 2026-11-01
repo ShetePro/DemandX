@@ -7,6 +7,7 @@ import { createChatTools } from '@/lib/chat/tools';
 import type { ChatMessage } from '@/lib/chat/types';
 import { getLatestRunForThread } from '@/lib/runs/repository';
 import { recordLlmUsage } from '@/lib/llm/usage-recorder';
+import { searchThreadEvidence } from '@/lib/runs/evidence-repository';
 
 // Streaming answers are slower than a page render; 60s covers a three-step
 // tool loop on a local 7B model without holding the function open indefinitely.
@@ -44,6 +45,25 @@ async function describeThreadRun(threadId: number | undefined): Promise<string> 
   return `\n\n该会话已创建研究任务（run #${run.id}，状态 ${run.status}，阶段 ${run.stage ?? '未知'}）。不要再次询问是否开始研究，直接说明你准备如何检索证据；需要证据时调用 query_evidence 并基于返回结果回答。`;
 }
 
+/**
+ * The conversation's accepted evidence, injected before the model answers.
+ * Relying on the model to call `query_evidence` first made weak models claim
+ * "没有找到足够证据" while six rows existed, so the rows are always in context.
+ */
+async function describeThreadEvidence(threadId: number | undefined): Promise<string> {
+  if (threadId === undefined) return '';
+
+  const rows = await searchThreadEvidence(threadId, {}, 8);
+  if (!rows.ok || rows.value.length === 0) {
+    return '\n\n本会话暂无已入库证据；可以说明“尚未找到证据”，并基于明确标注的推断继续分析。';
+  }
+
+  const lines = rows.value.map(
+    (row) => `- [e${row.id}] ${row.signal} · ${row.platform}：${row.quote.slice(0, 180)}${row.url ? `（${row.url}）` : ''}`,
+  );
+  return `\n\n本会话已采集的证据（直接引用为 [e<id>]，无需再调用 query_evidence）：\n${lines.join('\n')}`;
+}
+
 export async function POST(request: Request): Promise<Response> {
   let body: unknown;
   try {
@@ -61,12 +81,15 @@ export async function POST(request: Request): Promise<Response> {
 
   const tools = createChatTools({ threadId: parsed.data.threadId });
   const messages = parsed.data.messages as ChatMessage[];
-  const runContext = await describeThreadRun(parsed.data.threadId);
+  const [runContext, evidenceContext] = await Promise.all([
+    describeThreadRun(parsed.data.threadId),
+    describeThreadEvidence(parsed.data.threadId),
+  ]);
 
   try {
     const result = streamText({
       model: model.value.model,
-      system: `${CHAT_SYSTEM_PROMPT}${runContext}`,
+      system: `${CHAT_SYSTEM_PROMPT}${runContext}${evidenceContext}`,
       messages: await convertToModelMessages(messages),
       tools,
       // One retrieval step plus one correction step is enough; a longer loop

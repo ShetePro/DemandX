@@ -2,6 +2,7 @@ import { tool, type Tool } from 'ai';
 import { z } from 'zod';
 
 import { signalEnum } from '@/lib/db/schema/evidence';
+import { searchThreadEvidence } from '@/lib/runs/evidence-repository';
 import {
   createRerun,
   getRun,
@@ -88,14 +89,37 @@ export type ChatTools = {
   get_run_status: Tool<RunStatusInput, RunStatusOutput>;
 };
 
-/**
- * No evidence is available before the collection pipeline exists, so the empty
- * answer is the truthful one — the filter arguments are accepted and ignored.
- * P4 replaces this with a read over the evidence table; chat must not query the
- * database before then.
- */
-export async function queryEvidence(): Promise<{ items: EvidenceItem[] }> {
-  return { items: [] };
+/** Reads real evidence rows for this conversation; empty when none exist. */
+async function queryEvidence(
+  threadId: number | undefined,
+  input: QueryEvidenceInput,
+): Promise<{ items: EvidenceItem[] }> {
+  if (threadId === undefined) return { items: [] };
+
+  const filters = {
+    ...(input.signal === undefined ? {} : { signal: input.signal }),
+    ...(input.platform === undefined ? {} : { platform: input.platform }),
+    ...(input.q === undefined ? {} : { q: input.q }),
+  };
+  let rows = await searchThreadEvidence(threadId, filters);
+
+  // A narrow keyword can miss real evidence ("发票" vs a quote about billing).
+  // Falling back to the conversation's evidence beats telling the user the
+  // corpus is empty while six rows exist.
+  if (rows.ok && rows.value.length === 0 && Object.keys(filters).length > 0) {
+    rows = await searchThreadEvidence(threadId, {});
+  }
+  if (!rows.ok) return { items: [] };
+
+  return {
+    items: rows.value.map((row) => ({
+      id: String(row.id),
+      platform: row.platform,
+      summary: row.supports === null ? row.quote : `${row.quote}（${row.supports}）`,
+      signal: row.signal,
+      ...(row.url === '' ? {} : { url: row.url }),
+    })),
+  };
 }
 
 /** Prepares parameters only: no run is created, nothing is collected. */
@@ -177,9 +201,9 @@ export function createChatTools(options: { threadId?: number | undefined } = {})
   return {
     query_evidence: tool({
       description:
-        '检索已采集的证据条目。在没有真实数据时返回空列表——此时应直接告诉用户没有找到足够证据。',
+        '检索本会话已采集的真实证据（可跨历史 run）。如果返回空列表，不要换关键词反复调用：最多再试一次，然后直接用带“推断：”的分析回答，并说明缺少哪类证据。',
       inputSchema: queryEvidenceInputSchema,
-      execute: queryEvidence,
+      execute: (input) => queryEvidence(threadId, input),
     }),
     start_research: tool({
       description:

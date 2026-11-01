@@ -1,7 +1,18 @@
-import { and, asc, count, eq, inArray, isNotNull, isNull, notExists } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  notExists,
+} from 'drizzle-orm';
 
 import { db } from '@/lib/db/client';
-import { evidence, sources } from '@/lib/db/schema';
+import { evidence, runs, sources } from '@/lib/db/schema';
 import type { Signal } from '@/lib/evidence/schema';
 import { fail, ok, type Result } from '@/lib/quota/types';
 import { parsePriceMention, type PriceMention } from '@/lib/scoring/aggregate';
@@ -189,6 +200,66 @@ export interface ScoringEvidenceRow {
  * empty list is a valid answer (no query, no rows): an opportunity whose
  * evidence was deleted is scored from nothing rather than failing the stage.
  */
+export interface ChatEvidenceFilters {
+  signal?: Signal | undefined;
+  platform?: string | undefined;
+  q?: string | undefined;
+}
+
+export interface ChatEvidenceRow {
+  id: number;
+  platform: string;
+  signal: Signal;
+  quote: string;
+  supports: string | null;
+  url: string;
+}
+
+/**
+ * Evidence for the chat surface, across every run of one conversation. The
+ * chat may discuss a rerun that found nothing while an earlier run did find
+ * evidence, so scoping to the latest run alone would wrongly return empty.
+ */
+export async function searchThreadEvidence(
+  threadId: number,
+  filters: ChatEvidenceFilters = {},
+  limit = 8,
+): Promise<Result<ChatEvidenceRow[]>> {
+  const take = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 20) : 8;
+
+  try {
+    const threadRuns = db.select({ id: runs.id }).from(runs).where(eq(runs.threadId, threadId));
+    const conditions = [inArray(evidence.runId, threadRuns)];
+
+    if (filters.signal !== undefined) conditions.push(eq(evidence.signal, filters.signal));
+    if (filters.platform !== undefined && filters.platform.trim() !== '') {
+      conditions.push(ilike(evidence.platform, `%${filters.platform.trim()}%`));
+    }
+    if (filters.q !== undefined && filters.q.trim() !== '') {
+      conditions.push(ilike(evidence.quote, `%${filters.q.trim()}%`));
+    }
+
+    const rows = await db
+      .select({
+        id: evidence.id,
+        platform: evidence.platform,
+        signal: evidence.signal,
+        quote: evidence.quote,
+        supports: evidence.supports,
+        url: sources.canonicalUrl,
+      })
+      .from(evidence)
+      .innerJoin(sources, eq(sources.id, evidence.sourceId))
+      .where(and(...conditions))
+      .orderBy(desc(evidence.id))
+      .limit(take);
+
+    return ok(rows.map((row) => ({ ...row, signal: row.signal as Signal })));
+  } catch (error) {
+    return storageFailure('检索证据', error);
+  }
+}
+
 export async function listEvidenceByIds(
   ids: readonly number[],
 ): Promise<Result<ScoringEvidenceRow[]>> {

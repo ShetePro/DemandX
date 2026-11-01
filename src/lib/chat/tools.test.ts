@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getRun: vi.fn(),
   listRunsForThread: vi.fn(),
   readEvents: vi.fn(),
+  searchThreadEvidence: vi.fn(),
 }));
 
 vi.mock('@/lib/runs/repository', () => ({
@@ -15,8 +16,17 @@ vi.mock('@/lib/runs/repository', () => ({
   readEvents: mocks.readEvents,
 }));
 vi.mock('@/lib/runs/queue', () => ({ enqueueS1: mocks.enqueueS1 }));
+vi.mock('@/lib/runs/evidence-repository', () => ({
+  searchThreadEvidence: mocks.searchThreadEvidence,
+}));
 
-import { createChatTools, type RerunResearchOutput, type RunStatusOutput } from './tools';
+import {
+  createChatTools,
+  type EvidenceItem,
+  type QueryEvidenceInput,
+  type RerunResearchOutput,
+  type RunStatusOutput,
+} from './tools';
 
 function executeRerun(tools: ReturnType<typeof createChatTools>) {
   const tool = tools.rerun_research as unknown as {
@@ -119,6 +129,77 @@ describe('rerun_research tool', () => {
     it('refuses without a thread when no runId is given', async () => {
       const result = await executeStatus(createChatTools());
       expect(result.status).toBe('unavailable');
+    });
+  });
+
+  describe('query_evidence tool', () => {
+    function executeQuery(tools: ReturnType<typeof createChatTools>) {
+      const tool = tools.query_evidence as unknown as {
+        execute: (input: QueryEvidenceInput) => Promise<{ items: EvidenceItem[] }>;
+      };
+      return tool.execute({ signal: 'paying', q: '发票' });
+    }
+
+    it('reads accepted evidence from the conversation history', async () => {
+      mocks.searchThreadEvidence.mockResolvedValue({
+        ok: true,
+        value: [
+          {
+            id: 12,
+            platform: 'Reddit',
+            signal: 'paying',
+            quote: '愿意每月付 20 美元',
+            supports: '存在付费行为',
+            url: 'https://reddit.com/r/x',
+          },
+        ],
+      });
+
+      const result = await executeQuery(createChatTools({ threadId: 7 }));
+
+      expect(mocks.searchThreadEvidence).toHaveBeenCalledWith(7, { signal: 'paying', q: '发票' });
+      expect(result.items).toEqual([
+        {
+          id: '12',
+          platform: 'Reddit',
+          summary: '愿意每月付 20 美元（存在付费行为）',
+          signal: 'paying',
+          url: 'https://reddit.com/r/x',
+        },
+      ]);
+    });
+
+    it('falls back to the conversation evidence when a keyword misses', async () => {
+      mocks.searchThreadEvidence
+        .mockResolvedValueOnce({ ok: true, value: [] })
+        .mockResolvedValueOnce({
+          ok: true,
+          value: [
+            {
+              id: 3,
+              platform: 'Reddit',
+              signal: 'problem',
+              quote: '月底对账全靠手工',
+              supports: null,
+              url: 'https://reddit.com/r/y',
+            },
+          ],
+        });
+
+      const result = await executeQuery(createChatTools({ threadId: 7 }));
+
+      expect(mocks.searchThreadEvidence).toHaveBeenNthCalledWith(1, 7, {
+        signal: 'paying',
+        q: '发票',
+      });
+      expect(mocks.searchThreadEvidence).toHaveBeenNthCalledWith(2, 7, {});
+      expect(result.items.map((item) => item.id)).toEqual(['3']);
+    });
+    it('returns an empty list without touching the database when there is no thread', async () => {
+      const result = await executeQuery(createChatTools());
+
+      expect(result.items).toEqual([]);
+      expect(mocks.searchThreadEvidence).not.toHaveBeenCalled();
     });
   });
 });
