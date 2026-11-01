@@ -65,6 +65,8 @@ const USAGE: ProviderUsageSummary = {
   fiveHourRequests: 0,
   weeklyRequests: 0,
   monthlyRequests: 0,
+  monthlyPromptTokens: 0,
+  monthlyCompletionTokens: 0,
   monthlySpendUsd: 0,
 };
 

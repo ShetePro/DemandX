@@ -10,6 +10,8 @@ const USAGE: ProviderUsageSummary = {
   fiveHourRequests: 12,
   weeklyRequests: 31,
   monthlyRequests: 40,
+  monthlyPromptTokens: 12_345,
+  monthlyCompletionTokens: 678,
   monthlySpendUsd: 9.6,
 };
 
@@ -35,6 +37,7 @@ describe('UsagePanel', () => {
     expect(screen.getByText('12 次')).toBeInTheDocument();
     expect(screen.getByText('31 次')).toBeInTheDocument();
     expect(screen.getByText('40 次')).toBeInTheDocument();
+    expect(screen.getByText('入 12.3k · 出 678')).toBeInTheDocument();
   });
 
   it('draws only the monthly bar against the declared allowance', () => {

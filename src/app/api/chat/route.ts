@@ -6,6 +6,7 @@ import { CHAT_SYSTEM_PROMPT } from '@/lib/chat/system-prompt';
 import { createChatTools } from '@/lib/chat/tools';
 import type { ChatMessage } from '@/lib/chat/types';
 import { getLatestRunForThread } from '@/lib/runs/repository';
+import { recordLlmUsage } from '@/lib/llm/usage-recorder';
 
 // Streaming answers are slower than a page render; 60s covers a three-step
 // tool loop on a local 7B model without holding the function open indefinitely.
@@ -56,6 +57,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const model = await getChatModel();
   if (!model.ok) return Response.json({ error: model.code }, { status: 500 });
+  const used = model.value.used;
 
   const tools = createChatTools();
   const messages = parsed.data.messages as ChatMessage[];
@@ -70,6 +72,17 @@ export async function POST(request: Request): Promise<Response> {
       // One retrieval step plus one correction step is enough; a longer loop
       // costs tokens without improving the answer.
       stopWhen: stepCountIs(3),
+      // Chat bypasses LlmPort, so it records its own tokens; without this the
+      // settings panel only counted pipeline calls.
+      onFinish: ({ usage }) => {
+        void recordLlmUsage({
+          providerId: used.providerId,
+          model: used.modelId,
+          kind: used.kind,
+          promptTokens: usage.inputTokens ?? 0,
+          completionTokens: usage.outputTokens ?? 0,
+        });
+      },
     });
 
     return result.toUIMessageStreamResponse();

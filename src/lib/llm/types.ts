@@ -48,6 +48,9 @@ export type ProviderUsageSummary = {
   fiveHourRequests: number;
   weeklyRequests: number;
   monthlyRequests: number;
+  /** Tokens counted in the current monthly window, recorded locally. */
+  monthlyPromptTokens: number;
+  monthlyCompletionTokens: number;
   monthlySpendUsd: number;
 };
 

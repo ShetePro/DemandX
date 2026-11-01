@@ -12,6 +12,12 @@ export type UsagePanelProps = {
  * plain counts, and without an allowance every row is just a count: a progress
  * bar against an invented total would be a lie.
  */
+/** 1234 → 1.2k; exact below a thousand so small counts stay readable. */
+function formatTokens(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  return value < 1000 ? String(value) : `${(value / 1000).toFixed(1)}k`;
+}
+
 export function UsagePanel({ provider, usage }: UsagePanelProps) {
   const allowance = provider.monthlyAllowanceUsd;
   const hasAllowance = allowance !== null && allowance > 0;
@@ -29,7 +35,7 @@ export function UsagePanel({ provider, usage }: UsagePanelProps) {
           用量
         </h2>
         <p className="mt-0.5 text-[11px] text-faint">
-          {provider.name} 最近窗口的计数，由 provider 上报
+          {provider.name} 最近窗口的调用与 token 用量，由本机记录（对话、研究、测试连接）
         </p>
         {hasAllowance ? (
           <p className="mt-0.5 text-[11px] text-faint">5 小时 / 本周为计数，相对最忙窗口，非配额</p>
@@ -61,6 +67,13 @@ export function UsagePanel({ provider, usage }: UsagePanelProps) {
           ) : (
             <dd className="text-[11px] text-fg">{usage.monthlyRequests} 次</dd>
           )}
+        </div>
+        <div className="grid grid-cols-[48px_minmax(0,1fr)] items-center gap-2 border-t border-border pt-2">
+          <dt className="text-[11px] text-muted">本月 tokens</dt>
+          <dd className="text-[11px] tabular-nums text-fg">
+            入 {formatTokens(usage.monthlyPromptTokens)} · 出{' '}
+            {formatTokens(usage.monthlyCompletionTokens)}
+          </dd>
         </div>
       </dl>
     </section>

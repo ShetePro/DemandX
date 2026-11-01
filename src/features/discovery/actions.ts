@@ -7,6 +7,7 @@ import type { DiscoveryResult } from '@/lib/discovery/types';
 import { createLlmPort } from '@/lib/llm/chain';
 import { getChain } from '@/lib/llm/chain-repository';
 import { resolveApiKey } from '@/lib/llm/repository';
+import { recordLlmUsage } from '@/lib/llm/usage-recorder';
 import { createResearch, type CreateResearchResult } from '@/lib/runs/repository';
 import { enqueueS1 } from '@/lib/runs/queue';
 import { createBingSearch } from '@/lib/search/bing';
@@ -59,7 +60,18 @@ export async function findOpportunitiesAction(
     ports.push(createResolvedWebSearchPort(webSearch.value, deps));
   }
 
-  const llm = createLlmPort({ loadChain: getChain, resolveApiKey });
+  const llm = createLlmPort({
+    loadChain: getChain,
+    resolveApiKey,
+    recordUsage: (item, usage) =>
+      void recordLlmUsage({
+        providerId: item.providerId,
+        model: item.modelId,
+        kind: item.kind,
+        promptTokens: usage.in,
+        completionTokens: usage.out,
+      }),
+  });
   const result = await findOpportunities({
     searchPorts: ports,
     llm,

@@ -33,6 +33,8 @@ type Attempt = { ok: true; text: string; usage: Usage } | { ok: false; code: str
 export type LlmPortDeps = {
   loadChain: (profile: Profile) => Promise<Result<ChainItem[]>>;
   resolveApiKey: (providerId: number) => Promise<Result<string | null>>;
+  /** Called after every successful call; ledger writes must never throw here. */
+  recordUsage?: ((item: ChainItem, usage: Usage) => void) | undefined;
   now?: (() => number) | undefined;
   cooldownMs?: number | undefined;
 };
@@ -172,7 +174,10 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
         }
 
         const result = await attempt(item, prompt, false, undefined);
-        if (result.ok) return ok({ text: result.text, used: item, usage: result.usage });
+        if (result.ok) {
+          deps.recordUsage?.(item, result.usage);
+          return ok({ text: result.text, used: item, usage: result.usage });
+        }
         failures.push({ item, code: result.code });
       }
 
@@ -216,7 +221,10 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
           }
 
           const decoded = decode(result.text, schema);
-          if (decoded.ok) return ok({ data: decoded.value, used: item, usage: result.usage });
+          if (decoded.ok) {
+            deps.recordUsage?.(item, result.usage);
+            return ok({ data: decoded.value, used: item, usage: result.usage });
+          }
 
           if (attemptNo === 2) {
             failures.push({ item, code: 'bad_output' });

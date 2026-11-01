@@ -10,6 +10,7 @@ import { createRobotsCache } from '@/lib/crawl/robots';
 import { readSnapshotText } from '@/lib/evidence/snapshot';
 import { createLlmPort } from '@/lib/llm';
 import { getChain } from '@/lib/llm/chain-repository';
+import { recordLlmUsage } from '@/lib/llm/usage-recorder';
 import { resolveApiKey } from '@/lib/llm/repository';
 import { buildAngles } from '@/lib/pipeline/angles';
 import { runPipeline } from '@/lib/pipeline/run';
@@ -100,7 +101,18 @@ async function buildSearchPorts(): Promise<SearchPort[]> {
  * S2's model surface. Constructed once: the port keeps provider cooldowns in
  * memory, and rebuilding it per run would re-probe a provider that just failed.
  */
-const llm = createLlmPort({ loadChain: getChain, resolveApiKey });
+const llm = createLlmPort({
+  loadChain: getChain,
+  resolveApiKey,
+  recordUsage: (item, usage) =>
+    void recordLlmUsage({
+      providerId: item.providerId,
+      model: item.modelId,
+      kind: item.kind,
+      promptTokens: usage.in,
+      completionTokens: usage.out,
+    }),
+});
 
 /**
  * robots.txt is plain text, not a search result: read it directly so the

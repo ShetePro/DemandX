@@ -18,6 +18,8 @@ function emptySummary(providerId: number): ProviderUsageSummary {
     fiveHourRequests: 0,
     weeklyRequests: 0,
     monthlyRequests: 0,
+    monthlyPromptTokens: 0,
+    monthlyCompletionTokens: 0,
     monthlySpendUsd: 0,
   };
 }
@@ -38,6 +40,8 @@ export async function getProviderUsage(): Promise<Result<ProviderUsageSummary[]>
           window: providerUsage.window,
           windowStart: providerUsage.windowStart,
           requests: providerUsage.requests,
+          promptTokens: providerUsage.promptTokens,
+          completionTokens: providerUsage.completionTokens,
           allowanceUsd: providerUsage.allowanceUsd,
         })
         .from(providerUsage)
@@ -66,6 +70,8 @@ export async function getProviderUsage(): Promise<Result<ProviderUsageSummary[]>
           break;
         case 'monthly':
           summary.monthlyRequests = row.requests;
+          summary.monthlyPromptTokens = row.promptTokens;
+          summary.monthlyCompletionTokens = row.completionTokens;
           summary.monthlySpendUsd = Number(row.allowanceUsd);
           break;
         default:

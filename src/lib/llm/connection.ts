@@ -5,6 +5,7 @@ import { providerModels, providers } from '@/lib/db/schema';
 
 import type { AdapterFailure, AdapterFailureReason } from './adapters/types';
 import { adapterFor } from './chain';
+import { recordLlmUsage } from './usage-recorder';
 import { isOpencodeBaseUrl, withProviderHeaders } from './provider-headers';
 import { resolveApiKey } from './repository';
 import type { AppErrorCode, ProviderKind, Result } from './types';
@@ -194,6 +195,14 @@ export async function testProviderConnection(id: number): Promise<ConnectionTest
 
     if (outcome.ok) {
       const latencyMs = Math.round(performance.now() - startedAt);
+      // A probe is a real, billable request: count it like any other call.
+      void recordLlmUsage({
+        providerId: id,
+        model: modelId,
+        kind,
+        promptTokens: outcome.usage.in,
+        completionTokens: outcome.usage.out,
+      });
       return { ok: true, value: { latencyMs, model: modelId, status: 200 } };
     }
 
