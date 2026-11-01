@@ -229,4 +229,29 @@ describe('findOpportunities', () => {
     expect(phases).toContain('model');
     expect(phases.lastIndexOf('filter')).toBeLessThan(phases.indexOf('model'));
   });
+
+  it('explains network and cooldown failures in actionable terms', async () => {
+    const result = await findOpportunities({
+      searchPorts: [port('ddg', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
+      llm: {
+        async structured() {
+          return {
+            ok: false,
+            code: 'LLM_UNAVAILABLE',
+            message:
+              '所有 provider 均失败（bulk）：OpenCode Go#glm-5.3-flash: network、OpenCode Go#big-pickle: cooldown',
+          } as never;
+        },
+        async text() {
+          throw new Error('unused');
+        },
+      } as unknown as LlmPort,
+      queries: ['库存 同步'],
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain('网络或代理');
+    expect(result.message).toContain('切换链');
+  });
 });

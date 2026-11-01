@@ -129,7 +129,11 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
     };
   }
   if (!asked.ok) {
-    return { ok: false, code: 'LLM_UNAVAILABLE', message: `机会分析失败：${asked.message}` };
+    return {
+      ok: false,
+      code: 'LLM_UNAVAILABLE',
+      message: `机会分析失败：${asked.message}${failureHint(asked.message)}`,
+    };
   }
 
   const allowed = new Map(sources.map((source) => [source.url, source]));
@@ -178,6 +182,24 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
       model: asked.value.used.modelId,
     },
   };
+}
+
+/**
+ * Turns the chain's terse codes into something the operator can act on: a
+ * `network` failure is local connectivity, a `cooldown` means the provider was
+ * marked unhealthy and will be skipped for a while.
+ */
+function failureHint(message: string): string {
+  const hints: string[] = [];
+  if (/network|fetch failed|adapter/i.test(message)) {
+    hints.push('network 通常是到 provider 的网络或代理中断，已自动重试一次');
+  }
+  if (/cooldown/i.test(message)) {
+    hints.push(
+      'cooldown 表示该 provider 刚失败过，会跳过约 5 分钟；可在 /settings/llm 切换链后再试',
+    );
+  }
+  return hints.length === 0 ? '' : `（${hints.join('；')}）`;
 }
 
 function buildPrompt(sources: readonly DiscoverySource[]): { system: string; user: string } {

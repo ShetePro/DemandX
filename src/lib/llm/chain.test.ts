@@ -58,6 +58,7 @@ function makePort(chain: ChainItem[], keys: Record<number, string | null> = {}) 
     loadChain: async () => ({ ok: true, value: chain }),
     resolveApiKey: async (providerId: number) => ({ ok: true, value: keys[providerId] ?? null }),
     now: () => clock,
+    retryDelayMs: 0,
   });
 }
 
@@ -212,20 +213,17 @@ describe('createLlmPort · text', () => {
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
-  it('treats an aborted request as retryable and cools the provider', async () => {
+  it('retries an aborted request instead of falling back to the next provider', async () => {
     fetchMock
       .mockRejectedValueOnce(new DOMException('The operation was aborted.', 'AbortError'))
-      .mockResolvedValueOnce(answer('from b'));
+      .mockResolvedValueOnce(answer('from a'));
 
     const port = makePort([A, B]);
     const first = await port.text(PROMPT, { profile: 'bulk' });
-    expect(first.ok && first.value.used.providerName).toBe('B');
 
-    fetchMock.mockResolvedValueOnce(answer('again'));
-    await port.text(PROMPT, { profile: 'bulk' });
-
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock.mock.calls[2]?.[0]).toBe('https://b.example/v1/chat/completions');
+    expect(first.ok && first.value.used.providerName).toBe('A');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('https://a.example/v1/chat/completions');
   });
 });
 
@@ -316,5 +314,38 @@ describe('createLlmPort · structured', () => {
     expect(result.code).toBe('LLM_UNAVAILABLE');
     expect(result.message).toContain('A#a-model: 503');
     expect(result.message).toContain('B#b-model: bad_output');
+  });
+
+  it('retries a transport failure once before cooling the provider', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(answer('from a'));
+
+    const result = await makePort([A, B]).text(PROMPT, { profile: 'bulk' });
+
+    expect(result.ok && result.value.used.providerName).toBe('A');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // The retry succeeded inside the cooldown window, so nothing is cooling.
+    fetchMock.mockResolvedValueOnce(answer('again'));
+    const again = await makePort([A, B]).text(PROMPT, { profile: 'bulk' });
+    expect(again.ok).toBe(true);
+  });
+
+  it('cools the provider when the retry also fails at the transport', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockRejectedValueOnce(new TypeError('fetch failed'));
+
+    const port = makePort([A]);
+    const first = await port.text(PROMPT, { profile: 'bulk' });
+    expect(first.ok).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const again = await port.text(PROMPT, { profile: 'bulk' });
+    expect(again.ok).toBe(false);
+    if (again.ok) return;
+    expect(again.message).toContain('A#a-model: cooldown');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

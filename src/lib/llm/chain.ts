@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import { z } from 'zod';
 
 import { complete as anthropic } from './adapters/anthropic';
@@ -37,6 +38,8 @@ export type LlmPortDeps = {
   recordUsage?: ((item: ChainItem, usage: Usage) => void) | undefined;
   now?: (() => number) | undefined;
   cooldownMs?: number | undefined;
+  /** Pause before retrying a transport failure; tests may set 0. */
+  retryDelayMs?: number | undefined;
 };
 
 function ok<T>(value: T): Result<T> {
@@ -114,6 +117,7 @@ function exhausted<T>(profile: Profile, failures: Failure[]): Result<T> {
 export function createLlmPort(deps: LlmPortDeps): LlmPort {
   const now = deps.now ?? (() => Date.now());
   const cooldownMs = deps.cooldownMs ?? DEFAULT_COOLDOWN_MS;
+  const retryDelayMs = deps.retryDelayMs ?? 300;
 
   // In-memory on purpose: a restart re-probes providers, which is what we want
   // after the operator edits settings. Keyed by provider, shared across profiles.
@@ -136,21 +140,33 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
     const apiKey = await deps.resolveApiKey(item.providerId);
     // A broken secret store is local: retrying it on a timer buys nothing.
     if (!apiKey.ok) return { ok: false, code: 'key' };
+    const key = apiKey.value;
 
-    let result: AdapterResult;
-    try {
-      result = await adapterFor(item.kind)({
-        baseUrl: item.baseUrl,
-        apiKey: apiKey.value,
-        modelId: item.modelId,
-        prompt,
-        headers: withProviderHeaders(item.baseUrl, item.headers, item.providerName),
-        structured,
-        jsonSchema,
-      });
-    } catch {
-      // An adapter bug must not take the rest of the chain down with it.
-      return { ok: false, code: 'adapter' };
+    async function call(): Promise<AdapterResult> {
+      try {
+        return await adapterFor(item.kind)({
+          baseUrl: item.baseUrl,
+          apiKey: key,
+          modelId: item.modelId,
+          prompt,
+          headers: withProviderHeaders(item.baseUrl, item.headers, item.providerName),
+          structured,
+          jsonSchema,
+        });
+      } catch {
+        // An adapter bug must not take the rest of the chain down with it.
+        return { ok: false, status: 0, reason: 'network', code: 'adapter' };
+      }
+    }
+
+    let result = await call();
+
+    // A DNS/TLS blip or a dropped socket is usually gone by the second try. A
+    // retry here matters because the provider goes into cooldown after this,
+    // and every model behind the same provider would be skipped until then.
+    if (!result.ok && (result.reason === 'network' || result.reason === 'timeout')) {
+      await sleep(retryDelayMs);
+      result = await call();
     }
 
     if (!result.ok) {
