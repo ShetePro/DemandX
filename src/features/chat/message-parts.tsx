@@ -2,6 +2,7 @@
 
 import { cjk } from '@streamdown/cjk';
 import { useMemo, useState, type ComponentProps } from 'react';
+import { ArrowRight, Sparkles } from 'lucide-react';
 import { harden } from 'rehype-harden';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
@@ -43,6 +44,18 @@ const REHYPE_PLUGINS: RehypePlugins = [
 ];
 
 type ChatPart = ChatMessage['parts'][number];
+
+/** Unique evidence ids cited by one assistant message, for the meta line. */
+function countUniqueCitations(message: ChatMessage): number {
+  const ids = new Set<string>();
+  for (const part of message.parts) {
+    if (part.type !== 'text') continue;
+    for (const match of part.text.matchAll(/\[e(\d+)\]/g)) {
+      if (match[1] !== undefined) ids.add(match[1]);
+    }
+  }
+  return ids.size;
+}
 type StartResearchPart = Extract<ChatPart, { type: 'tool-start_research' }>;
 type QueryEvidencePart = Extract<ChatPart, { type: 'tool-query_evidence' }>;
 type EvidenceDataPart = Extract<ChatPart, { type: 'data-evidence' }>;
@@ -66,8 +79,16 @@ export function MessageParts({
   onAdjustAngles,
   onChooseOption,
 }: MessagePartsProps) {
+  const citationCount = countUniqueCitations(message);
+
   return (
     <div className="flex max-w-full min-w-0 flex-col gap-3">
+      {message.role === 'assistant' && citationCount > 0 ? (
+        <p className="flex items-center gap-1.5 text-[10.5px] text-faint">
+          <Sparkles className="size-3 text-accent" aria-hidden="true" />
+          基于 {citationCount} 条证据 · 事实与推断已分开标注
+        </p>
+      ) : null}
       {coalesceReasoning(message.parts).map((part, index) => {
         switch (part.type) {
           case 'text':
@@ -214,7 +235,7 @@ function TextPart({
       text={text}
       state={state}
       onOpenCitation={onOpenCitation}
-      className="max-w-full min-w-0 text-sm leading-7 break-words text-fg [&_*]:max-w-full [&_*]:break-words [&_a]:max-w-full [&_a]:[overflow-wrap:anywhere] [&_a]:break-words [&_button]:max-w-full [&_button]:[overflow-wrap:anywhere] [&_button]:break-words [&_code]:[overflow-wrap:anywhere] [&_code]:break-words [&_li]:my-0.5 [&_li]:pl-1 [&_li>p]:my-0 [&_ol]:pl-6 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_ul]:pl-6"
+      className="answer-markdown max-w-full min-w-0 text-[13.5px] leading-7 break-words text-fg [&_*]:max-w-full [&_*]:break-words [&_a]:max-w-full [&_a]:[overflow-wrap:anywhere] [&_a]:break-words [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-accent/40 [&_blockquote]:pl-3 [&_blockquote]:text-muted [&_button]:max-w-full [&_button]:[overflow-wrap:anywhere] [&_button]:break-words [&_code]:[overflow-wrap:anywhere] [&_code]:break-words [&_h1]:mt-5 [&_h1]:mb-2 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:text-[14px] [&_h2]:font-semibold [&_h3]:mt-4 [&_h3]:mb-1.5 [&_h3]:text-[13.5px] [&_h3]:font-semibold [&_hr]:my-5 [&_hr]:border-border [&_li]:my-1 [&_li]:pl-1 [&_li]:leading-6 [&_li>p]:my-0 [&_ol]:my-2 [&_ol]:pl-6 [&_p]:my-2.5 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_strong]:font-semibold [&_strong]:text-fg [&_table]:my-3 [&_table]:w-full [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:bg-surface-2 [&_th]:px-2 [&_th]:py-1 [&_ul]:my-2 [&_ul]:pl-6"
     />
   );
 }
@@ -385,7 +406,10 @@ function OptionsCard({
       aria-label="下一步选项"
       className="rounded-xl border border-accent/40 bg-accent-soft/30 p-3"
     >
-      <p className="mb-2 text-[11px] font-semibold text-accent">选择一个方向继续</p>
+      <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-accent">
+        <Sparkles className="size-3" aria-hidden="true" />
+        选择一个方向继续
+      </p>
       <div className="flex flex-col gap-2">
         {options.map((option) => {
           const disabled = onChoose === undefined || chosen !== null;
@@ -402,13 +426,19 @@ function OptionsCard({
                 });
               }}
               className={cn(
-                'flex flex-col items-start gap-0.5 rounded-lg border border-border bg-surface px-3 py-2 text-left transition-colors',
+                'group/option flex flex-col items-start gap-0.5 rounded-lg border border-border bg-surface px-3 py-2 text-left transition-colors',
                 disabled ? 'opacity-60' : 'hover:border-accent/50 hover:bg-surface-2',
               )}
             >
-              <span className="text-[13px] font-medium text-fg">
-                {chosen === option.label ? '已选择 · ' : ''}
-                {option.label}
+              <span className="flex w-full items-center justify-between gap-2">
+                <span className="text-[13px] font-medium text-fg">
+                  {chosen === option.label ? '已选择 · ' : ''}
+                  {option.label}
+                </span>
+                <ArrowRight
+                  className="size-3.5 shrink-0 text-faint transition-transform group-hover/option:translate-x-0.5"
+                  aria-hidden="true"
+                />
               </span>
               {option.description === undefined ? null : (
                 <span className="text-[11px] leading-5 text-muted">{option.description}</span>

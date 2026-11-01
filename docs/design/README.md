@@ -19,6 +19,7 @@ not test fixtures.
 | `run-result-cards.png` | Finished-run result cards with report/evidence links |
 | `chat-inline-run.png` | Inline run progress in the transcript |
 | `chat-options.png` | Conclusion + clickable next-step panel |
+| `chat-typography.png` | Answer typography, section callouts and option panel |
 | `worker-offline.png` | Queued run with worker-offline warning |
 | `worker-online.png` | Same run after the worker starts |
 | `llm-usage.png` | Provider request/token usage panel |
