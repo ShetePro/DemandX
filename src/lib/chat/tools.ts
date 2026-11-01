@@ -2,6 +2,8 @@ import { tool, type Tool } from 'ai';
 import { z } from 'zod';
 
 import { signalEnum } from '@/lib/db/schema/evidence';
+import { createRerun } from '@/lib/runs/repository';
+import { enqueueS1 } from '@/lib/runs/queue';
 
 /** The five signal classes, kept in the database's order (see `evidence.ts`). */
 export const SIGNALS = signalEnum.enumValues;
@@ -35,6 +37,17 @@ export const startResearchInputSchema = z.object({
 
 export type StartResearchInput = z.infer<typeof startResearchInputSchema>;
 
+export const rerunResearchInputSchema = z.object({
+  reason: z.string().trim().max(200).optional(),
+});
+
+export type RerunResearchInput = z.infer<typeof rerunResearchInputSchema>;
+
+export type RerunResearchOutput =
+  | { status: 'started'; runId: number }
+  | { status: 'unavailable'; message: string }
+  | { status: 'failed'; message: string };
+
 export type StartResearchOutput = {
   status: 'needs_confirmation';
   idea: string;
@@ -45,6 +58,7 @@ export type StartResearchOutput = {
 export type ChatTools = {
   query_evidence: Tool<QueryEvidenceInput, { items: EvidenceItem[] }>;
   start_research: Tool<StartResearchInput, StartResearchOutput>;
+  rerun_research: Tool<RerunResearchInput, RerunResearchOutput>;
 };
 
 /**
@@ -66,10 +80,28 @@ export async function prepareStartResearch({
 }
 
 /**
- * Both tools are side-effect free by design. They prepare arguments for the UI;
- * the run is created only after the operator confirms in the approval card.
+ * The run is created only after the operator confirms in the approval card —
+ * except for `rerun_research`, which the agent may call on its own when the
+ * user asks to revalidate an existing conversation.
  */
-export function createChatTools(): ChatTools {
+export function createChatTools(options: { threadId?: number | undefined } = {}): ChatTools {
+  const threadId = options.threadId;
+
+  async function rerunResearch(): Promise<RerunResearchOutput> {
+    if (threadId === undefined) {
+      return { status: 'unavailable', message: '当前对话没有关联会话，无法重新发起研究' };
+    }
+
+    const created = await createRerun(threadId);
+    if (!created.ok) return { status: 'failed', message: created.message };
+
+    const queued = await enqueueS1(created.value.runId);
+    if (!queued.ok) {
+      return { status: 'failed', message: `研究已创建但入队失败：${queued.message}` };
+    }
+    return { status: 'started', runId: created.value.runId };
+  }
+
   return {
     query_evidence: tool({
       description:
@@ -82,6 +114,12 @@ export function createChatTools(): ChatTools {
         '为一次完整研究准备参数并请求用户确认。不创建 run、不启动采集；用户确认后才由界面创建。',
       inputSchema: startResearchInputSchema,
       execute: prepareStartResearch,
+    }),
+    rerun_research: tool({
+      description:
+        '当用户要求“重新验证 / 重跑 / 再研究一次”当前对话的想法时调用。会立即创建新的 run 并入队 S1，不需要用户再次确认；返回 runId 后告知用户已开始。',
+      inputSchema: rerunResearchInputSchema,
+      execute: rerunResearch,
     }),
   };
 }

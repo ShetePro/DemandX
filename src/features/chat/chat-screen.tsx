@@ -3,7 +3,7 @@
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useRouter } from 'next/navigation';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useStickToBottom } from 'use-stick-to-bottom';
 
@@ -12,7 +12,7 @@ import type { RunEvent } from '@/lib/runs/event-reducer';
 import type { AssistantMessagePart } from '@/lib/runs/repository';
 import { cn } from '@/lib/utils/cn';
 
-import { appendAssistantMessageAction, createRunAction } from './actions';
+import { appendAssistantMessageAction, appendUserMessageAction, createRunAction } from './actions';
 import { CitationSheet } from './citation-sheet';
 import { Composer } from './composer';
 import { MessageParts } from './message-parts';
@@ -62,6 +62,7 @@ export type ChatScreenProps = {
   initialRunEvents?: RunEvent[];
   /** False when the worker has not checked in; queued runs are then stalled. */
   workerOnline?: boolean | undefined;
+
   title?: string;
 };
 
@@ -140,12 +141,20 @@ export function ChatScreen({
     [threadId],
   );
 
+  const [chatError, setChatError] = useState<string | null>(null);
+  const lastSent = useRef<string | null>(null);
+
   const chat = useChat({
     messages: seededMessages,
     transport,
-    onError: () => toast.error('聊天请求失败，请重试'),
+    onError: () => {
+      setChatError('回复失败：模型请求中断或超时。可以重试，或检查 /settings/llm 的链。');
+      toast.error('聊天请求失败，请重试');
+    },
     // The reply is only streamed; without this write a refresh would lose it.
     onFinish: ({ message }) => {
+      // A tool may have started a run, so the RSC snapshot is stale.
+      router.refresh();
       const parts = persistableParts(message as unknown as ChatMessage);
       if (parts.length === 0) return;
 
@@ -185,6 +194,9 @@ export function ChatScreen({
     return () => observer.disconnect();
   }, []);
   const isStreaming = status === 'submitted' || status === 'streaming';
+  const lastMessage = messages[messages.length - 1];
+  const awaitingFirstToken =
+    isStreaming && (lastMessage === undefined || lastMessage.role === 'user');
 
   // Ask the question the thread was created for. The server states it only when
   // no answer is stored yet, and `hasPersistedAssistant` re-checks that here so
@@ -192,8 +204,31 @@ export function ChatScreen({
   useEffect(() => {
     if (autoPrompt === undefined || hasPersistedAssistant || autoSent.current) return;
     autoSent.current = true;
+    lastSent.current = autoPrompt;
     void sendMessage({ text: autoPrompt });
   }, [autoPrompt, hasPersistedAssistant, sendMessage]);
+
+  /** Manual turns are persisted so a reload keeps the question. */
+  function sendUserTurn(text: string): void {
+    const body = text.trim();
+    if (body === '') return;
+    setChatError(null);
+    lastSent.current = body;
+    void appendUserMessageAction(threadId, body).then(
+      (result) => {
+        if (!result.ok) toast.error(`保存消息失败：${result.message}`);
+      },
+      () => toast.error('保存消息失败：网络错误'),
+    );
+    void sendMessage({ text: body });
+  }
+
+  function retryLastTurn(): void {
+    const text = lastSent.current;
+    if (text === null) return;
+    setChatError(null);
+    void sendMessage({ text });
+  }
 
   async function handleStart(idea: string): Promise<void> {
     if (starting || run.id !== null) return;
@@ -220,6 +255,17 @@ export function ChatScreen({
     }
   }
 
+  // The research card sits above the latest user turn: that is the question
+  // the current run answers, and every reply to it follows below.
+  let lastUserIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') {
+      lastUserIndex = index;
+      break;
+    }
+  }
+  const activityBefore = lastUserIndex === -1 ? messages.length : lastUserIndex;
+
   return (
     <div className="grid h-full min-h-0 grid-cols-1">
       <section aria-label="对话" className="relative flex min-h-0 flex-col">
@@ -240,44 +286,69 @@ export function ChatScreen({
             {messages.length === 0 ? (
               <EmptyConversation />
             ) : (
-              messages.map((message) => (
-                <article
-                  key={message.id}
-                  className={cn(
-                    'max-w-full min-w-0 overflow-x-clip',
-                    message.role === 'user' &&
-                      'ml-auto w-fit max-w-[85%] rounded-xl bg-accent-soft px-3 py-2',
-                  )}
-                >
-                  <MessageParts
-                    message={message}
-                    onOpenCitation={setCitationId}
-                    onStart={starting || run.id !== null ? undefined : handleStart}
-                  />
-                </article>
+              messages.map((message, index) => (
+                <Fragment key={message.id}>
+                  {index === activityBefore ? (
+                    <RunActivity
+                      runId={run.id}
+                      initialEvents={run.events}
+                      status={runStatus}
+                      stage={runStage}
+                      workerOnline={workerOnline}
+                    />
+                  ) : null}
+                  <article
+                    className={cn(
+                      'max-w-full min-w-0 overflow-x-clip',
+                      message.role === 'user' &&
+                        'ml-auto w-fit max-w-[85%] rounded-xl bg-accent-soft px-3 py-2',
+                    )}
+                  >
+                    <MessageParts
+                      message={message}
+                      onOpenCitation={setCitationId}
+                      onStart={starting || run.id !== null ? undefined : handleStart}
+                    />
+                  </article>
+                </Fragment>
               ))
             )}
 
-            {/* The run speaks on the assistant side of the transcript: stage,
-                progress and the last few queries, folded to one line at the end. */}
-            <RunActivity
-              runId={run.id}
-              initialEvents={run.events}
-              status={runStatus}
-              stage={runStage}
-              workerOnline={workerOnline}
-            />
+            {/* No new user turn: the run card closes the transcript. */}
+            {activityBefore === -1 || activityBefore >= messages.length ? (
+              <RunActivity
+                runId={run.id}
+                initialEvents={run.events}
+                status={runStatus}
+                stage={runStage}
+                workerOnline={workerOnline}
+              />
+            ) : null}
+
+            {chatError !== null ? (
+              <div
+                role="alert"
+                className="flex flex-wrap items-center gap-3 rounded-xl border border-danger/40 bg-danger-soft px-3.5 py-2.5 text-[12px] text-danger"
+              >
+                <span className="min-w-0 flex-1">{chatError}</span>
+                <button
+                  type="button"
+                  onClick={retryLastTurn}
+                  className="rounded-lg border border-danger/40 px-2.5 py-1 text-[12px] font-medium hover:bg-danger/10"
+                >
+                  重试
+                </button>
+              </div>
+            ) : null}
+
+            {awaitingFirstToken ? <ThinkingBubble /> : null}
           </div>
         </div>
 
         {/* Floats over the transcript: no footer band, the thread keeps the page colour. */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-4 pb-4">
           <div ref={composerRef} className="pointer-events-auto mx-auto w-full max-w-3xl">
-            <Composer
-              onSend={(text) => void sendMessage({ text })}
-              onStop={stop}
-              isStreaming={isStreaming}
-            />
+            <Composer onSend={sendUserTurn} onStop={stop} isStreaming={isStreaming} />
           </div>
         </div>
       </section>
@@ -287,6 +358,39 @@ export function ChatScreen({
         evidenceHref={run.evidenceHref}
         onClose={() => setCitationId(null)}
       />
+    </div>
+  );
+}
+
+/**
+ * The provider can take tens of seconds to the first token. Without a visible
+ * placeholder the user sees their own message and nothing else, which reads as
+ * "no output" even though the request is still running.
+ */
+function ThinkingBubble() {
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setSeconds((value) => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex items-center gap-2 rounded-xl border border-border bg-surface-2/40 px-3.5 py-2.5 text-[12px] text-muted"
+    >
+      <span className="flex gap-1" aria-hidden="true">
+        {[0, 1, 2].map((dot) => (
+          <span
+            key={dot}
+            className="size-1.5 rounded-full bg-accent motion-safe:animate-pulse"
+            style={{ animationDelay: `${dot * 160}ms` }}
+          />
+        ))}
+      </span>
+      正在思考并调用工具… 已等待 {seconds}s
     </div>
   );
 }

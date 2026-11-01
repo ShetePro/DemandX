@@ -30,33 +30,36 @@ function compatibleBaseUrl(baseUrl: string): string {
 }
 
 /**
- * The model chat runs on: the first quality-chain entry a compatible adapter can
- * drive. A key is read only for that one provider — the chain's other entries are
- * never decrypted for a plain conversation.
+ * The model chat runs on. Chat prefers the **bulk** chain: it only needs to
+ * talk, and the fast model answers in ~1s while the quality model routinely
+ * spends 60s+ and reads as "no output". If bulk has no compatible entry, the
+ * quality chain is used instead.
  */
 export async function getChatModel(): Promise<Result<{ model: LanguageModel; used: ChainItem }>> {
-  const chain = await getChain('quality');
-  if (!chain.ok) return chain;
+  for (const profile of ['bulk', 'quality'] as const) {
+    const chain = await getChain(profile);
+    if (!chain.ok) return chain;
 
-  const item = chain.value.find((entry) => CHAT_KINDS[entry.kind] === true);
-  if (!item) {
-    return {
-      ok: false,
-      code: 'CHAT_PROVIDER_UNSUPPORTED',
-      message: 'quality 链中没有可对话的 provider（仅支持 openai-compatible 与 ollama）',
-    };
+    const item = chain.value.find((entry) => CHAT_KINDS[entry.kind] === true);
+    if (item === undefined) continue;
+
+    const key = await resolveApiKey(item.providerId);
+    if (!key.ok) return key;
+
+    const provider = createOpenAICompatible({
+      name: item.providerName,
+      baseURL: compatibleBaseUrl(item.baseUrl),
+      // Ollama ignores the bearer token; the SDK still requires a non-empty one.
+      apiKey: key.value ?? 'ollama',
+      headers: withProviderHeaders(item.baseUrl, item.headers, item.providerName),
+    });
+
+    return { ok: true, value: { model: provider(item.modelId), used: item } };
   }
 
-  const key = await resolveApiKey(item.providerId);
-  if (!key.ok) return key;
-
-  const provider = createOpenAICompatible({
-    name: item.providerName,
-    baseURL: compatibleBaseUrl(item.baseUrl),
-    // Ollama ignores the bearer token; the SDK still requires a non-empty one.
-    apiKey: key.value ?? 'ollama',
-    headers: withProviderHeaders(item.baseUrl, item.headers, item.providerName),
-  });
-
-  return { ok: true, value: { model: provider(item.modelId), used: item } };
+  return {
+    ok: false,
+    code: 'CHAT_PROVIDER_UNSUPPORTED',
+    message: 'bulk / quality 链中都没有可对话的 provider（仅支持 openai-compatible 与 ollama）',
+  };
 }

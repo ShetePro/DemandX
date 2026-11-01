@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import {
   appendAssistantMessage,
+  appendUserMessage,
   createResearch,
   createRun,
   createRunInputSchema,
@@ -91,6 +92,23 @@ export async function appendAssistantMessageAction(
     return { ok: false, code: 'VALIDATION_FAILED', message: '回复内容不能为空' };
 
   return appendAssistantMessage(parsed.data.threadId, storable);
+}
+
+const userMessageInputSchema = z.strictObject({
+  threadId: z.number().int().positive(),
+  text: z.string().trim().min(1, '消息不能为空').max(4000, '消息最多 4000 个字符'),
+});
+
+/** Stores a manual chat turn; a failed store must not block the reply. */
+export async function appendUserMessageAction(
+  threadId: number,
+  text: unknown,
+): Promise<Result<{ id: number }>> {
+  const parsed = userMessageInputSchema.safeParse({ threadId, text });
+  if (!parsed.success) {
+    return { ok: false, code: 'VALIDATION_FAILED', message: formatIssues(parsed.error) };
+  }
+  return appendUserMessage(parsed.data.threadId, parsed.data.text);
 }
 
 const startResearchInputSchema = z.strictObject({

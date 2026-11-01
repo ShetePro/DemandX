@@ -247,6 +247,8 @@ async function insertRunWithPitch(
     idea: string;
     angles?: string[] | undefined;
     chainSnapshot: unknown;
+    /** Reruns reuse the thread's existing pitch instead of adding a turn. */
+    recordMessage?: boolean;
   },
 ): Promise<number> {
   const runRow = firstRow(
@@ -263,11 +265,13 @@ async function insertRunWithPitch(
       .returning({ id: runs.id }),
   );
 
-  await tx.insert(messages).values({
-    threadId: input.threadId,
-    role: 'user',
-    parts: [{ type: 'text', text: input.idea }],
-  });
+  if (input.recordMessage !== false) {
+    await tx.insert(messages).values({
+      threadId: input.threadId,
+      role: 'user',
+      parts: [{ type: 'text', text: input.idea }],
+    });
+  }
 
   const appended = await appendEvent(
     runRow.id,
@@ -351,6 +355,70 @@ export async function createRun(input: CreateRunInput): Promise<Result<CreateRun
   } catch (error) {
     if (error instanceof EventWriteError) return error.failure;
     return storageFailure('创建 run', error);
+  }
+}
+
+/** Persists a chat turn the user typed after the thread was created. */
+export async function appendUserMessage(
+  threadId: number,
+  text: string,
+): Promise<Result<{ id: number }>> {
+  if (!Number.isInteger(threadId) || threadId <= 0)
+    return fail('VALIDATION_FAILED', 'threadId 必须是正整数');
+  const body = text.trim();
+  if (body === '') return fail('VALIDATION_FAILED', '消息不能为空');
+
+  try {
+    const rows = await db
+      .insert(messages)
+      .values({ threadId, role: 'user', parts: [{ type: 'text', text: body }] })
+      .returning({ id: messages.id });
+    return ok(firstRow(rows));
+  } catch (error) {
+    return storageFailure('保存消息', error);
+  }
+}
+
+export type RerunResult = { runId: number; threadId: number };
+
+/**
+ * Starts a fresh run for an existing conversation, reusing its pitch. Unlike
+ * `createRun`, no user message is written: the rerun was requested in chat, and
+ * adding the pitch again would print a duplicate turn. The run still gets its
+ * `run.created` event so the SSE rail paints immediately.
+ */
+export async function createRerun(threadId: number): Promise<Result<RerunResult>> {
+  if (!Number.isInteger(threadId) || threadId <= 0)
+    return fail('VALIDATION_FAILED', 'threadId 必须是正整数');
+
+  const chainSnapshot = await qualityChainSnapshot();
+
+  try {
+    const created = await db.transaction(async (tx): Promise<RerunResult | null> => {
+      const rows = await tx
+        .select({ ideaId: threads.ideaId, title: threads.title, rawInput: ideas.rawInput })
+        .from(threads)
+        .innerJoin(ideas, eq(ideas.id, threads.ideaId))
+        .where(eq(threads.id, threadId))
+        .limit(1);
+      const thread = rows[0];
+      if (thread === undefined) return null;
+
+      const idea = thread.rawInput.trim() === '' ? thread.title : thread.rawInput;
+      const runId = await insertRunWithPitch(tx, {
+        ideaId: thread.ideaId,
+        threadId,
+        idea,
+        chainSnapshot,
+        recordMessage: false,
+      });
+      return { runId, threadId };
+    });
+
+    return created === null ? fail('NOT_FOUND', `会话 ${threadId} 不存在`) : ok(created);
+  } catch (error) {
+    if (error instanceof EventWriteError) return error.failure;
+    return storageFailure('重新发起研究', error);
   }
 }
 

@@ -59,7 +59,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!model.ok) return Response.json({ error: model.code }, { status: 500 });
   const used = model.value.used;
 
-  const tools = createChatTools();
+  const tools = createChatTools({ threadId: parsed.data.threadId });
   const messages = parsed.data.messages as ChatMessage[];
   const runContext = await describeThreadRun(parsed.data.threadId);
 
@@ -72,6 +72,8 @@ export async function POST(request: Request): Promise<Response> {
       // One retrieval step plus one correction step is enough; a longer loop
       // costs tokens without improving the answer.
       stopWhen: stepCountIs(3),
+      // A stuck provider must surface as an error instead of an endless spinner.
+      abortSignal: AbortSignal.timeout(60_000),
       // Chat bypasses LlmPort, so it records its own tokens; without this the
       // settings panel only counted pipeline calls.
       onFinish: ({ usage }) => {

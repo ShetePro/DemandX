@@ -85,7 +85,6 @@ async function ChatView({ threadId, title }: { threadId: number; title: string }
   }
 
   const autoPrompt = run === null || assistant.value ? undefined : await firstPrompt(run.id);
-
   return (
     <ChatScreen
       key={threadId}

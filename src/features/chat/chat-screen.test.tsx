@@ -9,11 +9,13 @@ import { ChatScreen } from './chat-screen';
 type ChatOptions = {
   messages?: unknown[];
   onFinish?: (event: { message: unknown }) => void;
+  onError?: (error: unknown) => void;
 };
 
 const mocks = vi.hoisted(() => ({
   createRunAction: vi.fn(),
   appendAssistantMessageAction: vi.fn(),
+  appendUserMessageAction: vi.fn(),
   refresh: vi.fn(),
   push: vi.fn(),
   success: vi.fn(),
@@ -40,6 +42,7 @@ vi.mock('@ai-sdk/react', () => ({
 vi.mock('./actions', () => ({
   createRunAction: mocks.createRunAction,
   appendAssistantMessageAction: mocks.appendAssistantMessageAction,
+  appendUserMessageAction: mocks.appendUserMessageAction,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -88,6 +91,8 @@ const APPROVAL_MESSAGE: ChatMessage = {
 };
 
 beforeEach(() => {
+  mocks.appendUserMessageAction.mockResolvedValue({ ok: true, value: { id: 1 } });
+  mocks.appendAssistantMessageAction.mockResolvedValue({ ok: true, value: { id: 2 } });
   mocks.status = 'ready';
   mocks.options = null;
 });
@@ -279,5 +284,79 @@ describe('ChatScreen', () => {
     await waitFor(() =>
       expect(mocks.error).toHaveBeenCalledWith('保存回复失败：保存助手回复失败 (SQLSTATE 08006)'),
     );
+  });
+
+  it('persists a typed turn and shows the run card above it', async () => {
+    const user = userEvent.setup();
+    render(
+      <ChatScreen threadId={1} initialMessages={[TEXT_MESSAGE]} runId={7} evidenceHref={null} />,
+    );
+
+    const composer = screen.getByRole('textbox', { name: '输入消息' });
+    await user.type(composer, '帮我重新验证下{Enter}');
+
+    await waitFor(() =>
+      expect(mocks.appendUserMessageAction).toHaveBeenCalledWith(1, '帮我重新验证下'),
+    );
+    expect(mocks.sendMessage).toHaveBeenCalledWith({ text: '帮我重新验证下' });
+    expect(screen.getByTestId('run-activity')).toBeVisible();
+  });
+
+  it('shows a retryable error when the chat request fails', async () => {
+    const user = userEvent.setup();
+    render(
+      <ChatScreen threadId={1} initialMessages={[TEXT_MESSAGE]} runId={null} evidenceHref={null} />,
+    );
+
+    const composer = screen.getByRole('textbox', { name: '输入消息' });
+    await user.type(composer, '帮我重新验证下{Enter}');
+    mocks.sendMessage.mockClear();
+
+    act(() => mocks.options?.onError?.(new Error('timeout')));
+    expect(screen.getByRole('alert')).toHaveTextContent('回复失败');
+
+    await user.click(screen.getByRole('button', { name: '重试' }));
+    expect(mocks.sendMessage).toHaveBeenCalledWith({ text: '帮我重新验证下' });
+  });
+
+  it('keeps the run card above turns typed after the run started', () => {
+    const first: ChatMessage = {
+      id: 'u1',
+      role: 'user',
+      parts: [{ type: 'text', text: '原始想法' }],
+    };
+    const reply: ChatMessage = {
+      id: 'a1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: '收到，开始研究。', state: 'done' }],
+    };
+    const later: ChatMessage = {
+      id: 'u2',
+      role: 'user',
+      parts: [{ type: 'text', text: '帮我重新验证下' }],
+    };
+
+    render(
+      <ChatScreen
+        threadId={1}
+        initialMessages={[first, reply, later]}
+        runId={7}
+        evidenceHref={null}
+      />,
+    );
+
+    const activity = screen.getByTestId('run-activity');
+    const laterTurn = screen.getByText('帮我重新验证下');
+    expect(
+      activity.compareDocumentPosition(laterTurn) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('shows a thinking placeholder while awaiting the first token', () => {
+    mocks.status = 'streaming';
+    render(<ChatScreen threadId={1} initialMessages={[]} runId={null} evidenceHref={null} />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('正在思考');
+    mocks.status = 'ready';
   });
 });

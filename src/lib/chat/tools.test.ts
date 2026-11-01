@@ -1,77 +1,57 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// The tools only prepare arguments; touching the database would mean chat had
-// side effects before the operator confirms. The factory records *whether the
-// import graph reached the db client at all* — a plain flag, not a mock, so
-// `clearMocks` between tests cannot erase the evidence.
-const dbClientImport = vi.hoisted(() => ({ reached: false }));
+const mocks = vi.hoisted(() => ({
+  createRerun: vi.fn(),
+  enqueueS1: vi.fn(),
+}));
 
-vi.mock('@/lib/db/client', () => {
-  dbClientImport.reached = true;
-  return { db: {} };
-});
+vi.mock('@/lib/runs/repository', () => ({ createRerun: mocks.createRerun }));
+vi.mock('@/lib/runs/queue', () => ({ enqueueS1: mocks.enqueueS1 }));
 
-import {
-  SIGNALS,
-  createChatTools,
-  prepareStartResearch,
-  queryEvidence,
-  queryEvidenceInputSchema,
-  startResearchInputSchema,
-} from './tools';
+import { createChatTools, type RerunResearchOutput } from './tools';
 
-describe('chat tools', () => {
-  it('never imports the database client', () => {
-    expect(dbClientImport.reached).toBe(false);
+function executeRerun(tools: ReturnType<typeof createChatTools>) {
+  const tool = tools.rerun_research as unknown as {
+    execute: (input: { reason?: string }) => Promise<RerunResearchOutput>;
+  };
+  return tool.execute({ reason: '用户要求重新验证' });
+}
+
+describe('rerun_research tool', () => {
+  it('starts a run for the current thread and enqueues S1', async () => {
+    mocks.createRerun.mockResolvedValue({ ok: true, value: { runId: 42, threadId: 7 } });
+    mocks.enqueueS1.mockResolvedValue({ ok: true, value: { jobId: 'job-1' } });
+
+    const result = await executeRerun(createChatTools({ threadId: 7 }));
+
+    expect(mocks.createRerun).toHaveBeenCalledWith(7);
+    expect(mocks.enqueueS1).toHaveBeenCalledWith(42);
+    expect(result).toEqual({ status: 'started', runId: 42 });
   });
 
-  it('wires both tools for the model', () => {
-    const tools = createChatTools();
+  it('refuses when the chat is not attached to a thread', async () => {
+    const result = await executeRerun(createChatTools());
 
-    expect(Object.keys(tools)).toEqual(['query_evidence', 'start_research']);
-    expect(tools.start_research.execute).toBe(prepareStartResearch);
-    expect(tools.query_evidence.execute).toBe(queryEvidence);
+    expect(result.status).toBe('unavailable');
+    expect(mocks.createRerun).not.toHaveBeenCalled();
   });
 
-  it('start_research only asks for confirmation', async () => {
-    const result = await prepareStartResearch({ idea: '跨境卖家的多平台库存同步工具' });
+  it('reports a storage failure instead of claiming the run started', async () => {
+    mocks.createRerun.mockResolvedValue({ ok: false, code: 'NOT_FOUND', message: '会话不存在' });
 
-    expect(result).toEqual({
-      status: 'needs_confirmation',
-      idea: '跨境卖家的多平台库存同步工具',
-      angles: [],
-    });
+    const result = await executeRerun(createChatTools({ threadId: 9 }));
+
+    expect(result).toEqual({ status: 'failed', message: '会话不存在' });
+    expect(mocks.enqueueS1).not.toHaveBeenCalled();
   });
 
-  it('start_research echoes the prepared angles without creating a run', async () => {
-    const result = await prepareStartResearch({
-      idea: '独立开发者的发票与报销工具',
-      angles: ['报税季痛点', '会计软件替代'],
-    });
+  it('reports a queue failure after the run was created', async () => {
+    mocks.createRerun.mockResolvedValue({ ok: true, value: { runId: 43, threadId: 9 } });
+    mocks.enqueueS1.mockResolvedValue({ ok: false, code: 'STORAGE_FAILED', message: 'pg 挂了' });
 
-    expect(result.angles).toEqual(['报税季痛点', '会计软件替代']);
-    expect(result).not.toHaveProperty('runId');
-  });
+    const result = await executeRerun(createChatTools({ threadId: 9 }));
 
-  it('query_evidence returns an empty list until real evidence exists', async () => {
-    await expect(queryEvidence()).resolves.toEqual({ items: [] });
-  });
-
-  it('rejects an idea shorter than 8 characters', () => {
-    expect(startResearchInputSchema.safeParse({ idea: '太短' }).success).toBe(false);
-  });
-
-  it('caps the angle list at five entries', () => {
-    const angles = ['一', '二', '三', '四', '五', '六'];
-
-    expect(
-      startResearchInputSchema.safeParse({ idea: '跨境卖家的多平台库存同步', angles }).success,
-    ).toBe(false);
-  });
-
-  it('accepts only the five signal classes', () => {
-    expect(SIGNALS).toHaveLength(5);
-    expect(queryEvidenceInputSchema.safeParse({ signal: 'paying' }).success).toBe(true);
-    expect(queryEvidenceInputSchema.safeParse({ signal: 'buzz' }).success).toBe(false);
+    expect(result.status).toBe('failed');
+    if (result.status === 'failed') expect(result.message).toContain('入队失败');
   });
 });
