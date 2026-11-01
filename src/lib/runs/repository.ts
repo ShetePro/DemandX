@@ -622,6 +622,34 @@ export type RunRecord = {
   createdAt: Date;
 };
 
+/** Every run of one conversation, oldest first; chat renders one card each. */
+export async function listRunsForThread(threadId: number): Promise<Result<RunRecord[]>> {
+  if (!Number.isInteger(threadId) || threadId <= 0)
+    return fail('NOT_FOUND', `thread ${threadId} 不存在`);
+
+  try {
+    const rows = await db
+      .select({
+        id: runs.id,
+        ideaId: runs.ideaId,
+        threadId: runs.threadId,
+        status: runs.status,
+        stage: runs.stage,
+        deadlineAt: runs.deadlineAt,
+        startedAt: runs.startedAt,
+        finishedAt: runs.finishedAt,
+        error: runs.error,
+        createdAt: runs.createdAt,
+      })
+      .from(runs)
+      .where(eq(runs.threadId, threadId))
+      .orderBy(asc(runs.createdAt), asc(runs.id));
+    return ok(rows);
+  } catch (error) {
+    return storageFailure('读取会话的研究记录', error);
+  }
+}
+
 export async function getRun(runId: number): Promise<Result<RunRecord | null>> {
   if (!Number.isInteger(runId) || runId <= 0) return fail('NOT_FOUND', `run ${runId} 不存在`);
 

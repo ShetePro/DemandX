@@ -17,6 +17,7 @@ import {
   getRunContext,
   getThread,
   hasAssistantMessage,
+  listRunsForThread,
   readEvents,
   type MessageRecord,
 } from '@/lib/runs/repository';
@@ -65,15 +66,17 @@ async function firstPrompt(runId: number): Promise<string | undefined> {
 
 /** The 对话 tab: history, the latest run and its event tail for the rail. */
 async function ChatView({ threadId, title }: { threadId: number; title: string }) {
-  const [messages, latestRun, assistant, worker] = await Promise.all([
+  const [messages, latestRun, assistant, worker, allRuns] = await Promise.all([
     getMessages(threadId),
     getLatestRunForThread(threadId),
     hasAssistantMessage(threadId),
     readWorkerStatus(),
+    listRunsForThread(threadId),
   ]);
   if (!messages.ok) throw new Error(messages.message);
   if (!latestRun.ok) throw new Error(latestRun.message);
   if (!assistant.ok) throw new Error(assistant.message);
+  if (!allRuns.ok) throw new Error(allRuns.message);
 
   const run = latestRun.value;
   let events: RunEvent[] = [];
@@ -85,6 +88,21 @@ async function ChatView({ threadId, title }: { threadId: number; title: string }
   }
 
   const autoPrompt = run === null || assistant.value ? undefined : await firstPrompt(run.id);
+
+  // One card per run, anchored after the messages that existed when it started.
+  const runCards = await Promise.all(
+    allRuns.value.map(async (entry) => {
+      const stored = await readEvents(entry.id, 0);
+      if (!stored.ok) throw new Error(stored.message);
+      return {
+        id: entry.id,
+        after: messages.value.filter((message) => message.createdAt <= entry.createdAt).length,
+        status: entry.status,
+        stage: entry.stage,
+        events: toRunEvents(stored.value),
+      };
+    }),
+  );
   return (
     <ChatScreen
       key={threadId}
@@ -98,6 +116,7 @@ async function ChatView({ threadId, title }: { threadId: number; title: string }
       evidenceHref={run === null ? null : `/runs/${run.id}/evidence`}
       initialRunEvents={events}
       workerOnline={worker.online}
+      runs={runCards}
     />
   );
 }

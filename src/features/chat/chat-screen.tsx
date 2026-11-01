@@ -41,6 +41,15 @@ type RunState = {
   events: RunEvent[];
 };
 
+/** One run rendered in the transcript; `after` is the message index it follows. */
+export type RunCardData = {
+  id: number;
+  after: number;
+  status?: string | undefined;
+  stage?: string | null | undefined;
+  events: RunEvent[];
+};
+
 export type ChatScreenProps = {
   threadId: number;
   /** Persisted history, already in `UIMessage` shape. */
@@ -60,6 +69,8 @@ export type ChatScreenProps = {
   evidenceHref: string | null;
   /** First-paint snapshot for the rail, oldest first. */
   initialRunEvents?: RunEvent[];
+  /** Every run of the conversation, oldest first. Overrides the single-run props. */
+  runs?: RunCardData[] | undefined;
   /** False when the worker has not checked in; queued runs are then stalled. */
   workerOnline?: boolean | undefined;
 
@@ -105,6 +116,7 @@ export function ChatScreen({
   runStage,
   evidenceHref,
   initialRunEvents = [],
+  runs,
   workerOnline = true,
   title = '研究对话',
 }: ChatScreenProps) {
@@ -255,8 +267,8 @@ export function ChatScreen({
     }
   }
 
-  // The research card sits above the latest user turn: that is the question
-  // the current run answers, and every reply to it follows below.
+  // Legacy callers pass one run; the page passes every run with the message
+  // index it follows, so a rerun adds a new card instead of replacing the old.
   let lastUserIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     if (messages[index]?.role === 'user') {
@@ -264,7 +276,26 @@ export function ChatScreen({
       break;
     }
   }
-  const activityBefore = lastUserIndex === -1 ? messages.length : lastUserIndex;
+
+  const runCards: RunCardData[] =
+    runs ??
+    (run.id === null
+      ? []
+      : [
+          {
+            id: run.id,
+            after: lastUserIndex === -1 ? messages.length : lastUserIndex,
+            status: runStatus,
+            stage: runStage,
+            events: initialRunEvents,
+          },
+        ]);
+
+  const shift = autoPrompt === undefined ? 0 : 1;
+  const placed = runCards.map((card) => ({
+    ...card,
+    after: Math.min(messages.length, Math.max(0, card.after - shift)),
+  }));
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1">
@@ -288,15 +319,18 @@ export function ChatScreen({
             ) : (
               messages.map((message, index) => (
                 <Fragment key={message.id}>
-                  {index === activityBefore ? (
-                    <RunActivity
-                      runId={run.id}
-                      initialEvents={run.events}
-                      status={runStatus}
-                      stage={runStage}
-                      workerOnline={workerOnline}
-                    />
-                  ) : null}
+                  {placed
+                    .filter((card) => card.after === index)
+                    .map((card) => (
+                      <RunActivity
+                        key={card.id}
+                        runId={card.id}
+                        initialEvents={card.events}
+                        status={card.status}
+                        stage={card.stage}
+                        workerOnline={workerOnline}
+                      />
+                    ))}
                   <article
                     className={cn(
                       'max-w-full min-w-0 overflow-x-clip',
@@ -314,16 +348,18 @@ export function ChatScreen({
               ))
             )}
 
-            {/* No new user turn: the run card closes the transcript. */}
-            {activityBefore === -1 || activityBefore >= messages.length ? (
-              <RunActivity
-                runId={run.id}
-                initialEvents={run.events}
-                status={runStatus}
-                stage={runStage}
-                workerOnline={workerOnline}
-              />
-            ) : null}
+            {placed
+              .filter((card) => card.after >= messages.length)
+              .map((card) => (
+                <RunActivity
+                  key={card.id}
+                  runId={card.id}
+                  initialEvents={card.events}
+                  status={card.status}
+                  stage={card.stage}
+                  workerOnline={workerOnline}
+                />
+              ))}
 
             {chatError !== null ? (
               <div

@@ -219,7 +219,8 @@ test.describe('Chat', () => {
     await page.reload();
     await expect(page.getByRole('complementary', { name: '运行详情' })).toHaveCount(0);
 
-    const card = page.getByRole('group', { name: '实时研究' });
+    // The thread also owns the run created by `createThread`; scope to this one.
+    const card = page.getByRole('group', { name: '实时研究' }).filter({ hasText: `run #${runId}` });
     await expect(card.locator('li[aria-current="step"]')).toContainText('S1 采集');
     await expect(card).toContainText('进行中');
     await expect(card).toContainText('当前阶段：S1 采集');
@@ -227,7 +228,10 @@ test.describe('Chat', () => {
     // No reload here: only the insert, which the card's SSE connection polls.
     await finishRun(runId);
     await expect(card).toHaveCount(0, { timeout: 1_500 });
-    await expect(page.getByText('研究完成', { exact: true })).toBeVisible({ timeout: 1_500 });
+    await expect(page.getByText(`run #${runId}`)).toBeVisible({ timeout: 1_500 });
+    await expect(page.getByText('研究完成', { exact: true }).first()).toBeVisible({
+      timeout: 1_500,
+    });
   });
 
   test('输入框增高时，对话底部留出同等距离', async ({ page }) => {

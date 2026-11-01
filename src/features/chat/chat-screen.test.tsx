@@ -359,4 +359,36 @@ describe('ChatScreen', () => {
     expect(screen.getByRole('status')).toHaveTextContent('正在思考');
     mocks.status = 'ready';
   });
+
+  it('renders one research card per run, each at its own position', () => {
+    const first: ChatMessage = {
+      id: 'u1',
+      role: 'user',
+      parts: [{ type: 'text', text: '原始想法' }],
+    };
+    const second: ChatMessage = {
+      id: 'u2',
+      role: 'user',
+      parts: [{ type: 'text', text: '重新跑一次' }],
+    };
+
+    render(
+      <ChatScreen
+        threadId={1}
+        initialMessages={[first, second]}
+        runId={null}
+        evidenceHref={null}
+        runs={[
+          { id: 7, after: 1, status: 'failed', stage: 'S3', events: [] },
+          { id: 8, after: 2, status: 'queued', stage: 'S0', events: [] },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('run-7')).toBeVisible();
+    expect(screen.getByText('run-8')).toBeVisible();
+    expect(
+      screen.getByText('run-7').compareDocumentPosition(screen.getByText('重新跑一次')),
+    ).toBeTruthy();
+  });
 });
