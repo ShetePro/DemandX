@@ -148,6 +148,9 @@ export async function clusterS3(
 
   const asked = await deps.llm.structured(clusteringSchema, buildClusteringPrompt(evidence), {
     profile: 'quality',
+    // A slow quality model must not fail the run; the fast chain still clusters.
+    fallbackProfile: 'bulk',
+    timeoutMs: 90_000,
   });
   if (!asked.ok) {
     // Every model failure is terminal here: the only call of the stage failed,

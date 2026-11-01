@@ -6,7 +6,7 @@ import { complete as google } from './adapters/google';
 import { complete as ollama } from './adapters/ollama';
 import { complete as openaiCompatible } from './adapters/openai-compatible';
 import type { Adapter, AdapterFailure, AdapterResult } from './adapters/types';
-import type { ChainItem, LlmPort, Profile, Prompt, Usage } from './port';
+import type { CallOptions, ChainItem, LlmPort, Profile, Prompt, Usage } from './port';
 import { withProviderHeaders } from './provider-headers';
 import type { AppErrorCode, ProviderKind, Result } from './types';
 
@@ -102,7 +102,7 @@ function jsonSchemaOf(schema: z.ZodType): Record<string, unknown> | undefined {
   }
 }
 
-function exhausted<T>(profile: Profile, failures: Failure[]): Result<T> {
+function exhausted<T>(profile: string, failures: Failure[]): Result<T> {
   if (failures.length === 0) {
     return fail('LLM_UNAVAILABLE', `${profile} 链为空：请先在设置中配置 provider`);
   }
@@ -120,14 +120,19 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
   const retryDelayMs = deps.retryDelayMs ?? 300;
 
   // In-memory on purpose: a restart re-probes providers, which is what we want
-  // after the operator edits settings. Keyed by provider, shared across profiles.
-  const coolingUntil = new Map<number, number>();
+  // after the operator edits settings. Keyed by provider+model: one slow model
+  // must not take the provider's other models (and the fallback chain) down.
+  const coolingUntil = new Map<string, number>();
+
+  function cooldownKey(item: ChainItem): string {
+    return `${item.providerId}#${item.modelId}`;
+  }
 
   function cooling(item: ChainItem): boolean {
-    const until = coolingUntil.get(item.providerId);
+    const until = coolingUntil.get(cooldownKey(item));
     if (until === undefined) return false;
     if (until > now()) return true;
-    coolingUntil.delete(item.providerId);
+    coolingUntil.delete(cooldownKey(item));
     return false;
   }
 
@@ -136,6 +141,7 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
     prompt: Prompt,
     structured: boolean,
     jsonSchema: Record<string, unknown> | undefined,
+    timeoutMs: number | undefined,
   ): Promise<Attempt> {
     const apiKey = await deps.resolveApiKey(item.providerId);
     // A broken secret store is local: retrying it on a timer buys nothing.
@@ -152,6 +158,7 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
           headers: withProviderHeaders(item.baseUrl, item.headers, item.providerName),
           structured,
           jsonSchema,
+          ...(timeoutMs === undefined ? {} : { timeoutMs }),
         });
       } catch {
         // An adapter bug must not take the rest of the chain down with it.
@@ -162,45 +169,57 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
     let result = await call();
 
     // A DNS/TLS blip or a dropped socket is usually gone by the second try. A
-    // retry here matters because the provider goes into cooldown after this,
-    // and every model behind the same provider would be skipped until then.
-    if (!result.ok && (result.reason === 'network' || result.reason === 'timeout')) {
+    // timeout is different: the model is slow, and waiting another full budget
+    // only doubles the latency before the fallback chain gets its turn.
+    if (!result.ok && result.reason === 'network') {
       await sleep(retryDelayMs);
       result = await call();
     }
 
     if (!result.ok) {
-      if (needsCooldown(result)) coolingUntil.set(item.providerId, now() + cooldownMs);
+      if (needsCooldown(result)) coolingUntil.set(cooldownKey(item), now() + cooldownMs);
       return { ok: false, code: result.code };
     }
 
     return { ok: true, text: result.text, usage: result.usage };
   }
 
+  function profilesOf(options: CallOptions): Profile[] {
+    const profiles: Profile[] = [options.profile];
+    if (options.fallbackProfile !== undefined && options.fallbackProfile !== options.profile) {
+      profiles.push(options.fallbackProfile);
+    }
+    return profiles;
+  }
+
   return {
-    async text(prompt: Prompt, options: { profile: Profile }) {
-      const chain = await deps.loadChain(options.profile);
-      if (!chain.ok) return chain;
-
+    async text(prompt: Prompt, options: CallOptions) {
       const failures: Failure[] = [];
-      for (const item of chain.value) {
-        if (cooling(item)) {
-          failures.push({ item, code: 'cooldown' });
-          continue;
-        }
+      const profiles = profilesOf(options);
 
-        const result = await attempt(item, prompt, false, undefined);
-        if (result.ok) {
-          deps.recordUsage?.(item, result.usage);
-          return ok({ text: result.text, used: item, usage: result.usage });
+      for (const profile of profiles) {
+        const chain = await deps.loadChain(profile);
+        if (!chain.ok) return chain;
+
+        for (const item of chain.value) {
+          if (cooling(item)) {
+            failures.push({ item, code: 'cooldown' });
+            continue;
+          }
+
+          const result = await attempt(item, prompt, false, undefined, options.timeoutMs);
+          if (result.ok) {
+            deps.recordUsage?.(item, result.usage);
+            return ok({ text: result.text, used: item, usage: result.usage });
+          }
+          failures.push({ item, code: result.code });
         }
-        failures.push({ item, code: result.code });
       }
 
-      return exhausted(options.profile, failures);
+      return exhausted(profiles.join('→'), failures);
     },
 
-    async structured<T>(schema: z.ZodType<T>, prompt: Prompt, options: { profile: Profile }) {
+    async structured<T>(schema: z.ZodType<T>, prompt: Prompt, options: CallOptions) {
       const jsonSchema = jsonSchemaOf(schema);
       // No JSON Schema form means we cannot ask any provider for this shape.
       // Sending it anyway would turn a caller bug into "all models are bad".
@@ -211,50 +230,54 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
         );
       }
 
-      const chain = await deps.loadChain(options.profile);
-      if (!chain.ok) return chain;
-
+      const profiles = profilesOf(options);
       const failures: Failure[] = [];
       let sawBadOutput = false;
       let sawOtherFailure = false;
 
-      for (const item of chain.value) {
-        if (cooling(item)) {
-          failures.push({ item, code: 'cooldown' });
-          // Unknown cause, so a pure "bad output" verdict would be a guess.
-          sawOtherFailure = true;
-          continue;
-        }
+      for (const profile of profiles) {
+        const chain = await deps.loadChain(profile);
+        if (!chain.ok) return chain;
 
-        // A malformed answer is usually a formatting slip, so the same item gets
-        // exactly one retry before the chain moves on.
-        for (let attemptNo = 1; attemptNo <= 2; attemptNo += 1) {
-          const result = await attempt(item, prompt, true, jsonSchema);
-          if (!result.ok) {
-            failures.push({ item, code: result.code });
+        for (const item of chain.value) {
+          if (cooling(item)) {
+            failures.push({ item, code: 'cooldown' });
+            // Unknown cause, so a pure "bad output" verdict would be a guess.
             sawOtherFailure = true;
-            break;
+            continue;
           }
 
-          const decoded = decode(result.text, schema);
-          if (decoded.ok) {
-            deps.recordUsage?.(item, result.usage);
-            return ok({ data: decoded.value, used: item, usage: result.usage });
-          }
+          // A malformed answer is usually a formatting slip, so the same item gets
+          // exactly one retry before the chain moves on.
+          for (let attemptNo = 1; attemptNo <= 2; attemptNo += 1) {
+            const result = await attempt(item, prompt, true, jsonSchema, options.timeoutMs);
+            if (!result.ok) {
+              failures.push({ item, code: result.code });
+              sawOtherFailure = true;
+              break;
+            }
 
-          if (attemptNo === 2) {
-            failures.push({ item, code: 'bad_output' });
-            sawBadOutput = true;
+            const decoded = decode(result.text, schema);
+            if (decoded.ok) {
+              deps.recordUsage?.(item, result.usage);
+              return ok({ data: decoded.value, used: item, usage: result.usage });
+            }
+
+            if (attemptNo === 2) {
+              failures.push({ item, code: 'bad_output' });
+              sawBadOutput = true;
+            }
           }
         }
       }
 
-      if (failures.length === 0) return exhausted(options.profile, failures);
+      const label = profiles.join('→');
+      if (failures.length === 0) return exhausted(label, failures);
 
       const message = summarize(failures);
       return sawBadOutput && !sawOtherFailure
-        ? fail('LLM_BAD_OUTPUT', `所有 provider 均返回无效 JSON（${options.profile}）：${message}`)
-        : fail('LLM_UNAVAILABLE', `所有 provider 均失败（${options.profile}）：${message}`);
+        ? fail('LLM_BAD_OUTPUT', `所有 provider 均返回无效 JSON（${label}）：${message}`)
+        : fail('LLM_UNAVAILABLE', `所有 provider 均失败（${label}）：${message}`);
     },
   };
 }

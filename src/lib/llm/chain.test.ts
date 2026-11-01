@@ -213,17 +213,17 @@ describe('createLlmPort · text', () => {
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
-  it('retries an aborted request instead of falling back to the next provider', async () => {
+  it('treats a timeout as terminal for that model and moves on at once', async () => {
     fetchMock
       .mockRejectedValueOnce(new DOMException('The operation was aborted.', 'AbortError'))
-      .mockResolvedValueOnce(answer('from a'));
+      .mockResolvedValueOnce(answer('from b'));
 
     const port = makePort([A, B]);
     const first = await port.text(PROMPT, { profile: 'bulk' });
 
-    expect(first.ok && first.value.used.providerName).toBe('A');
+    expect(first.ok && first.value.used.providerName).toBe('B');
+    // No retry: a timeout says the model is slow, not that the network blipped.
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[1]?.[0]).toBe('https://a.example/v1/chat/completions');
   });
 });
 
@@ -346,6 +346,42 @@ describe('createLlmPort · structured', () => {
     expect(again.ok).toBe(false);
     if (again.ok) return;
     expect(again.message).toContain('A#a-model: cooldown');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to the bulk chain after the quality chain fails', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new DOMException('The operation was aborted.', 'AbortError'))
+      .mockResolvedValueOnce(answer('{"score":1}'));
+
+    const port = createLlmPort({
+      loadChain: async (profile) => ({
+        ok: true,
+        value: profile === 'quality' ? [A] : [B],
+      }),
+      resolveApiKey: async () => ({ ok: true, value: 'k' }),
+      now: () => clock,
+      retryDelayMs: 0,
+    });
+
+    const result = await port.structured(RESULT_SCHEMA, PROMPT, {
+      profile: 'quality',
+      fallbackProfile: 'bulk',
+      timeoutMs: 1_000,
+    });
+
+    expect(result.ok && result.value.used.providerName).toBe('B');
+  });
+
+  it('cools only the model that timed out, not its provider', async () => {
+    const A2: ChainItem = { ...A, modelId: 'a-second' };
+    fetchMock
+      .mockRejectedValueOnce(new DOMException('The operation was aborted.', 'AbortError'))
+      .mockResolvedValueOnce(answer('from a2'));
+
+    const result = await makePort([A, A2]).text(PROMPT, { profile: 'bulk' });
+
+    expect(result.ok && result.value.used.modelId).toBe('a-second');
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

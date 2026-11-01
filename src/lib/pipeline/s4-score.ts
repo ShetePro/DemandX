@@ -238,7 +238,7 @@ export async function scoreS4(ctx: RunContext, deps: ScoreDeps): Promise<StageOu
       const asked = await deps.llm.structured(
         ordinalsSchema,
         buildScoringPrompt(opportunity, accepted),
-        { profile: 'quality' },
+        { profile: 'quality', fallbackProfile: 'bulk', timeoutMs: 90_000 },
       );
       if (!asked.ok) {
         return {

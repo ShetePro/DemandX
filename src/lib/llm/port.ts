@@ -7,6 +7,19 @@ export type Profile = 'bulk' | 'quality';
 
 export type Prompt = { system: string; user: string };
 
+/** How one call walks the chains. */
+export type CallOptions = {
+  profile: Profile;
+  /**
+   * Tried only after every item in `profile` failed. Pipeline stages set this
+   * so a slow quality model degrades to the fast chain instead of failing the
+   * whole run.
+   */
+  fallbackProfile?: Profile;
+  /** Per-attempt timeout; defaults to the adapter's 120s. */
+  timeoutMs?: number;
+};
+
 /** Token counts as reported by the provider; 0 when it reports nothing. */
 export type Usage = { in: number; out: number };
 
@@ -30,11 +43,11 @@ export interface LlmPort {
   structured<T>(
     schema: ZodType<T>,
     prompt: Prompt,
-    o: { profile: Profile },
+    o: CallOptions,
   ): Promise<Result<{ data: T; used: ChainItem; usage: Usage }>>;
 
   text(
     prompt: Prompt,
-    o: { profile: Profile },
+    o: CallOptions,
   ): Promise<Result<{ text: string; used: ChainItem; usage: Usage }>>;
 }
