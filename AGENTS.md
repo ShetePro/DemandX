@@ -138,6 +138,17 @@ Research-output rules that also constrain UI copy and fixtures:
 - **Nightly/old runs are read-only.** Pages query the database per request
   (`export const dynamic = 'force-dynamic'`); no build-time snapshot of mutable data.
 
+Documentation conventions:
+
+- **User-visible behaviour or UX changes** must update `docs/runbook.md` in the same
+  commit (what changed, how to use it, failure modes). Internal refactors, tests or
+  style-only tweaks do not need docs.
+- **Every screenshot added to `docs/design/` must be listed in
+  `docs/design/README.md`** with one line saying what it shows; do not commit orphan
+  captures.
+- If a change alters a documented command, env var or chain/profile behaviour, fix the
+  relevant table row instead of adding a second explanation elsewhere.
+
 Operational conventions:
 
 - **Migrations**: change `src/lib/db/schema/*`, run `pnpm db:generate`, apply to the
