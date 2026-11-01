@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ChatMessage } from '@/lib/chat/types';
 import { useCodeHighlighter } from '@/lib/hooks/use-code-highlighter';
-import { cn } from '@/lib/utils/cn';
 
 import { CITATION_TAG, citationRehypePlugin, citationSanitizeSchema } from './citations';
 
@@ -45,7 +44,6 @@ const REHYPE_PLUGINS: RehypePlugins = [
 type ChatPart = ChatMessage['parts'][number];
 type StartResearchPart = Extract<ChatPart, { type: 'tool-start_research' }>;
 type QueryEvidencePart = Extract<ChatPart, { type: 'tool-query_evidence' }>;
-type RerunResearchPart = Extract<ChatPart, { type: 'tool-rerun_research' }>;
 type EvidenceDataPart = Extract<ChatPart, { type: 'data-evidence' }>;
 
 export type MessagePartsProps = {
@@ -97,7 +95,9 @@ export function MessageParts({
           case 'tool-query_evidence':
             return <QueryEvidenceCard key={index} part={part} />;
           case 'tool-rerun_research':
-            return <RerunResearchCard key={index} part={part} />;
+            // The tool only switches the live run card; a duplicate "重新验证"
+            // card here would just repeat that state.
+            return null;
           case 'data-evidence':
             return <EvidenceMiniCard key={index} part={part} onOpen={onOpenCitation} />;
           default:
@@ -346,30 +346,6 @@ function QueryEvidenceCard({ part }: { part: QueryEvidencePart }) {
             ))}
           </ul>
         )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function RerunResearchCard({ part }: { part: RerunResearchPart }) {
-  const output = part.state === 'output-available' ? part.output : undefined;
-
-  const line =
-    output === undefined
-      ? '正在发起新的研究…'
-      : output.status === 'started'
-        ? `已重新发起研究（run #${output.runId}），已加入采集队列。`
-        : output.message;
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>重新验证</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className={cn('text-sm', output?.status === 'started' ? 'text-fg' : 'text-muted')}>
-          {line}
-        </p>
       </CardContent>
     </Card>
   );
