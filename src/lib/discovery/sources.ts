@@ -26,6 +26,18 @@ export const BLOCKED_HOSTS: readonly string[] = [
   'wikipedia.org',
   'baike.baidu.com',
   'zhidao.baidu.com',
+  // Translation dictionaries and lyrics sites match a single keyword and look
+  // relevant to the scorer while describing no workflow at all.
+  'ichacha.net',
+  'engoo.com.tw',
+  'iciba.com',
+  'youdao.com',
+  'dict.cn',
+  'redbeanlyrics.com',
+  'lyrics.com',
+  'genius.com',
+  'youtube.com',
+  'youtu.be',
 ];
 
 /** Communities where people describe work and money in their own words. */
@@ -52,7 +64,7 @@ export const COMMUNITY_HOSTS: readonly string[] = [
  * without one of these is someone's opinion, not a market signal.
  */
 export const BUSINESS_PATTERN =
-  /(付费|价格|收费|订阅|续费|预算|成本|外包|雇|招人|客户|发票|报销|月费|年费|每月|每年|按月|按年|报价|竞品|替代|贵|省钱|[¥$]|\d+\s*(元|美元|块|usd)|pay|paid|pricing|price|subscription|invoice|billing|customer|client|budget|cost|hire|hiring|outsourc|revenue|refund|worth it|afford|alternative|self-host)/i;
+  /(付费|付費|价格|價格|收费|收費|订阅|訂閱|续费|續費|预算|預算|成本|費用|费用|外包|雇|招人|客户|客戶|发票|發票|报销|報銷|月费|月費|年费|年費|每月|每年|按月|按年|报价|報價|竞品|競品|替代|贵|貴|省钱|省錢|花钱|花錢|[¥$]|\d+\s*(元|美元|块|塊|usd)|pay|paid|pricing|price|subscription|invoice|billing|customer|client|budget|cost|hire|hiring|outsourc|revenue|refund|worth it|afford|alternative|self-host)/i;
 
 /**
  * Tokens that appear in almost every query and therefore prove nothing about
@@ -148,10 +160,22 @@ export function queryKeywords(query: string): string[] {
   return [...new Set(chosen)];
 }
 
+/** A CJK phrase counts as matched when any of its bigrams appears. */
+function keywordPresent(text: string, keyword: string): boolean {
+  if (text.includes(keyword)) return true;
+
+  const run = keyword.match(/[\u4e00-\u9fff]+/g)?.join('') ?? '';
+  if (run.length < 3) return false;
+  for (let index = 0; index + 1 < run.length; index += 1) {
+    if (text.includes(run.slice(index, index + 2))) return true;
+  }
+  return false;
+}
+
 export function relevanceScore(source: DiscoverySource, query: string): number {
   const text = sourceText(source).toLowerCase();
   return queryKeywords(query).reduce(
-    (score, keyword) => (text.includes(keyword) ? score + 1 : score),
+    (score, keyword) => (keywordPresent(text, keyword) ? score + 1 : score),
     0,
   );
 }
@@ -230,6 +254,10 @@ export function selectSources(
 
     const score = scoreSource(candidate.source, candidate.query);
     if (score < 0) return [];
+
+    // Topical match is the entry ticket, however commercial the page looks:
+    // a priced crypto ticker under a factory-inspection query is still noise.
+    if (relevanceScore(candidate.source, candidate.query) === 0) return [];
 
     // Keep the sample diverse: one verbose query must not fill every slot.
     const used = perQueryCount.get(candidate.query) ?? 0;

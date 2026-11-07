@@ -4,6 +4,7 @@ import type { LlmPort } from '@/lib/llm/port';
 import type { SearchHit, SearchPort } from '@/lib/search/port';
 
 import { DISCOVERY_LLM_TIMEOUT_MS, findOpportunities, MAX_SOURCES } from './find';
+import { fingerprintToText, opportunityFingerprint } from './novelty';
 
 function hit(n: number): SearchHit {
   return {
@@ -63,6 +64,7 @@ const OPPORTUNITY = {
   title: '跨境库存同步',
   problem: '卖家在三个平台之间手工同步库存，经常超卖',
   audience: '跨境小卖家',
+  angle: '库存同步',
   signal: 'problem' as const,
   currentAlternative: '每天手工复制表格',
   competitors: ['同步工具 A'],
@@ -212,6 +214,51 @@ describe('findOpportunities', () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.opportunities[0]?.evidence).toHaveLength(1);
+  });
+
+  it('drops opportunities tagged with an angle this round did not plan', async () => {
+    const plan = {
+      angles: ['库存同步'],
+      queries: [],
+      strategy: 'planned' as const,
+      rationale: '库存热点',
+    };
+    const stray = { ...OPPORTUNITY, angle: '别的角度' };
+    const planned = { ...OPPORTUNITY, angle: '库存同步' };
+
+    const result = await findOpportunities({
+      searchPorts: [port('ddg', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
+      queries: ['库存 同步'],
+      plan,
+      llm: llmReturning({ opportunities: [stray, planned] }),
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.opportunities).toEqual([planned]);
+  });
+
+  it('drops a paraphrase of a remembered direction and reports TOO_SIMILAR', async () => {
+    const plan = {
+      angles: ['库存同步'],
+      queries: [],
+      strategy: 'planned' as const,
+      rationale: '库存热点',
+    };
+    const prior = [
+      fingerprintToText(opportunityFingerprint(OPPORTUNITY.title, OPPORTUNITY.problem)),
+    ];
+    const paraphrase = { ...OPPORTUNITY, angle: '库存同步', title: '多平台库存同步助手' };
+
+    const result = await findOpportunities({
+      searchPorts: [port('ddg', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
+      queries: ['库存 同步'],
+      plan,
+      priorFingerprints: prior,
+      llm: llmReturning({ opportunities: [paraphrase] }),
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('TOO_SIMILAR');
   });
 
   it('reports search → filter → model phases in order', async () => {

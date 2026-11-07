@@ -1,7 +1,12 @@
 import { z } from 'zod';
 
 import { findOpportunities } from '@/lib/discovery/find';
+import { loadScanMemory, priorFingerprints, recordScan } from '@/lib/discovery/memory';
+import { planScan } from '@/lib/discovery/planner';
+import { pickDiscoveryQueries } from '@/lib/discovery/queries';
 import { createDiscoveryRuntime } from '@/lib/discovery/runtime';
+import { fetchTrends } from '@/lib/discovery/trends';
+import type { DiscoveryPlan, DiscoveryResult, ScanMemory } from '@/lib/discovery/types';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -9,15 +14,28 @@ export const maxDuration = 120;
 const inputSchema = z
   .object({
     excludeUrls: z.array(z.string().trim().max(2000)).max(300).optional(),
+    /** Operator-chosen angles; absent or empty means the model plans them. */
+    directions: z.array(z.string().trim().min(1).max(40)).max(5).optional(),
   })
   .strict();
 
-type Phase = 'search' | 'filter' | 'model';
+type Phase = 'plan' | 'search' | 'filter' | 'model';
+
+/** One replan is enough: two model attempts still fit the interactive budget. */
+const MAX_ATTEMPTS = 2;
 
 /**
- * NDJSON instead of a server action: the dialog must show which of the three
- * phases is running, and a single JSON response cannot update the UI until the
- * last one finishes.
+ * Proven business-shaped probes appended to every plan. The planner supplies
+ * the novelty; these guarantee the pool contains commercially anchored
+ * snippets even when a newly invented angle is too narrow for the engines.
+ */
+const FALLBACK_PROBES = 6;
+
+/**
+ * NDJSON instead of a server action: the dialog must show which phase is
+ * running, and a single JSON response cannot update the UI until the last one
+ * finishes. Each scan is planned from persisted history and recent trends, then
+ * written back so the next round can be different.
  */
 export async function POST(request: Request): Promise<Response> {
   let body: unknown = {};
@@ -41,14 +59,115 @@ export async function POST(request: Request): Promise<Response> {
 
       try {
         const runtime = await createDiscoveryRuntime();
-        const result = await findOpportunities({
-          ...runtime,
-          excludeUrls: parsed.data.excludeUrls ?? [],
-          onPhase: (phase: Phase, detail?: number) => send({ type: 'phase', phase, detail }),
-        });
 
-        if (result.ok) send({ type: 'result', value: result.value });
-        else send({ type: 'error', code: result.code, message: result.message });
+        const memory = await loadScanMemory();
+        if (!memory.ok) {
+          send({ type: 'error', code: 'STORAGE_FAILED', message: memory.message });
+          return;
+        }
+
+        const trends = await fetchTrends();
+        const trendItems = trends.ok ? trends.value : [];
+        const trendTitles = trendItems.map((trend) => trend.title);
+
+        const baseMemory: ScanMemory = {
+          ...memory.value,
+          excludedUrls: [
+            ...new Set([...(parsed.data.excludeUrls ?? []), ...memory.value.excludedUrls]),
+          ].slice(0, 300),
+        };
+
+        let lastError: { code: string; message: string } | null = null;
+        let attemptMemory = baseMemory;
+
+        for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+          send({ type: 'phase', phase: 'plan' satisfies Phase, detail: attempt });
+          const plan: DiscoveryPlan = await planScan({
+            llm: runtime.llm,
+            memory: attemptMemory,
+            trends: trendItems,
+            trendsAvailable: trends.ok,
+            directions: parsed.data.directions ?? [],
+          });
+
+          const executed = [
+            ...new Set([
+              ...plan.queries.map((item) => item.query),
+              ...pickDiscoveryQueries(FALLBACK_PROBES),
+            ]),
+          ];
+
+          const result = await findOpportunities({
+            ...runtime,
+            plan,
+            queries: executed,
+            excludeUrls: attemptMemory.excludedUrls,
+            priorFingerprints: priorFingerprints(attemptMemory),
+            onPhase: (phase: 'search' | 'filter' | 'model', detail?: number) =>
+              send({ type: 'phase', phase, detail }),
+          });
+
+          if (result.ok) {
+            const excluded = new Set(attemptMemory.excludedUrls);
+            const newUrls = result.value.sources.filter((source) => !excluded.has(source.url)).length;
+            const total = result.value.sources.length;
+
+            const stored = await recordScan({
+              plan,
+              queries: executed,
+              result: result.value,
+              trendTitles,
+            });
+
+            const value: DiscoveryResult = {
+              scanId: stored.ok ? stored.value : null,
+              ...result.value,
+              angles: plan.angles,
+              rationale: plan.rationale,
+              strategy: plan.strategy,
+              novelty: { newUrls, total, ratio: total === 0 ? 0 : newUrls / total },
+              avoided: attemptMemory.excludedUrls.length,
+              providers: result.value.providers,
+            };
+            send({ type: 'result', value });
+            return;
+          }
+
+          lastError = { code: result.code, message: result.message };
+
+          // A duplicate-heavy, empty or ungrounded round is worth exactly one
+          // replan; a model/provider failure is not, because the next attempt
+          // would hit the same provider state.
+          if (
+            result.code !== 'TOO_SIMILAR' &&
+            result.code !== 'NO_SOURCES' &&
+            result.code !== 'INVALID_OUTPUT'
+          ) {
+            break;
+          }
+
+          attemptMemory = {
+            ...attemptMemory,
+            scans: [
+              {
+                angles: plan.angles,
+                queries: plan.queries.map((item) => item.query),
+                opportunities: [],
+                createdAt: new Date().toISOString(),
+              },
+              ...attemptMemory.scans,
+            ],
+          };
+        }
+
+        send({
+          type: 'error',
+          code: lastError?.code ?? 'SCAN_FAILED',
+          message:
+            lastError?.code === 'TOO_SIMILAR'
+              ? '连续两轮结果都与最近扫描过于相似，稍后再扫或检查搜索配置。'
+              : (lastError?.message ?? '扫描失败：服务端错误'),
+        });
       } catch {
         send({ type: 'error', code: 'SCAN_FAILED', message: '扫描失败：服务端错误' });
       } finally {

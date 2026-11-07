@@ -29,6 +29,10 @@ describe('hasBusinessSignal', () => {
       'pricing page',
       'we hire a VA',
       'alternatives to X',
+      // Traditional Chinese sources are common in the radar's Taiwan/HK hits.
+      '這個工具收費 300 元',
+      '每月付費訂閱',
+      '報價單太麻煩',
     ]) {
       expect(hasBusinessSignal(text)).toBe(true);
     }
@@ -61,6 +65,11 @@ describe('relevanceScore / scoreSource', () => {
     expect(relevanceScore(relevant, '发票 报销')).toBeGreaterThan(0);
     expect(relevanceScore(unrelated, '发票 报销')).toBe(0);
     expect(scoreSource(relevant, '发票 报销')).toBeGreaterThan(scoreSource(unrelated, '发票 报销'));
+  });
+
+  it('matches a CJK phrase through its bigrams, not just the exact word', () => {
+    const paraphrase = source('https://example.com/x', '合同起草太麻烦', '外包报价每月 300 元');
+    expect(relevanceScore(paraphrase, '律所 文书起草 外包')).toBeGreaterThan(0);
   });
 
   it('rewards community hosts and money words', () => {
@@ -100,6 +109,8 @@ describe('hosts', () => {
     expect(isBlockedSource('https://blog.csdn.net/x/article')).toBe(true);
     expect(isBlockedSource('https://dictionary.cambridge.org/x')).toBe(true);
     expect(isBlockedSource('https://www.toutiao.com/article/1')).toBe(true);
+    expect(isBlockedSource('https://tw.ichacha.net/zaoju/solo.html')).toBe(true);
+    expect(isBlockedSource('https://www.youtube.com/watch?v=1')).toBe(true);
   });
 
   it('recognises community hosts, including subdomains', () => {
@@ -124,6 +135,44 @@ describe('selectSources', () => {
     expect(selected[0]?.url).toBe('https://www.reddit.com/r/a');
     expect(selected.some((item) => item.url.includes('csdn'))).toBe(false);
     expect(selected.filter((item) => item.url === 'https://example.com/price')).toHaveLength(1);
+  });
+
+  it('drops an off-topic page that carries no commercial signal', () => {
+    const selected = selectSources(
+      [
+        candidate(
+          'https://www.zhihu.com/question/1',
+          '国外有哪些著名的求职网站？',
+          'Glassdoor 收录了很多职位',
+          '律所 文书 外包 替代方案',
+        ),
+        candidate(
+          'https://example.com/invoice',
+          '律所文书外包报价',
+          '愿意付费买模板，每月 200 元',
+          '律所 文书 外包 替代方案',
+        ),
+      ],
+      10,
+    );
+
+    expect(selected.map((item) => item.url)).toEqual(['https://example.com/invoice']);
+  });
+
+  it('drops a zero-match page even when it talks about money', () => {
+    const selected = selectSources(
+      [
+        candidate(
+          'https://coinmarketcap.com/currencies/bitcoin/',
+          'Bitcoin price today',
+          'The live Bitcoin price is $76,577.68 USD',
+          '工厂 质检 流程',
+        ),
+      ],
+      10,
+    );
+
+    expect(selected).toHaveLength(0);
   });
 
   it('caps how many sources one query may contribute', () => {

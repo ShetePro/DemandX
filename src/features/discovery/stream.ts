@@ -1,6 +1,6 @@
 import type { DiscoveryResult } from '@/lib/discovery/types';
 
-export type ScanPhase = 'search' | 'filter' | 'model';
+export type ScanPhase = 'plan' | 'search' | 'filter' | 'model';
 
 export type ScanResult =
   { ok: true; value: DiscoveryResult } | { ok: false; code: string; message: string };
@@ -12,6 +12,7 @@ export type ScanResult =
  */
 export async function streamDiscoveryScan(
   excludeUrls: readonly string[],
+  directions: readonly string[],
   onPhase: (phase: ScanPhase) => void,
 ): Promise<ScanResult> {
   let response: Response;
@@ -19,7 +20,7 @@ export async function streamDiscoveryScan(
     response = await fetch('/api/discovery/scan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ excludeUrls }),
+      body: JSON.stringify({ excludeUrls, directions }),
     });
   } catch {
     return { ok: false, code: 'NETWORK', message: '扫描请求失败：无法连接服务端' };
@@ -73,7 +74,12 @@ function parseEvent(line: string): StreamEvent | null {
 
   if (record['type'] === 'phase') {
     const phase = record['phase'];
-    if (phase === 'search' || phase === 'filter' || phase === 'model') {
+    if (
+      phase === 'plan' ||
+      phase === 'search' ||
+      phase === 'filter' ||
+      phase === 'model'
+    ) {
       return { type: 'phase', phase };
     }
     return null;

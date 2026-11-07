@@ -40,8 +40,12 @@ export const DISCOVERY_QUERY_POOL: readonly string[] = [
 /** Queries per scan; enough breadth without spending the whole pool at once. */
 export const DISCOVERY_QUERIES_PER_SCAN = 10;
 
-/** S1-style cap per query; discovery values breadth over depth. */
-export const DISCOVERY_HITS_PER_QUERY = 5;
+/**
+ * S1-style cap per query; discovery values breadth over depth. Eight rather
+ * than five: the relevance gate now rejects off-topic hits, so each query must
+ * bring enough candidates for commercial sources to survive.
+ */
+export const DISCOVERY_HITS_PER_QUERY = 8;
 
 /**
  * Sample `count` distinct queries. Random by default so a rescan differs; the

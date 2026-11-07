@@ -28,6 +28,12 @@ function deferred<T>() {
 }
 
 const RESULT: DiscoveryResult = {
+  scanId: 91,
+  angles: ['跨境库存', '小店主财务'],
+  rationale: '最近热点集中在库存同步与手工对账。',
+  strategy: 'planned',
+  novelty: { newUrls: 2, total: 2, ratio: 1 },
+  avoided: 0,
   providers: ['ddg', 'bing'],
   elapsedMs: 16_600,
   model: 'glm-5.3-flash',
@@ -49,6 +55,7 @@ const RESULT: DiscoveryResult = {
     {
       title: '跨境库存同步',
       problem: '卖家在三个平台之间手工同步库存，经常超卖',
+      angle: '跨境库存',
       audience: '跨境小卖家',
       signal: 'problem',
       currentAlternative: '每天手工复制三个平台的表格',
@@ -96,9 +103,124 @@ describe('OpportunityPage', () => {
     await user.click(await screen.findByRole('button', { name: '用它开始研究' }));
 
     await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
-    expect(start).toHaveBeenCalledWith(expect.stringContaining('跨境库存同步'));
-    expect(start).toHaveBeenCalledWith(expect.stringContaining('手工同步库存'));
+    expect(start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idea: expect.stringContaining('跨境库存同步'),
+        scanId: 91,
+        title: '跨境库存同步',
+        angle: '跨境库存',
+      }),
+    );
     await waitFor(() => expect(router.push).toHaveBeenCalledWith('/threads/42'));
+  });
+
+  it('keeps earlier rounds and appends the next one under a skeleton', async () => {
+    const user = userEvent.setup();
+    const pending = deferred<{ ok: true; value: DiscoveryResult }>();
+    const second: DiscoveryResult = {
+      ...RESULT,
+      scanId: 92,
+      angles: ['诊所排班'],
+      opportunities: [
+        {
+          ...RESULT.opportunities[0]!,
+          title: '诊所排班助手',
+          angle: '诊所排班',
+        },
+      ],
+    };
+    const find = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, value: RESULT })
+      .mockReturnValueOnce(pending.promise);
+
+    render(<OpportunityPage find={find} start={vi.fn()} />);
+    expect(await screen.findByText('跨境库存同步')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: '再扫一轮' }));
+
+    // The finished round stays readable while the new one loads.
+    expect(screen.getByText('跨境库存同步')).toBeVisible();
+    expect(screen.getByRole('status', { name: '第 2 轮扫描中' })).toBeVisible();
+    expect(screen.getByText('新一轮结果会追加在下方，之前的扫描不会被清除。')).toBeVisible();
+
+    pending.resolve({ ok: true, value: second });
+
+    expect(await screen.findByText('诊所排班助手')).toBeVisible();
+    expect(screen.getByText('跨境库存同步')).toBeVisible();
+    expect(screen.queryByRole('status', { name: '第 2 轮扫描中' })).toBeNull();
+    expect(screen.getByText('第 1 轮')).toBeVisible();
+    expect(screen.getByText('第 2 轮')).toBeVisible();
+  });
+
+  it('keeps earlier rounds when a rescan fails', async () => {
+    const user = userEvent.setup();
+    const find = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, value: RESULT })
+      .mockResolvedValueOnce({ ok: false, code: 'NO_SOURCES', message: '这一轮太薄' });
+
+    render(<OpportunityPage find={find} start={vi.fn()} />);
+    expect(await screen.findByText('跨境库存同步')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: '再扫一轮' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('这一轮太薄');
+    expect(screen.getByText('跨境库存同步')).toBeVisible();
+    expect(screen.getByRole('button', { name: '再试一次' })).toBeVisible();
+  });
+
+  it('offers the same rescan action at the bottom of the list', async () => {
+    const user = userEvent.setup();
+    const pending = deferred<{ ok: true; value: DiscoveryResult }>();
+    const find = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, value: RESULT })
+      .mockReturnValueOnce(pending.promise);
+    render(<OpportunityPage find={find} start={vi.fn()} />);
+
+    expect(await screen.findByText('跨境库存同步')).toBeVisible();
+
+    const bottom = screen.getByRole('button', { name: '再扫一轮（列表底部）' });
+    expect(bottom).toBeVisible();
+
+    await user.click(bottom);
+
+    await waitFor(() => expect(find).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('跨境库存同步')).toBeVisible();
+    expect(screen.getByRole('status', { name: '第 2 轮扫描中' })).toBeVisible();
+  });
+
+  it('sends the operator-picked directions with the next scan', async () => {
+    const user = userEvent.setup();
+    const pending = deferred<{ ok: true; value: DiscoveryResult }>();
+    const find = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, value: RESULT })
+      .mockReturnValueOnce(pending.promise);
+
+    render(<OpportunityPage find={find} start={vi.fn()} />);
+    expect(await screen.findByText('跨境库存同步')).toBeVisible();
+
+    await user.type(screen.getByLabelText('添加扫描方向'), '诊所排班{Enter}');
+    expect(screen.getByText('诊所排班')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: '再扫一轮（列表底部）' }));
+
+    await waitFor(() => expect(find).toHaveBeenCalledTimes(2));
+    expect(find.mock.calls.at(-1)?.[1]).toEqual(['诊所排班']);
+  });
+
+  it('removes a picked direction', async () => {
+    const user = userEvent.setup();
+    const find = vi.fn().mockResolvedValueOnce({ ok: true, value: RESULT });
+    render(<OpportunityPage find={find} start={vi.fn()} />);
+    expect(await screen.findByText('跨境库存同步')).toBeVisible();
+
+    await user.type(screen.getByLabelText('添加扫描方向'), '诊所排班{Enter}');
+    await user.click(screen.getByRole('button', { name: '移除方向 诊所排班' }));
+
+    expect(screen.queryByText('诊所排班')).toBeNull();
   });
 
   it('reports a failed scan and rescans on demand', async () => {
@@ -119,8 +241,13 @@ describe('OpportunityPage', () => {
   it('excludes sources from earlier scans when rescanning', async () => {
     const user = userEvent.setup();
     const find = vi.fn(
-      async (_excludeUrls: readonly string[], _onPhase: (phase: ScanPhase) => void) => {
+      async (
+        _excludeUrls: readonly string[],
+        _directions: readonly string[],
+        _onPhase: (phase: ScanPhase) => void,
+      ) => {
         void _excludeUrls;
+        void _directions;
         void _onPhase;
         return { ok: true as const, value: RESULT };
       },
@@ -137,10 +264,15 @@ describe('OpportunityPage', () => {
     );
   });
 
-  it('marks search as done and filtering as active when the phase advances', async () => {
+  it('marks planning as done and searching as active when the phase advances', async () => {
     const pending = deferred<{ ok: true; value: DiscoveryResult }>();
     const find = vi.fn(
-      async (_excludeUrls: readonly string[], onPhase: (phase: ScanPhase) => void) => {
+      async (
+        _excludeUrls: readonly string[],
+        _directions: readonly string[],
+        onPhase: (phase: ScanPhase) => void,
+      ) => {
+        onPhase('plan');
         onPhase('search');
         onPhase('filter');
         return pending.promise;
@@ -148,11 +280,13 @@ describe('OpportunityPage', () => {
     );
     render(<OpportunityPage find={find} start={vi.fn()} />);
 
-    const searchStep = (await screen.findByText('检索中英文公开片段')).closest('li');
+    const planStep = (await screen.findByText('按最近热点与历史扫描规划新角度')).closest('li');
+    const searchStep = screen.getByText('检索中英文公开片段').closest('li');
     const filterStep = screen.getByText('过滤内容农场与无商业线索页面').closest('li');
     const modelStep = screen.getByText('模型筛选可落地的方向').closest('li');
 
-    await waitFor(() => expect(searchStep).toHaveAttribute('data-done', 'true'));
+    await waitFor(() => expect(planStep).toHaveAttribute('data-done', 'true'));
+    expect(searchStep).toHaveAttribute('data-done', 'true');
     expect(filterStep).toHaveAttribute('aria-current', 'step');
     expect(modelStep).not.toHaveAttribute('aria-current');
 

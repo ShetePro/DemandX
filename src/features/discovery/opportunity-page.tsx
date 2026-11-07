@@ -1,8 +1,8 @@
 'use client';
 
-import { ArrowUpRight, Check, Lightbulb, Radar, RefreshCw, Sparkles } from 'lucide-react';
+import { ArrowUpRight, Check, Lightbulb, Radar, RefreshCw, Sparkles, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { toast } from 'sonner';
 
 import { SignalBadge } from '@/components/common/signal-badge';
@@ -13,6 +13,7 @@ import { startDiscoveredResearchAction } from './actions';
 import { streamDiscoveryScan, type ScanPhase } from './stream';
 
 const SCAN_PHRASES = [
+  'HN · 最近 14 天热点',
   'Reddit · “I wish there was…”',
   'Twitter · “is there a tool”',
   '小红书 · “有没有 推荐”',
@@ -21,6 +22,7 @@ const SCAN_PHRASES = [
 ] as const;
 
 const STEP_LABELS = [
+  '按最近热点与历史扫描规划新角度',
   '检索中英文公开片段',
   '过滤内容农场与无商业线索页面',
   '模型筛选可落地的方向',
@@ -33,21 +35,23 @@ const MONETIZATION_LABELS: Readonly<Record<string, string>> = {
   service: '服务 + 软件',
 };
 
-type ScanState =
-  | { kind: 'scanning' }
-  | { kind: 'ready'; result: DiscoveryResult }
-  | { kind: 'error'; message: string };
-
 export interface OpportunityPageProps {
   /** Injected in tests; the page uses the real server actions by default. */
   find?: (
     excludeUrls: readonly string[],
+    directions: readonly string[],
     onPhase: (phase: ScanPhase) => void,
   ) => Promise<{ ok: true; value: DiscoveryResult } | { ok: false; code: string; message: string }>;
   start?: (
-    idea: string,
+    input: {
+      idea: string;
+      scanId: number | null;
+      title: string;
+      angle: string;
+    },
   ) => Promise<
-    { ok: true; value: { threadId: number } } | { ok: false; code: string; message: string }
+    | { ok: true; value: { threadId: number }; warning?: string | undefined }
+    | { ok: false; code: string; message: string }
   >;
 }
 
@@ -61,24 +65,32 @@ export function OpportunityPage({
   start = startDiscoveredResearchAction,
 }: OpportunityPageProps) {
   const router = useRouter();
-  const [state, setState] = useState<ScanState>({ kind: 'scanning' });
+  /** Finished scans, oldest first; a rescan appends instead of replacing. */
+  const [batches, setBatches] = useState<DiscoveryResult[]>([]);
+  /** Empty means "let the model plan"; otherwise the scan must use these. */
+  const [directions, setDirections] = useState<string[]>([]);
+  const [scanning, setScanning] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState<string | null>(null);
   const [phrase, setPhrase] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [step, setStep] = useState(0);
   const requestId = useRef(0);
+  const skeletonRef = useRef<HTMLDivElement | null>(null);
   /** URLs shown by earlier scans this visit; the next scan excludes them. */
   const seenUrls = useRef<string[]>([]);
 
   async function scan(): Promise<void> {
     const id = ++requestId.current;
-    setState({ kind: 'scanning' });
+    setScanning(true);
+    setError(null);
     setElapsed(0);
     setStep(0);
 
     try {
-      const result = await find(seenUrls.current, (phase: ScanPhase) => {
-        const index = phase === 'search' ? 0 : phase === 'filter' ? 1 : 2;
+      const result = await find(seenUrls.current, directions, (phase: ScanPhase) => {
+        const index =
+          phase === 'plan' ? 0 : phase === 'search' ? 1 : phase === 'filter' ? 2 : 3;
         setStep((current) => Math.max(current, index));
       });
       if (id !== requestId.current) return;
@@ -87,12 +99,17 @@ export function OpportunityPage({
           ...new Set([...seenUrls.current, ...result.value.sources.map((source) => source.url)]),
         ].slice(-300);
         setStep(STEP_LABELS.length);
-        setState({ kind: 'ready', result: result.value });
-      } else setState({ kind: 'error', message: result.message });
+        // Append: earlier rounds stay on screen and stay accountable.
+        setBatches((previous) => [...previous, result.value]);
+      } else {
+        setError(result.message);
+      }
     } catch {
       if (id === requestId.current) {
-        setState({ kind: 'error', message: '扫描失败：网络或服务端错误，请重试。' });
+        setError('扫描失败：网络或服务端错误，请重试。');
       }
+    } finally {
+      if (id === requestId.current) setScanning(false);
     }
   }
 
@@ -105,27 +122,52 @@ export function OpportunityPage({
   }, []);
 
   useEffect(() => {
-    if (state.kind !== 'scanning') return;
+    if (!scanning) return;
     const startedAt = Date.now();
     const tick = setInterval(() => setElapsed(Date.now() - startedAt), 100);
     return () => clearInterval(tick);
-  }, [state.kind]);
+  }, [scanning]);
 
   useEffect(() => {
-    if (state.kind !== 'scanning') return;
+    if (!scanning) return;
     const rotate = setInterval(() => setPhrase((value) => (value + 1) % SCAN_PHRASES.length), 2200);
     return () => clearInterval(rotate);
-  }, [state.kind]);
+  }, [scanning]);
 
-  async function startResearch(opportunity: Opportunity): Promise<void> {
+  // A rescan appends below a page the operator is already reading; bring the
+  // new round's skeleton into view instead of leaving it off-screen.
+  useEffect(() => {
+    if (!scanning || batches.length === 0) return;
+    skeletonRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [scanning, batches.length]);
+
+  function addDirection(value: string): void {
+    const clean = value.trim().replace(/\s+/g, ' ');
+    if (clean === '') return;
+    setDirections((previous) =>
+      previous.includes(clean) || previous.length >= 5 ? previous : [...previous, clean],
+    );
+  }
+
+  function removeDirection(value: string): void {
+    setDirections((previous) => previous.filter((direction) => direction !== value));
+  }
+
+  async function startResearch(opportunity: Opportunity, scanId: number | null): Promise<void> {
     setStarting(opportunity.title);
     try {
       const idea = `${opportunity.title}：${opportunity.problem}`;
-      const result = await start(idea);
+      const result = await start({
+        idea,
+        scanId,
+        title: opportunity.title,
+        angle: opportunity.angle,
+      });
       if (!result.ok) {
         toast.error(`创建研究失败：${result.message}`);
         return;
       }
+      if (result.warning !== undefined) toast.error(result.warning);
       router.push(`/threads/${result.value.threadId}`);
       router.refresh();
     } finally {
@@ -148,46 +190,73 @@ export function OpportunityPage({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => void scan()}
-          disabled={state.kind === 'scanning'}
-          className="flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-[13px] text-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-50"
-        >
-          <RefreshCw
-            className={cn('size-3.5', state.kind === 'scanning' && 'animate-spin')}
-            aria-hidden="true"
-          />
-          {state.kind === 'scanning' ? '扫描中…' : '再扫一轮'}
-        </button>
+        <ScanButton scanning={scanning} onScan={() => void scan()} />
       </header>
 
-      {state.kind === 'scanning' ? (
+      <DirectionPicker
+        directions={directions}
+        suggestions={[
+          ...new Set(batches.flatMap((batch) => batch.angles)),
+        ].filter((angle) => !directions.includes(angle))}
+        disabled={scanning}
+        onAdd={addDirection}
+        onRemove={removeDirection}
+      />
+
+      {batches.length === 0 && scanning ? (
         <Scanning elapsedMs={elapsed} phrase={phrase} step={step} />
       ) : null}
 
-      {state.kind === 'error' ? (
+      {batches.map((result, index) => (
+        <Results
+          key={result.scanId ?? `round-${index}`}
+          round={index + 1}
+          result={result}
+          starting={starting}
+          onStart={(opportunity) => void startResearch(opportunity, result.scanId)}
+        />
+      ))}
+
+      {scanning && batches.length > 0 ? (
+        <ScanSkeleton
+          containerRef={skeletonRef}
+          round={batches.length + 1}
+          elapsedMs={elapsed}
+          step={step}
+        />
+      ) : null}
+
+      {error !== null ? (
         <section
           role="alert"
           className="flex flex-col items-start gap-3 rounded-2xl border border-danger/40 bg-danger-soft px-5 py-4"
         >
-          <p className="text-sm text-danger">{state.message}</p>
+          <p className="text-sm text-danger">{error}</p>
           <button
             type="button"
             onClick={() => void scan()}
             className="rounded-lg border border-danger/40 px-3 py-1.5 text-[13px] text-danger hover:bg-danger/10"
           >
-            重新扫描
+            {batches.length === 0 ? '重新扫描' : '再试一次'}
           </button>
         </section>
       ) : null}
 
-      {state.kind === 'ready' ? (
-        <Results
-          result={state.result}
-          starting={starting}
-          onStart={(opportunity) => void startResearch(opportunity)}
-        />
+      {batches.length > 0 ? (
+        <div className="flex justify-center">
+          <ScanButton
+            scanning={scanning}
+            onScan={() => void scan()}
+            ariaLabel="再扫一轮（列表底部）"
+          />
+        </div>
+      ) : null}
+
+      {batches.length > 0 ? (
+        <p className="flex items-center gap-1.5 text-[11px] text-faint">
+          <Check className="size-3" aria-hidden="true" />
+          所有链接来自公开搜索结果；模型不得引用未提供的 URL，伪造引用会被丢弃。
+        </p>
       ) : null}
     </div>
   );
@@ -195,6 +264,30 @@ export function OpportunityPage({
 
 function formatElapsed(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/** One action, two places: header and the end of the results list. */
+function ScanButton({
+  scanning,
+  onScan,
+  ariaLabel,
+}: {
+  scanning: boolean;
+  onScan: () => void;
+  ariaLabel?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onScan}
+      disabled={scanning}
+      aria-label={ariaLabel}
+      className="flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-[13px] text-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-50"
+    >
+      <RefreshCw className={cn('size-3.5', scanning && 'animate-spin')} aria-hidden="true" />
+      {scanning ? '扫描中…' : '再扫一轮'}
+    </button>
+  );
 }
 
 /**
@@ -303,16 +396,49 @@ function Scanning({
 }
 
 function Results({
+  round,
   result,
   starting,
   onStart,
 }: {
+  round: number;
   result: DiscoveryResult;
   starting: string | null;
   onStart: (opportunity: Opportunity) => void;
 }) {
   return (
     <div className="flex flex-col gap-5">
+      <section className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-muted tabular-nums">
+            第 {round} 轮
+          </span>
+          <span className="text-[11px] font-medium tracking-wide text-faint">本轮角度</span>
+          {result.angles.map((angle) => (
+            <span
+              key={angle}
+              className="rounded-md bg-accent-soft px-2 py-0.5 text-[11.5px] font-medium text-accent"
+            >
+              {angle}
+            </span>
+          ))}
+        </div>
+        <p className="text-[12px] leading-5 text-muted">{result.rationale}</p>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-faint">
+          <span>
+            新颖度 {Math.round(result.novelty.ratio * 100)}%（{result.novelty.newUrls}/
+            {result.novelty.total} 条来源首次出现）
+          </span>
+          <span>已避开最近扫描的 {result.avoided} 条 URL</span>
+          {result.strategy === 'fallback' ? (
+            <span className="text-warning">本轮为固定池兜底：模型未能规划新角度</span>
+          ) : null}
+          {result.scanId === null ? (
+            <span className="text-warning">本轮未写入记忆，下一轮无法据此去重</span>
+          ) : null}
+        </div>
+      </section>
+
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="耗时" value={formatElapsed(result.elapsedMs)} />
         <Stat label="公开片段" value={String(result.sources.length)} />
@@ -332,6 +458,9 @@ function Results({
                   <h2 className="text-[15px] leading-6 font-semibold text-fg">
                     {opportunity.title}
                   </h2>
+                  <span className="mt-0.5 shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 text-[10.5px] text-muted">
+                    {opportunity.angle}
+                  </span>
                 </div>
                 <SignalBadge signal={opportunity.signal} />
               </div>
@@ -414,12 +543,178 @@ function Results({
           ))}
         </ul>
       </details>
-
-      <p className="flex items-center gap-1.5 text-[11px] text-faint">
-        <Check className="size-3" aria-hidden="true" />
-        所有链接来自公开搜索结果；模型不得引用未提供的 URL，伪造引用会被丢弃。
-      </p>
     </div>
+  );
+}
+
+/**
+ * Operator-chosen scan directions. Empty is the default "let the model plan";
+ * picking any direction pins the planner to exactly those angles for every
+ * subsequent round, including the rescan buttons at the top and bottom.
+ */
+function DirectionPicker({
+  directions,
+  suggestions,
+  disabled,
+  onAdd,
+  onRemove,
+}: {
+  directions: readonly string[];
+  suggestions: readonly string[];
+  disabled: boolean;
+  onAdd: (value: string) => void;
+  onRemove: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState('');
+  const atLimit = directions.length >= 5;
+
+  function submit(): void {
+    const value = draft.trim();
+    if (value === '' || atLimit) return;
+    onAdd(value);
+    setDraft('');
+  }
+
+  return (
+    <section
+      aria-label="扫描方向"
+      className="flex flex-col gap-2.5 rounded-2xl border border-border bg-surface px-4 py-3"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-medium tracking-wide text-faint">扫描方向</span>
+
+        {directions.map((direction) => (
+          <span
+            key={direction}
+            className="flex items-center gap-1 rounded-md bg-accent-soft px-2 py-0.5 text-[11.5px] font-medium text-accent"
+          >
+            {direction}
+            <button
+              type="button"
+              aria-label={`移除方向 ${direction}`}
+              disabled={disabled}
+              onClick={() => onRemove(direction)}
+              className="rounded-sm text-accent/80 hover:text-accent disabled:opacity-50"
+            >
+              <X className="size-3" aria-hidden="true" />
+            </button>
+          </span>
+        ))}
+
+        <div className="ml-auto flex items-center gap-2">
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return;
+              event.preventDefault();
+              submit();
+            }}
+            placeholder={atLimit ? '最多 5 个方向' : '输入方向，回车添加'}
+            maxLength={40}
+            disabled={disabled || atLimit}
+            aria-label="添加扫描方向"
+            className="h-8 w-56 rounded-lg border border-border bg-surface-2/40 px-2.5 text-[12px] text-fg placeholder:text-faint focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60"
+          />
+          <button
+            type="button"
+            onClick={submit}
+            disabled={disabled || atLimit || draft.trim() === ''}
+            className="flex h-8 items-center rounded-lg border border-border px-2.5 text-[12px] text-muted hover:bg-surface-2 hover:text-fg disabled:opacity-50"
+          >
+            添加
+          </button>
+        </div>
+      </div>
+
+      {suggestions.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-faint">
+          <span>从已扫描角度快速添加：</span>
+          {suggestions.slice(0, 8).map((angle) => (
+            <button
+              key={angle}
+              type="button"
+              disabled={disabled || atLimit}
+              onClick={() => onAdd(angle)}
+              className="rounded-md border border-border px-1.5 py-0.5 text-[11px] text-muted hover:bg-surface-2 hover:text-fg disabled:opacity-50"
+            >
+              + {angle}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <p className="text-[11px] text-faint">
+        不选方向时由模型按最近热点与历史扫描自动规划；选定后，两处「再扫一轮」都会按这些方向检索。
+      </p>
+    </section>
+  );
+}
+
+/**
+ * The rescan skeleton: the earlier rounds stay readable above, while the new
+ * round reserves the space it will occupy. Two cards match the common result
+ * count without pretending to know how many ideas will survive the gates.
+ */
+function ScanSkeleton({
+  containerRef,
+  round,
+  elapsedMs,
+  step,
+}: {
+  containerRef: RefObject<HTMLDivElement | null>;
+  round: number;
+  elapsedMs: number;
+  step: number;
+}) {
+  return (
+    <section
+      ref={containerRef}
+      role="status"
+      aria-label={`第 ${round} 轮扫描中`}
+      aria-live="polite"
+      className="flex flex-col gap-4"
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted">
+        <RefreshCw
+          className="size-3.5 text-accent motion-safe:animate-spin"
+          aria-hidden="true"
+        />
+        <span className="font-medium text-fg">第 {round} 轮扫描中</span>
+        <span className="text-[11px] text-faint">
+          {STEP_LABELS[step] ?? '整理结果'} · {formatElapsed(elapsedMs)}
+        </span>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {[0, 1].map((index) => (
+          <div
+            key={index}
+            aria-hidden="true"
+            className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-5"
+          >
+            <div className="flex items-start gap-2">
+              <span className="size-6 shrink-0 animate-pulse rounded-md bg-surface-2 motion-reduce:animate-none" />
+              <span className="mt-1 h-4 w-3/5 animate-pulse rounded bg-surface-2 motion-reduce:animate-none" />
+              <span className="mt-0.5 ml-auto h-5 w-12 shrink-0 animate-pulse rounded-full bg-surface-2 motion-reduce:animate-none" />
+            </div>
+            <span className="h-3 w-full animate-pulse rounded bg-surface-2 motion-reduce:animate-none" />
+            <span className="h-3 w-4/5 animate-pulse rounded bg-surface-2 motion-reduce:animate-none" />
+            <div className="mt-1 flex flex-col gap-2">
+              {[0, 1, 2, 3].map((row) => (
+                <span
+                  key={row}
+                  className="h-3 w-full animate-pulse rounded bg-surface-2 motion-reduce:animate-none"
+                />
+              ))}
+            </div>
+            <span className="mt-1 h-9 w-full animate-pulse rounded-lg bg-surface-2 motion-reduce:animate-none" />
+          </div>
+        ))}
+      </div>
+
+      <p className="text-[11px] text-faint">新一轮结果会追加在下方，之前的扫描不会被清除。</p>
+    </section>
   );
 }
 
