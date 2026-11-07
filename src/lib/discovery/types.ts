@@ -99,7 +99,7 @@ export interface ScanMemory {
   scans: {
     angles: string[];
     queries: string[];
-    opportunities: { title: string; angle: string; fingerprint: string }[];
+    opportunities: { title: string; problem: string; angle: string; fingerprint: string }[];
     createdAt: string;
   }[];
   /** Directions the operator actually started researching. */

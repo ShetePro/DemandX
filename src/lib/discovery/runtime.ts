@@ -4,7 +4,9 @@ import { getChain } from '@/lib/llm/chain-repository';
 import { resolveApiKey } from '@/lib/llm/repository';
 import { recordLlmUsage } from '@/lib/llm/usage-recorder';
 import { createBingSearch } from '@/lib/search/bing';
+import { createGitHubSearch } from '@/lib/search/github';
 import { createRateLimiter } from '@/lib/search/limiter';
+import { createRedditSearch } from '@/lib/search/reddit';
 import type { SearchPort } from '@/lib/search/port';
 import { createResolvedWebSearchPort, resolveWebSearch } from '@/lib/search/web-search-config';
 
@@ -21,7 +23,13 @@ export async function createDiscoveryRuntime(): Promise<
   // ten queries inside the dialog's lifetime.
   const limiter = createRateLimiter({ rps: 2, minDelayMs: 300, maxDelayMs: 800 });
   const deps = { limiter };
-  const searchPorts: SearchPort[] = [createHnCommentSearch(deps), createBingSearch(deps)];
+  const searchPorts: SearchPort[] = [
+    createHnCommentSearch(deps),
+    createBingSearch(deps),
+    // First-hand demand on slow, rate-limited platforms: a few queries each.
+    createRedditSearch(deps),
+    { ...createGitHubSearch(deps), maxQueries: 4 },
+  ];
 
   const webSearch = await resolveWebSearch();
   if (webSearch.ok && webSearch.value !== null) {

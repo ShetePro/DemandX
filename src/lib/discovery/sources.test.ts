@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   hasBusinessSignal,
+  isFirstHandSource,
   isBlockedSource,
   isCommunitySource,
   queryKeywords,
@@ -19,6 +20,20 @@ function source(url: string, title: string, snippet: string): DiscoverySource {
 function candidate(url: string, title: string, snippet: string, query: string) {
   return { source: source(url, title, snippet), query };
 }
+
+describe('isFirstHandSource', () => {
+  it('accepts community threads and GitHub issues', () => {
+    expect(isFirstHandSource('https://www.reddit.com/r/smallbusiness/comments/x')).toBe(true);
+    expect(isFirstHandSource('https://news.ycombinator.com/item?id=1')).toBe(true);
+    expect(isFirstHandSource('https://github.com/acme/app/issues/42')).toBe(true);
+  });
+
+  it('rejects vendor pages and repos', () => {
+    expect(isFirstHandSource('https://invoice-generator.com/')).toBe(false);
+    expect(isFirstHandSource('https://github.com/acme/app')).toBe(false);
+    expect(isFirstHandSource('not a url')).toBe(false);
+  });
+});
 
 describe('hasBusinessSignal', () => {
   it('matches money, hiring and paid alternatives in both languages', () => {

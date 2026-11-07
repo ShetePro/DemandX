@@ -389,7 +389,7 @@ function Scanning({
           })}
         </ol>
 
-        <p className="text-[11px] text-faint">通常需要 15–30 秒；超过 45 秒会明确提示超时。</p>
+        <p className="text-[11px] text-faint">通常需要 30–60 秒（含 Reddit / GitHub 的限速检索）；模型单次超过 45 秒会明确提示超时。</p>
       </div>
     </section>
   );

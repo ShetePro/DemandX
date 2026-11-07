@@ -52,6 +52,7 @@ export async function loadScanMemory(): Promise<MemoryResult<ScanMemory>> {
           queries: row.queries,
           opportunities: row.opportunities.map((item) => ({
             title: item.title,
+            problem: item.problem,
             angle: item.angle,
             fingerprint: item.fingerprint,
           })),

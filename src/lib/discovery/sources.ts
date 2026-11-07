@@ -134,6 +134,21 @@ export function isCommunitySource(url: string | DiscoverySource): boolean {
   return matchesHost(host, COMMUNITY_HOSTS);
 }
 
+/**
+ * A first-hand demand source: someone describing their own workaround or ask
+ * in a community, or opening an issue about it. Vendor pages and content
+ * farms are excluded even when they mention prices.
+ */
+export function isFirstHandSource(url: string): boolean {
+  if (isCommunitySource(url)) return true;
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.endsWith('github.com') && parsed.pathname.includes('/issues/');
+  } catch {
+    return false;
+  }
+}
+
 export function hasBusinessSignal(text: string): boolean {
   return BUSINESS_PATTERN.test(text);
 }
@@ -187,7 +202,8 @@ export function relevanceScore(source: DiscoverySource, query: string): number {
 export function scoreSource(source: DiscoverySource, query: string): number {
   if (isBlockedSource(source)) return -1;
   return (
-    (isCommunitySource(source) ? 2 : 0) +
+    (isFirstHandSource(source.url) ? 2 : 0) +
+    (isCommunitySource(source.url) ? 2 : 0) +
     (hasBusinessSignal(sourceText(source)) ? 1 : 0) +
     Math.min(2, relevanceScore(source, query))
   );

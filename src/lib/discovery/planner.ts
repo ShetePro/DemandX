@@ -1,6 +1,7 @@
 import type { LlmPort } from '@/lib/llm/port';
 
 import { resolvePlannedAngle } from './angles';
+import { coveredDomains, domainOf, domainLabel } from './domains';
 import { DISCOVERY_QUERIES_PER_SCAN, pickDiscoveryQueries } from './queries';
 import {
   discoveryPlanSchema,
@@ -74,9 +75,15 @@ function pickSeeds(random: () => number): string[] {
   const seeds: string[] = [];
   while (seeds.length < 2 && pool.length > 0) {
     const index = Math.min(pool.length - 1, Math.floor(random() * pool.length));
-    seeds.push(pool.splice(index, 1)[0] ?? '');
+    const seed = pool.splice(index, 1)[0] ?? '';
+    if (seed === '') continue;
+    // Two seeds in the same buyer domain produce variations of one angle;
+    // require the second seed to open a different market.
+    const seedDomain = domainOf(seed);
+    if (seeds.some((chosen) => domainOf(chosen) === seedDomain)) continue;
+    seeds.push(seed);
   }
-  return seeds.filter((seed) => seed !== '');
+  return seeds;
 }
 
 function trendBlock(trends: readonly TrendItem[], available: boolean): string {
@@ -116,8 +123,11 @@ export function buildPlanPrompt(
   trendsAvailable: boolean,
   seeds: readonly string[],
   directions: readonly string[] = [],
+  avoidDomains: readonly string[] = [],
+  hint?: string,
 ): PlanPrompt {
   const directed = directions.length > 0;
+  const avoid = avoidDomains.map(domainLabel).join('、');
   const adopted =
     memory.adopted.length === 0
       ? '（还没有被采用的灵感）'
@@ -130,7 +140,8 @@ export function buildPlanPrompt(
     ? `- 本轮用户指定了方向：${directions.join('、')}。angles 必须逐字等于这个列表，不得增删或改名。
 - 每个指定方向输出 2–4 条查询，共 4–12 条；中英文都要有；仍然是行业词 + 痛点词 + 商业语境的组合。
 - 不要引入列表之外的角度；历史扫描里的角度只用于避免重复写法。`
-    : `- 输出 3–6 个互不重叠的角度；每个角度必须能对应一个具体买家（谁）与具体工作流（做什么），不要写"AI 工具""效率提升"这类空泛主题。`;
+    : `- 输出 3–6 个互不重叠的角度，且必须来自不同的买家领域（财务、人力、客服、电商、物流、建筑、制造、医疗、教育、餐饮、法律、销售、健身、房产、宠物、会展、农业、保险、软件运维、设计）；同一领域只能出现一个角度，禁止用同一产品形态换行业凑数。
+- 每个角度必须能对应一个具体买家（谁）与具体工作流（做什么），不要写"AI 工具""效率提升"这类空泛主题。${avoid === '' ? '' : `\n- 最近扫描已覆盖这些领域，本轮不要再选：${avoid}。`}`;
 
   return {
     system: `你是产品机会雷达的侦察规划员。任务不是复述热点，而是为一个独立开发者规划本轮要验证的角度和搜索查询。
@@ -143,7 +154,7 @@ ${fixedRule}
 - 查询必须能带出商业语境：优先"愿意付费/报价/采购/招聘/外包/替代方案/太贵"这类词，避免只检索教程、百科或纯情绪讨论；每个角度都要能回答"谁现在为此花钱或花时间"。
 - 优先从本轮热点里寻找"人们最近正在抱怨/求工具"的工作流，但不要原样抄标题；热点只用来启发角度。
 ${directed ? '- 探索种子本轮不适用，方向已由用户指定。' : '- 把探索种子当作本轮必须认真看的方向，可以产出 1–2 个与种子相关的角度。'}
-- rationale 用一句中文说明本轮为什么选这些角度（≤60 字）。`,
+- rationale 用一句中文说明本轮为什么选这些角度（≤60 字）。${hint === undefined ? '' : `\n\n上一轮的问题：${hint}`}`,
     user: `最近热点（Hacker News，近 14 天，按热度）：
 ${trendBlock(trends, trendsAvailable)}
 
@@ -170,24 +181,46 @@ export async function planScan(ports: PlanPorts): Promise<DiscoveryPlan> {
   const random = ports.random ?? Math.random;
   const directions = cleanDirections(ports.directions);
   const seeds = directions.length > 0 ? [] : pickSeeds(random);
-  const prompt = buildPlanPrompt(
-    ports.memory,
-    ports.trends,
-    ports.trendsAvailable,
-    seeds,
-    directions,
-  );
+  // Only the last three scans hard-exclude a domain: the whole 12-scan memory
+  // would eventually cover the taxonomy and force a generic fallback.
+  const avoidDomains =
+    directions.length === 0
+      ? coveredDomains(ports.memory.scans.slice(0, 3).flatMap((scan) => scan.angles))
+      : [];
+  let hint: string | undefined;
 
-  const asked = await ports.llm
-    .structured(discoveryPlanSchema, { system: prompt.system, user: prompt.user }, {
-      profile: 'bulk',
-      timeoutMs: PLAN_TIMEOUT_MS,
-    })
-    .catch(() => null);
+  // Two attempts: a small model often puts six angles in one domain on the
+  // first try; the corrective prompt names the problem instead of falling
+  // straight back to the generic pool.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const prompt = buildPlanPrompt(
+      ports.memory,
+      ports.trends,
+      ports.trendsAvailable,
+      seeds,
+      directions,
+      avoidDomains,
+      hint,
+    );
 
-  if (asked !== null && asked.ok) {
-    const plan = normalizePlan(asked.value.data, asked.value.used.modelId, directions);
-    if (plan !== null) return plan;
+    const asked = await ports.llm
+      .structured(discoveryPlanSchema, { system: prompt.system, user: prompt.user }, {
+        profile: 'bulk',
+        timeoutMs: PLAN_TIMEOUT_MS,
+      })
+      .catch(() => null);
+
+    if (asked !== null && asked.ok) {
+      const plan = normalizePlan(
+        asked.value.data,
+        asked.value.used.modelId,
+        directions,
+        avoidDomains,
+      );
+      if (plan !== null) return plan;
+    }
+
+    hint = '上一轮的角度在同一买家领域内重复，或覆盖了最近扫描已用过的领域。请让每个角度来自不同领域，并避开已覆盖领域。';
   }
 
   return fallbackPlan(random, directions);
@@ -198,16 +231,31 @@ export function normalizePlan(
   raw: { angles: string[]; queries: { query: string; angle: string; language: 'zh' | 'en' }[]; rationale: string },
   model?: string,
   directions: readonly string[] = [],
+  avoidDomains: readonly string[] = [],
 ): DiscoveryPlan | null {
   const directed = directions.length > 0;
   const angles = directed ? [...directions] : [];
   if (!directed) {
+    const declared: string[] = [];
     for (const angle of raw.angles) {
       const clean = angle.trim();
-      if (clean === '' || angles.includes(clean)) continue;
-      angles.push(clean);
+      if (clean === '' || declared.includes(clean)) continue;
+      declared.push(clean);
+    }
+    // Keep the model's plan but trim it to distinct markets: at most two
+    // sub-angles per buyer domain, none from a recently covered domain. This
+    // is how six construction variants become a spread-out plan instead of an
+    // all-or-nothing rejection.
+    for (const angle of declared) {
+      const domain = domainOf(angle) ?? `angle:${angle}`;
+      if (avoidDomains.includes(domain)) continue;
+      const used = angles.filter((kept) => (domainOf(kept) ?? `angle:${kept}`) === domain).length;
+      if (used >= 2) continue;
+      angles.push(angle);
     }
     if (angles.length < 3) return null;
+    const distinct = new Set(angles.map((angle) => domainOf(angle) ?? `angle:${angle}`)).size;
+    if (distinct < 2) return null;
   }
 
   const seen = new Set<string>();
@@ -232,8 +280,10 @@ export function normalizePlan(
     if (!angles.every((angle) => covered.has(angle))) return null;
     if (queries.length < Math.min(8, angles.length * 2)) return null;
   } else {
-    if (queries.length < 8) return null;
-    if (covered.size < 3) return null;
+    // Trimming may drop some of the model's queries; the kept angles must all
+    // still be represented, and the plan must stay broad enough to be useful.
+    if (!angles.every((angle) => covered.has(angle))) return null;
+    if (queries.length < Math.min(8, angles.length * 2)) return null;
   }
 
   return {

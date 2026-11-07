@@ -306,6 +306,106 @@ describe('findOpportunities', () => {
     if (result.ok) expect(result.value.commercialGap).toBe(false);
   });
 
+  it('drops an idea that repeats a remembered direction', async () => {
+    const result = await findOpportunities({
+      searchPorts: [port('ddg', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
+      queries: ['库存 同步'],
+      priorIdeas: [{ title: OPPORTUNITY.title, problem: OPPORTUNITY.problem }],
+      llm: llmReturning({ opportunities: [OPPORTUNITY] }),
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('TOO_SIMILAR');
+  });
+
+  it('keeps only one of two near-duplicate ideas in the same round', async () => {
+    const twin = {
+      ...OPPORTUNITY,
+      title: '多平台库存同步助手',
+      evidence: [{ url: 'https://example.com/post-2', quote: '愿意付费买工具' }],
+    };
+    const result = await findOpportunities({
+      searchPorts: [port('ddg', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
+      queries: ['库存 同步'],
+      llm: llmReturning({ opportunities: [OPPORTUNITY, twin] }),
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.opportunities).toHaveLength(1);
+  });
+
+  it('skips unsupported queries and caps a slow port', async () => {
+    const calls: string[] = [];
+    const slow: SearchPort = {
+      id: 'slow',
+      platform: 'web',
+      maxQueries: 1,
+      supportsQuery: (query) => query.startsWith('en'),
+      async search(query) {
+        calls.push(query);
+        return [hit(1)];
+      },
+    };
+
+    await findOpportunities({
+      searchPorts: [slow, port('ddg', [hit(2), hit(3), hit(4), hit(5), hit(6)])],
+      queries: ['中文 查询', 'en one', 'en two'],
+      llm: llmReturning({ opportunities: [OPPORTUNITY] }),
+    });
+
+    expect(calls).toEqual(['en one']);
+  });
+
+  it('tells the model which directions already exist', async () => {
+    const structured = vi.fn(
+      llmReturning({ opportunities: [OPPORTUNITY] }).structured,
+    );
+    await findOpportunities({
+      searchPorts: [port('ddg', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
+      queries: ['库存 同步'],
+      priorIdeas: [{ title: '旧方向：库存同步', problem: '卖家手工同步库存' }],
+      llm: { structured, text: vi.fn() } as unknown as LlmPort,
+    });
+
+    const prompt = structured.mock.calls[0]?.[1] as { user: string };
+    expect(prompt.user).toContain('旧方向：库存同步');
+    expect(prompt.user).toContain('最近已产出的灵感（不要重复）');
+  });
+
+  it('drops a vendor-only idea when the pool has first-hand threads', async () => {
+    const reddit: SearchHit = {
+      url: 'https://www.reddit.com/r/smallbusiness/comments/x/invoice',
+      title: 'How do you invoice clients?',
+      snippet: 'We chase invoices by hand every month and would pay for a tool.',
+      platform: 'reddit',
+    };
+    const vendor: SearchHit = {
+      url: 'https://invoice-generator.com/',
+      title: 'Free invoice generator',
+      snippet: 'Create a free invoice online. Pricing starts at $9 per month.',
+      platform: 'web',
+    };
+    const vendorIdea = {
+      ...OPPORTUNITY,
+      evidence: [{ url: 'https://invoice-generator.com/', quote: 'Create a free invoice online' }],
+    };
+    const grounded = {
+      ...OPPORTUNITY,
+      evidence: [
+        { url: reddit.url, quote: 'We chase invoices by hand every month' },
+      ],
+    };
+
+    const result = await findOpportunities({
+      searchPorts: [port('ddg', [reddit, vendor])],
+      queries: ['invoice spreadsheet'],
+      llm: llmReturning({ opportunities: [vendorIdea, grounded] }),
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.opportunities).toEqual([grounded]);
+  });
+
   it('reports search → filter → model phases in order', async () => {
     const phases: string[] = [];
     const result = await findOpportunities({

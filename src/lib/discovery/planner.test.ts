@@ -20,6 +20,7 @@ const MEMORY: ScanMemory = {
       opportunities: [
         {
           title: '自由职业者发票助手',
+          problem: '自由职业者每月手工汇总发票，催客户付款很费劲',
           angle: '自由职业收款',
           fingerprint: '123',
         },
@@ -241,6 +242,49 @@ describe('directed scans', () => {
     // Mechanical fallback still honours the directions rather than dropping one.
     expect(plan.strategy).toBe('directed');
     expect(plan.angles).toEqual(['诊所排班', '门店库存']);
+  });
+});
+
+describe('domain diversity', () => {
+  it('trims a plan that spends its angles on one buyer domain', () => {
+    const construction = {
+      ...VALID,
+      angles: ['工地签证', '装修进度款', '工地验收', '装修报价'],
+      queries: VALID.queries.map((item, index) => ({
+        ...item,
+        angle: ['工地签证', '装修进度款', '工地验收', '装修报价'][index % 4] ?? '工地签证',
+      })),
+    };
+    // Two construction sub-angles survive; fewer than three angles -> reject.
+    expect(normalizePlan(construction)).toBeNull();
+  });
+
+  it('keeps two sub-angles when a second domain is present', () => {
+    const mixed = {
+      ...VALID,
+      angles: ['工地签证', '装修进度款', '工厂点检', '设备报修'],
+      queries: VALID.queries.map((item, index) => ({
+        ...item,
+        angle: ['工地签证', '装修进度款', '工厂点检', '设备报修'][index % 4] ?? '工地签证',
+      })),
+    };
+    const plan = normalizePlan(mixed);
+    expect(plan?.angles).toEqual(['工地签证', '装修进度款', '工厂点检', '设备报修']);
+  });
+
+  it('rejects angles that repeat a domain covered by recent scans', () => {
+    const plan = normalizePlan(
+      VALID,
+      undefined,
+      [],
+      ['health'],
+    );
+    // VALID contains 诊所排班 (health); the whole plan is refused.
+    expect(plan).toBeNull();
+  });
+
+  it('keeps a plan with distinct domains', () => {
+    expect(normalizePlan(VALID)?.angles).toEqual(['诊所排班', '门店库存', '外贸单据']);
   });
 });
 

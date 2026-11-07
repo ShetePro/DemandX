@@ -11,6 +11,11 @@ import type { DiscoveryPlan, DiscoveryResult, ScanMemory } from '@/lib/discovery
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
+/** Sort key: English-only queries before mixed/Chinese ones. */
+function englishFirst(query: string): number {
+  return /[a-z]{4}/i.test(query) && !/[\u4e00-\u9fff]/.test(query) ? 0 : 1;
+}
+
 const inputSchema = z
   .object({
     excludeUrls: z.array(z.string().trim().max(2000)).max(300).optional(),
@@ -90,12 +95,14 @@ export async function POST(request: Request): Promise<Response> {
             directions: parsed.data.directions ?? [],
           });
 
+          // English queries first: the capped community ports (Reddit, GitHub)
+          // only see the first few, and their corpus is English.
           const executed = [
             ...new Set([
               ...plan.queries.map((item) => item.query),
               ...pickDiscoveryQueries(FALLBACK_PROBES),
             ]),
-          ];
+          ].sort((left, right) => englishFirst(left) - englishFirst(right));
 
           const result = await findOpportunities({
             ...runtime,
@@ -103,6 +110,9 @@ export async function POST(request: Request): Promise<Response> {
             queries: executed,
             excludeUrls: attemptMemory.excludedUrls,
             priorFingerprints: priorFingerprints(attemptMemory),
+            priorIdeas: attemptMemory.scans
+              .flatMap((scan) => scan.opportunities)
+              .map((item) => ({ title: item.title, problem: item.problem })),
             onPhase: (phase: 'search' | 'filter' | 'model', detail?: number) =>
               send({ type: 'phase', phase, detail }),
           });

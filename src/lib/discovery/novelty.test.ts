@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   fingerprintFromText,
   fingerprintToText,
+  ideaOverlap,
+  ideaTokens,
   isNovelFingerprint,
+  isRepeatedIdea,
   opportunityFingerprint,
 } from './novelty';
 
@@ -40,5 +43,21 @@ describe('opportunity novelty', () => {
     const fingerprint = opportunityFingerprint('发票助手', '自由职业者每月手工汇总发票');
     expect(isNovelFingerprint(fingerprint, ['not-a-number'])).toBe(true);
     expect(fingerprintFromText('not-a-number')).toBeNull();
+  });
+});
+
+
+describe('idea token overlap', () => {
+  it('flags two wordings of the same workflow', () => {
+    const first = ideaTokens('客服快捷回复工具', '客服每天在文档里找回复，重复且口吻不一');
+    const second = ideaTokens('客服回复助手', '客服每天在文档里找回复，重复且口吻不一');
+    expect(ideaOverlap(first, second)).toBeGreaterThanOrEqual(0.5);
+    expect(isRepeatedIdea(second, [first])).toBe(true);
+  });
+
+  it('keeps a genuinely different workflow', () => {
+    const scheduling = ideaTokens('门店排班表同步', '店长每天用 Excel 排班，换班全靠群里吼');
+    const invoicing = ideaTokens('自由职业发票助手', '每月手工汇总发票，催客户付款很费劲');
+    expect(isRepeatedIdea(invoicing, [scheduling])).toBe(false);
   });
 });

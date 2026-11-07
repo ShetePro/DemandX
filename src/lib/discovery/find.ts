@@ -2,9 +2,19 @@ import type { LlmPort } from '@/lib/llm/port';
 import type { SearchPort } from '@/lib/search/port';
 
 import { resolvePlannedAngle } from './angles';
-import { isNovelFingerprint, opportunityFingerprint } from './novelty';
+import {
+  ideaTokens,
+  isNovelFingerprint,
+  isRepeatedIdea,
+  opportunityFingerprint,
+} from './novelty';
 import { DISCOVERY_HITS_PER_QUERY, pickDiscoveryQueries } from './queries';
-import { hasBusinessSignal, quoteGrounded, selectSources } from './sources';
+import {
+  hasBusinessSignal,
+  isFirstHandSource,
+  quoteGrounded,
+  selectSources,
+} from './sources';
 import {
   discoverySchema,
   type DiscoveryPlan,
@@ -42,6 +52,8 @@ export type DiscoveryPorts = {
   plan?: DiscoveryPlan | undefined;
   /** Fingerprints of recent opportunities; near-duplicates are dropped. */
   priorFingerprints?: readonly string[] | undefined;
+  /** Titles/problems of recent opportunities, so the model can avoid repeats. */
+  priorIdeas?: readonly { title: string; problem: string }[] | undefined;
   /** Streaming progress: search → filter → model. */
   onPhase?: (phase: 'search' | 'filter' | 'model', detail?: number) => void;
 };
@@ -84,9 +96,11 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
   const angles = deps.plan?.angles ?? [];
   const allowedAngles = new Set(angles);
   const prior = deps.priorFingerprints ?? [];
+  const priorIdeas = deps.priorIdeas ?? [];
 
   // Queries run together: discovery is interactive, and the adapters' shared
   // limiter already serialises calls per host, so this does not burst.
+  const portCalls = new Map<string, number>();
   const perQuery = await Promise.all(
     queries.map(async (query) => {
       const answered: {
@@ -95,6 +109,12 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
       }[] = [];
 
       for (const port of deps.searchPorts) {
+        // Slow platforms serve a bounded number of queries per scan; queries a
+        // port cannot answer do not spend its budget.
+        if (port.supportsQuery !== undefined && !port.supportsQuery(query)) continue;
+        const used = portCalls.get(port.id) ?? 0;
+        if (port.maxQueries !== undefined && used >= port.maxQueries) continue;
+        portCalls.set(port.id, used + 1);
         try {
           const hits = await port.search(query, { limit: DISCOVERY_HITS_PER_QUERY });
           if (hits.length === 0) continue;
@@ -150,6 +170,9 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
   async function askModel(prompt: { system: string; user: string }) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const answered = await Promise.race([
+      // Bulk on purpose: the scan is interactive and the quality chain has
+      // timed out the 45s budget in practice. The quality rules live in the
+      // prompt and the evidence gates instead.
       deps.llm.structured(discoverySchema, prompt, { profile: 'bulk' }),
       new Promise<null>((resolve) => {
         timer = setTimeout(() => resolve(null), DISCOVERY_LLM_TIMEOUT_MS);
@@ -160,9 +183,16 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
 
   const allowed = new Map(sources.map((source) => [source.url, source]));
   const check = (candidates: readonly Opportunity[]) =>
-    validateCandidates(candidates, { allowed, angles, allowedAngles, prior });
+    validateCandidates(candidates, {
+      allowed,
+      angles,
+      allowedAngles,
+      prior,
+      priorTokens: priorIdeas.map((idea) => ideaTokens(idea.title, idea.problem)),
+      firstHandAvailable: sources.some((source) => isFirstHandSource(source.url)),
+    });
 
-  let asked = await askModel(buildPrompt(sources, angles));
+  let asked = await askModel(buildPrompt(sources, angles, priorIdeas));
   if (asked === null) {
     return {
       ok: false,
@@ -189,6 +219,8 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
     const problems = [
       checked.ungrounded > 0 ? `${checked.ungrounded} 条灵感的 quote 在片段里找不到原文` : '',
       checked.unanchored > 0 ? `${checked.unanchored} 条灵感没有引用带「商业线索」标记的片段` : '',
+      checked.noFirstHand > 0 ? `${checked.noFirstHand} 条灵感没有引用带「真实讨论」标记的片段` : '',
+      checked.placeholder > 0 ? `${checked.placeholder} 条输出是「无有效灵感」占位内容` : '',
     ]
       .filter((problem) => problem !== '')
       .join('；');
@@ -197,6 +229,7 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
       buildPrompt(
         sources,
         angles,
+        priorIdeas,
         `${problems}。这一轮 quote 必须逐字来自片段，并且每条灵感至少引用一条带「商业线索」标记的片段；做不到就不要输出该条。`,
       ),
     );
@@ -209,7 +242,7 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
     }
   }
 
-  const { duplicates, offAngle, ungrounded, unanchored } = checked;
+  const { duplicates, offAngle, ungrounded, unanchored, placeholder } = checked;
   // Evidence beats silence: a grounded, on-angle idea without a paid source is
   // still a lead. It ships flagged rather than failing the whole scan, and the
   // UI tells the operator what is missing.
@@ -231,7 +264,7 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
     return {
       ok: false,
       code: 'INVALID_OUTPUT',
-      message: `模型输出未通过校验：引文不匹配 ${ungrounded}、缺少商业线索 ${unanchored}、角度不符 ${offAngle}，本次扫描作废。`,
+      message: `模型输出未通过校验：引文不匹配 ${ungrounded}、缺少商业线索 ${unanchored}、角度不符 ${offAngle}、占位/无有效灵感 ${placeholder}，本次扫描作废。`,
     };
   }
 
@@ -269,6 +302,7 @@ function failureHint(message: string): string {
 function buildPrompt(
   sources: readonly DiscoverySource[],
   angles: readonly string[],
+  priorIdeas: readonly { title: string; problem: string }[],
   hint?: string,
 ): { system: string; user: string } {
   const ordered = [...sources].sort((left, right) => {
@@ -283,8 +317,13 @@ function buildPrompt(
 
   const list = ordered
     .map((source, index) => {
-      const business = businessIndexes.includes(index + 1) ? '[商业线索] ' : '';
-      return `[${index + 1}] ${business}${source.title}\nURL: ${source.url}\n片段: ${source.snippet.slice(0, 300)}`;
+      const marks = [
+        businessIndexes.includes(index + 1) ? '[商业线索]' : '',
+        isFirstHandSource(source.url) ? '[真实讨论]' : '',
+      ]
+        .filter((mark) => mark !== '')
+        .join('');
+      return `[${index + 1}] ${marks === '' ? '' : `${marks} `}${source.title}\nURL: ${source.url}\n片段: ${source.snippet.slice(0, 300)}`;
     })
     .join('\n\n');
 
@@ -292,6 +331,22 @@ function buildPrompt(
     businessIndexes.length === 0
       ? '（本轮没有含商业线索的片段）'
       : businessIndexes.map((index) => `[${index}]`).join(' ');
+
+  const firstHandAvailable = ordered.some((source) => isFirstHandSource(source.url));
+  const firstHandRule = firstHandAvailable
+    ? '- 每条灵感至少一条引文来自带「真实讨论」标记的片段（Reddit / Hacker News / GitHub Issue / 论坛里用户自述）；没有真实讨论就不要输出这条灵感。'
+    : '- 本轮没有带「真实讨论」标记的片段：可以引用普通网页，但 problem 必须写明这是二手描述，不要把厂商宣传语当用户原话。';
+
+  const recentIdeas =
+    priorIdeas.length === 0
+      ? '（没有历史灵感）'
+      : priorIdeas
+          .slice(0, 12)
+          .map(
+            (idea, index) =>
+              `${index + 1}. ${idea.title}｜${idea.problem.slice(0, 70)}`,
+          )
+          .join('\n');
 
   const angleRule =
     angles.length === 0
@@ -311,9 +366,12 @@ function buildPrompt(
 - monetization 只能是 subscription / usage / one-time / service。
 - mvp 写一个人 1–2 周能上线的范围；需要牌照、硬件、双边市场或大规模数据的想法不要输出。
 - 每条灵感的 evidence 至少引用一条下方「必选证据来源」里的编号；这些片段含价格、付费、招聘、外包或替代方案。没有商业线索可引用就不要输出这条灵感。
+${firstHandRule}
 - 片段之间互相矛盾或只是同一来源的重复，不要当成多个灵感。
+- 不要重复「最近已产出的灵感」里的方向；如果确实要深挖，必须换买家或工作流，并在 title/problem 里体现差异。
+- 每个角度最多输出 1 条灵感；不同角度必须是不同买家与工作流，禁止用同一产品形态换行业凑数。
 - 全部用中文。${hint === undefined ? '' : `\n\n上一轮的问题：${hint}`}`,
-    user: `必选证据来源（含商业线索）：${requiredSources}\n\n候选片段：\n\n${list}\n\n请输出 opportunities 数组。`,
+    user: `必选证据来源（含商业线索）：${requiredSources}\n\n最近已产出的灵感（不要重复）：\n${recentIdeas}\n\n候选片段：\n\n${list}\n\n请输出 opportunities 数组。`,
   };
 }
 
@@ -325,6 +383,10 @@ type CandidateCheck = {
   offAngle: number;
   ungrounded: number;
   unanchored: number;
+  /** Ideas with no first-hand (community/issue) citation; used for correction. */
+  noFirstHand: number;
+  /** "（无有效灵感）" placeholders a model emits when it found nothing. */
+  placeholder: number;
 };
 
 /**
@@ -339,19 +401,28 @@ function validateCandidates(
     angles: readonly string[];
     allowedAngles: ReadonlySet<string>;
     prior: readonly string[];
+    priorTokens: readonly ReadonlySet<string>[];
+    firstHandAvailable: boolean;
   },
 ): CandidateCheck {
   const opportunities: Opportunity[] = [];
   const unanchoredItems: Opportunity[] = [];
+  const acceptedTokens: ReadonlySet<string>[] = [];
+  const usedAngles = new Set<string>();
   let duplicates = 0;
   let offAngle = 0;
   let ungrounded = 0;
   let unanchored = 0;
+  let noFirstHand = 0;
+  let placeholder = 0;
 
   for (const candidate of candidates) {
     // A model that found nothing sometimes answers with a placeholder idea
     // ("(无有效灵感)", "不适用"); shipping that as a card would be a fake result.
-    if (/无有效|没有有效|不适用|无相关灵感/.test(`${candidate.title}${candidate.problem}`)) continue;
+    if (/无有效|没有有效|不适用|无相关灵感/.test(`${candidate.title}${candidate.problem}`)) {
+      placeholder += 1;
+      continue;
+    }
 
     // The angle must resolve to one this round planned: an idea tagged with an
     // angle nobody chose is either a leftover from the prompt or a
@@ -391,13 +462,35 @@ function validateCandidates(
       continue;
     }
 
+    // Two ideas built on the same workflow words are one lead. Compare with
+    // previous rounds and with what this round already accepted.
+    const tokens = ideaTokens(candidate.title, candidate.problem);
+    if (isRepeatedIdea(tokens, context.priorTokens) || isRepeatedIdea(tokens, acceptedTokens)) {
+      duplicates += 1;
+      continue;
+    }
+
     // Commercial anchoring: at least one cited page must talk about money,
     // hiring or a paid alternative. Without it the idea is a complaint, not a
     // market signal; it is kept aside only as a flagged fallback.
+    // When the scan did find community/issue threads, an idea that cites only
+    // vendor copy is not demand; drop it rather than ship marketing as a lead.
+    if (context.firstHandAvailable && !evidence.some((item) => isFirstHandSource(item.url))) {
+      noFirstHand += 1;
+      continue;
+    }
+
     const anchored = evidence.some((item) => {
       const source = context.allowed.get(item.url);
       return source !== undefined && hasBusinessSignal(`${source.title}\n${source.snippet}`);
     });
+    if (usedAngles.has(angle)) {
+      duplicates += 1;
+      continue;
+    }
+    usedAngles.add(angle);
+    acceptedTokens.push(tokens);
+
     if (!anchored) {
       unanchored += 1;
       unanchoredItems.push({ ...candidate, angle, evidence });
@@ -407,5 +500,14 @@ function validateCandidates(
     opportunities.push({ ...candidate, angle, evidence });
   }
 
-  return { opportunities, unanchoredItems, duplicates, offAngle, ungrounded, unanchored };
+  return {
+    opportunities,
+    unanchoredItems,
+    duplicates,
+    offAngle,
+    ungrounded,
+    unanchored,
+    noFirstHand,
+    placeholder,
+  };
 }

@@ -39,5 +39,15 @@ export interface SearchPort {
    * covering queries the platform adapters cannot reach.
    */
   fallback?: boolean;
+  /**
+   * Cap on how many queries of one scan this port serves. Slow or rate-limited
+   * platforms (Reddit, GitHub) trade breadth for staying inside their limits.
+   */
+  maxQueries?: number;
+  /**
+   * Skip queries this source cannot answer usefully (Reddit has no Chinese
+   * corpus worth searching); skipped queries do not spend `maxQueries`.
+   */
+  supportsQuery?: (query: string) => boolean;
   search(q: string, opts: SearchOptions): Promise<SearchHit[]>;
 }
