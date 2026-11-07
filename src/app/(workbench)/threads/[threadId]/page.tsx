@@ -9,7 +9,7 @@ import { ReportPanel } from '@/features/report/report-panel';
 import { ThreadTabs } from '@/features/threads/thread-tabs';
 import { parseThreadView } from '@/features/threads/views';
 import { PlanPanel } from '@/features/validation/plan-panel';
-import type { ChatMessage } from '@/lib/chat/types';
+import { toChatMessages } from '@/lib/chat/history';
 import { toRunEvents, type RunEvent } from '@/lib/runs/event-reducer';
 import {
   getLatestRunForThread,
@@ -19,7 +19,6 @@ import {
   hasAssistantMessage,
   listRunsForThread,
   readEvents,
-  type MessageRecord,
 } from '@/lib/runs/repository';
 import { readWorkerStatus } from '@/lib/runs/worker-heartbeat';
 
@@ -30,26 +29,6 @@ type ThreadPageProps = {
   params: Promise<{ threadId: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
-
-/** Persisted rows only ever hold UIMessage parts; unknown shapes are skipped. */
-function toChatMessages(records: MessageRecord[]): ChatMessage[] {
-  const messages: ChatMessage[] = [];
-
-  for (const record of records) {
-    if (record.role !== 'user' && record.role !== 'assistant' && record.role !== 'system') {
-      continue;
-    }
-    if (!Array.isArray(record.parts)) continue;
-
-    messages.push({
-      id: String(record.id),
-      role: record.role,
-      parts: record.parts as ChatMessage['parts'],
-    });
-  }
-
-  return messages;
-}
 
 /**
  * The question the assistant must answer on first paint: the run's own idea.

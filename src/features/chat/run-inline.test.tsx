@@ -80,4 +80,36 @@ describe('RunInlineProgress', () => {
     const { container } = render(<RunInlineProgress runId={7} events={[]} status="queued" />);
     expect(container.firstChild).toBeNull();
   });
+
+  it('asks for the transcript once when a live run settles', () => {
+    const onSettled = vi.fn();
+    const { rerender } = render(
+      <RunInlineProgress runId={7} events={[CREATED]} status="running" onSettled={onSettled} />,
+    );
+    expect(onSettled).not.toHaveBeenCalled();
+
+    rerender(
+      <RunInlineProgress
+        runId={7}
+        events={[CREATED, { seq: 2, type: 'run.finished', payload: { status: 'finished' } }]}
+        onSettled={onSettled}
+      />,
+    );
+
+    expect(onSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reload for a run that was already over on first paint', () => {
+    const onSettled = vi.fn();
+
+    render(
+      <RunInlineProgress
+        runId={7}
+        events={[CREATED, { seq: 2, type: 'run.finished', payload: { status: 'finished' } }]}
+        onSettled={onSettled}
+      />,
+    );
+
+    expect(onSettled).not.toHaveBeenCalled();
+  });
 });

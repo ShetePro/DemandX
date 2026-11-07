@@ -2,6 +2,7 @@
 
 import { Check, X } from 'lucide-react';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { useRunStream } from '@/lib/hooks/use-run-stream';
@@ -26,10 +27,10 @@ export type RunActivityProps = {
 };
 
 /**
- * The run, told on the assistant side of the transcript. The rail is a monitor
- * an operator opens on purpose; this card is the answer's own footnote, so it
- * only shows while there is something to say and folds back to a single line
- * once the run is over.
+ * The run, told on the assistant side of the transcript. The deck stacks one
+ * card per run with only its header visible; the header carries the verdict so
+ * the whole stack reads without opening anything, and the deck expands a card
+ * when the pointer enters it.
  */
 export function RunActivity({
   runId,
@@ -66,13 +67,13 @@ function LiveRunActivity({
   const stalled = !workerOnline && state.status === 'queued';
   const failed = state.terminal && state.status === 'failed';
 
-  // Finished / cancelled keep the one-line summary. A failure keeps the card:
-  // the stage that died and its code are the whole point of showing it inline.
+  // Finished / cancelled keep the card shell; a finished run shows its verdict,
+  // a cancelled one only the reason line in its header.
   if (state.terminal && !failed) {
     return state.status === 'finished' ? (
       <CompletedCard state={state} runId={runId} />
     ) : (
-      <TerminalLine state={state} runId={runId} />
+      <TerminalCard state={state} runId={runId} />
     );
   }
 
@@ -84,28 +85,12 @@ function LiveRunActivity({
   const activity = recentActivity(state.events);
 
   return (
-    <div
-      role="group"
-      aria-label="实时研究"
-      className={cn(
-        'rounded-xl border px-3.5 py-3',
-        failed ? 'border-danger/40 bg-danger-soft/30' : 'border-border bg-surface-2/40',
-      )}
+    <RunCard
+      runId={runId}
+      label="实时研究"
+      state={state}
+      tone={failed ? 'danger' : 'default'}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-xs font-semibold text-fg">
-          {!state.terminal ? (
-            <span
-              aria-hidden="true"
-              className="inline-block size-1.5 animate-pulse rounded-full bg-accent"
-            />
-          ) : null}
-          实时研究
-          <span className="font-mono text-[10px] font-normal text-faint">run #{runId}</span>
-        </span>
-        <Badge tone={STATUS_META[state.status].tone}>{STATUS_META[state.status].label}</Badge>
-      </div>
-
       <ol aria-label="研究阶段" className="mt-2.5 flex flex-wrap items-center gap-1">
         {RUN_STAGES.map((stage, index) => {
           const mark = stageMark(index, state);
@@ -164,8 +149,79 @@ function LiveRunActivity({
           ))}
         </ul>
       )}
+    </RunCard>
+  );
+}
+
+/**
+ * Every card is the same opaque shell: opaque matters because newer cards are
+ * piled over older ones, and a translucent background would leak the covered
+ * card's text through the header.
+ */
+function RunCard({
+  runId,
+  label,
+  state,
+  tone = 'default',
+  children,
+}: {
+  runId: number;
+  label: string;
+  state: RunStreamState;
+  tone?: 'default' | 'danger';
+  children?: ReactNode;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className={cn(
+        'rounded-xl border bg-surface px-3.5 pt-3 pb-3',
+        tone === 'danger' ? 'border-danger/40' : 'border-border',
+      )}
+    >
+      <CardHeader runId={runId} state={state} />
+      {children}
     </div>
   );
+}
+
+/**
+ * The visible strip of a stacked card: run number, what the run produced and
+ * its status, so the whole deck can be read without opening any card.
+ */
+function CardHeader({ runId, state }: { runId: number; state: RunStreamState }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="shrink-0 font-mono text-[10.5px] text-faint">run #{runId}</span>
+      <span className="min-w-0 flex-1 truncate text-xs font-medium text-fg">
+        {headerSummary(state)}
+      </span>
+      <Badge tone={STATUS_META[state.status].tone}>{STATUS_META[state.status].label}</Badge>
+    </div>
+  );
+}
+
+/** The one-line verdict a card header carries: result when done, stage when live. */
+function headerSummary(state: RunStreamState): string {
+  if (state.status === 'finished') {
+    const finished = lastEvent(state.events, (event) => event.type === 'run.finished');
+    const accepted = numberField(finished?.payload, 'accepted');
+    const ready = lastEvent(state.events, (event) => event.type === 'report.ready');
+    const decision = stringField(ready?.payload, 'decision');
+    const parts = [accepted === null ? '研究完成' : `${accepted} 条证据`];
+    if (decision !== null) parts.push(`决策 ${decision}`);
+    return parts.join(' · ');
+  }
+
+  if (state.status === 'failed') {
+    const stage = stageLabel(state.stage);
+    return stage === null ? '研究失败' : `研究失败 · ${stage}`;
+  }
+
+  if (state.status === 'cancelled') return '研究已取消';
+
+  return stageLabel(state.stage) ?? '等待开始';
 }
 
 /**
@@ -181,20 +237,7 @@ function CompletedCard({ state, runId }: { state: RunStreamState; runId: number 
   const reportId = numberField(ready?.payload, 'reportId');
 
   return (
-    <div
-      role="group"
-      aria-label={`研究结果 run #${runId}`}
-      className="rounded-xl border border-border bg-surface px-3.5 py-3"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-xs font-semibold text-fg">
-          <Check className="size-3.5 text-success" aria-hidden="true" />
-          研究结果
-          <span className="font-mono text-[10px] font-normal text-faint">run #{runId}</span>
-        </span>
-        <Badge tone={STATUS_META[state.status].tone}>{STATUS_META[state.status].label}</Badge>
-      </div>
-
+    <RunCard runId={runId} label={`研究结果 run #${runId}`} state={state}>
       <ol aria-label="研究阶段" className="mt-2.5 flex flex-wrap items-center gap-1">
         {RUN_STAGES.map((stage, index) => (
           <li
@@ -235,19 +278,13 @@ function CompletedCard({ state, runId }: { state: RunStreamState; runId: number 
           查看证据
         </Link>
       </div>
-    </div>
+    </RunCard>
   );
 }
 
-/** One line for a run that is over: what it produced, and how it ended. */
-function TerminalLine({ state, runId }: { state: RunStreamState; runId: number }) {
-  return (
-    <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2/40 px-3.5 py-2 text-xs text-muted">
-      <span aria-hidden="true" className="inline-block size-1.5 shrink-0 rounded-full bg-muted" />
-      <span className="shrink-0 font-mono text-[10.5px] text-faint">run #{runId}</span>
-      <span className="min-w-0 truncate">{summarizeState(state)}</span>
-    </div>
-  );
+/** A cancelled run has no result to show: its header carries the verdict. */
+function TerminalCard({ state, runId }: { state: RunStreamState; runId: number }) {
+  return <RunCard runId={runId} label={`研究已结束 run #${runId}`} state={state} />;
 }
 
 export function summarizeState(state: RunStreamState): string {

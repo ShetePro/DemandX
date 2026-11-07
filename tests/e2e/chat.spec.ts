@@ -211,7 +211,7 @@ test.describe('Chat', () => {
     expect((await stubRequests(request)).filter(isStreamingChat)).toHaveLength(1);
   });
 
-  test('对话内实时进度 + 右侧研究卡片', async ({ page }) => {
+  test('对话内实时进度 + 左侧研究卡片', async ({ page }) => {
     const threadId = await createThread(page);
     const runId = await seedRun(threadId);
 
@@ -219,7 +219,7 @@ test.describe('Chat', () => {
     await page.reload();
     await expect(page.getByRole('complementary', { name: '运行详情' })).toHaveCount(0);
 
-    // Progress streams inline in the chat; the full card lives in the side deck.
+    // Progress streams inline in the chat; the full card lives in the left deck.
     const inline = page.getByRole('status', { name: `研究进度 run #${runId}` });
     await expect(inline).toContainText('S1 采集');
     await expect(inline).toContainText('进行中');

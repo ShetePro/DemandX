@@ -3,7 +3,7 @@
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useRouter } from 'next/navigation';
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useStickToBottom } from 'use-stick-to-bottom';
 
@@ -12,7 +12,12 @@ import type { RunEvent } from '@/lib/runs/event-reducer';
 import type { AssistantMessagePart } from '@/lib/runs/repository';
 import { cn } from '@/lib/utils/cn';
 
-import { appendAssistantMessageAction, appendUserMessageAction, createRunAction } from './actions';
+import {
+  appendAssistantMessageAction,
+  appendUserMessageAction,
+  createRunAction,
+  loadThreadMessagesAction,
+} from './actions';
 import { CitationSheet } from './citation-sheet';
 import { Composer } from './composer';
 import { MessageParts } from './message-parts';
@@ -205,7 +210,33 @@ export function ChatScreen({
     },
   });
   const messages = chat.messages as unknown as ChatMessage[];
-  const { sendMessage, status, stop } = chat;
+  const { sendMessage, setMessages, status, stop } = chat;
+
+  // The worker appends a research digest when a run ends. Re-read the stored
+  // transcript so the open tab shows that turn without a reload; a reply that
+  // is still streaming owns the message list, so the sync waits for `ready`.
+  const syncPending = useRef(false);
+  const syncRunning = useRef(false);
+  const syncTranscript = useCallback(async () => {
+    if (syncRunning.current || status !== 'ready') {
+      syncPending.current = true;
+      return;
+    }
+
+    syncRunning.current = true;
+    try {
+      const result = await loadThreadMessagesAction(threadId);
+      if (result.ok) setMessages(result.value as unknown as ChatHookMessage[]);
+    } finally {
+      syncRunning.current = false;
+    }
+  }, [setMessages, status, threadId]);
+
+  useEffect(() => {
+    if (!syncPending.current || status !== 'ready') return;
+    syncPending.current = false;
+    void syncTranscript();
+  }, [status, syncTranscript]);
 
   const { scrollRef, contentRef } = useStickToBottom({ initial: 'instant' });
 
@@ -329,9 +360,18 @@ export function ChatScreen({
         'grid h-full min-h-0',
         runCards.length === 0
           ? 'grid-cols-1'
-          : 'grid-cols-[minmax(0,1fr)_332px] max-lg:grid-cols-1',
+          : 'grid-cols-[332px_minmax(0,1fr)] max-lg:grid-cols-1',
       )}
     >
+      {runCards.length > 0 ? (
+        <aside
+          aria-label="研究卡片"
+          className="no-print relative hidden min-h-0 items-start justify-start pt-6 lg:flex"
+        >
+          <RunDeck runs={runCards} workerOnline={workerOnline} />
+        </aside>
+      ) : null}
+
       <section aria-label="对话" className="relative flex min-h-0 flex-col">
         <header className="flex h-12 shrink-0 items-center border-b border-border px-4">
           <h1 className="truncate text-sm font-semibold text-fg">{title}</h1>
@@ -362,6 +402,7 @@ export function ChatScreen({
                         status={card.status}
                         stage={card.stage}
                         workerOnline={workerOnline}
+                        onSettled={() => void syncTranscript()}
                       />
                     ))}
                   <article
@@ -398,6 +439,7 @@ export function ChatScreen({
                   status={card.status}
                   stage={card.stage}
                   workerOnline={workerOnline}
+                  onSettled={() => void syncTranscript()}
                 />
               ))}
 
@@ -428,15 +470,6 @@ export function ChatScreen({
           </div>
         </div>
       </section>
-
-      {runCards.length > 0 ? (
-        <aside
-          aria-label="研究卡片"
-          className="no-print relative hidden min-h-0 items-center justify-center py-6 lg:flex"
-        >
-          <RunDeck runs={runCards} workerOnline={workerOnline} />
-        </aside>
-      ) : null}
 
       <CitationSheet
         citationId={citationId}

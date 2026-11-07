@@ -11,6 +11,7 @@ import {
   createThread,
   createThreadInputSchema,
   formatIssues,
+  getMessages,
   type AppendAssistantMessageResult,
   type AssistantMessagePart,
   type CreateResearchResult,
@@ -18,6 +19,8 @@ import {
   type CreateThreadResult,
   type Result,
 } from '@/lib/runs/repository';
+import { toChatMessages } from '@/lib/chat/history';
+import type { ChatMessage } from '@/lib/chat/types';
 import { enqueueS1 } from '@/lib/runs/queue';
 
 /**
@@ -107,10 +110,30 @@ export async function appendAssistantMessageAction(
   return appendAssistantMessage(parsed.data.threadId, storable);
 }
 
+const threadIdSchema = z.number().int('threadId 必须是整数').positive('threadId 必须为正数');
+
 const userMessageInputSchema = z.strictObject({
-  threadId: z.number().int().positive(),
+  threadId: threadIdSchema,
   text: z.string().trim().min(1, '消息不能为空').max(4000, '消息最多 4000 个字符'),
 });
+
+/**
+ * The stored conversation, re-read after a run settles. The worker appends its
+ * research digest to the thread; the open tab needs those rows without a full
+ * page reload, and `useChat` keeps its own copy of the seeded messages.
+ */
+export async function loadThreadMessagesAction(
+  threadId: number,
+): Promise<Result<ChatMessage[]>> {
+  const parsed = threadIdSchema.safeParse(threadId);
+  if (!parsed.success) {
+    return { ok: false, code: 'VALIDATION_FAILED', message: formatIssues(parsed.error) };
+  }
+
+  const messages = await getMessages(parsed.data);
+  if (!messages.ok) return messages;
+  return { ok: true, value: toChatMessages(messages.value) };
+}
 
 /** Stores a manual chat turn; a failed store must not block the reply. */
 export async function appendUserMessageAction(

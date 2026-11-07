@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   createRunAction: vi.fn(),
   appendAssistantMessageAction: vi.fn(),
   appendUserMessageAction: vi.fn(),
+  loadThreadMessagesAction: vi.fn(),
+  setMessages: vi.fn(),
   refresh: vi.fn(),
   push: vi.fn(),
   success: vi.fn(),
@@ -34,6 +36,7 @@ vi.mock('@ai-sdk/react', () => ({
       messages: options.messages ?? [],
       status: mocks.status,
       sendMessage: mocks.sendMessage,
+      setMessages: mocks.setMessages,
       stop: mocks.stop,
     };
   },
@@ -43,6 +46,7 @@ vi.mock('./actions', () => ({
   createRunAction: mocks.createRunAction,
   appendAssistantMessageAction: mocks.appendAssistantMessageAction,
   appendUserMessageAction: mocks.appendUserMessageAction,
+  loadThreadMessagesAction: mocks.loadThreadMessagesAction,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -59,8 +63,13 @@ vi.mock('use-stick-to-bottom', () => ({
 
 // The live components own their SSE connections; their own suites cover that.
 vi.mock('./run-inline', () => ({
-  RunInlineProgress: ({ runId }: { runId: number }) => (
-    <div data-testid="run-activity">{`run-${runId}`}</div>
+  RunInlineProgress: ({ runId, onSettled }: { runId: number; onSettled?: () => void }) => (
+    <div data-testid="run-activity">
+      <span>{`run-${runId}`}</span>
+      <button type="button" onClick={onSettled}>
+        结束
+      </button>
+    </div>
   ),
 }));
 vi.mock('./run-deck', () => ({
@@ -403,5 +412,67 @@ describe('ChatScreen', () => {
     expect(
       screen.getByText('run-7').compareDocumentPosition(screen.getByText('重新跑一次')),
     ).toBeTruthy();
+  });
+
+  it('re-reads the stored transcript when a run settles', async () => {
+    const user = userEvent.setup();
+    const digest: ChatMessage = {
+      id: '9',
+      role: 'assistant',
+      parts: [{ type: 'text', text: '**run #7 研究完成（S1–S6）**' }],
+    };
+    mocks.loadThreadMessagesAction.mockResolvedValue({
+      ok: true,
+      value: [USER_MESSAGE, TEXT_MESSAGE, digest],
+    });
+
+    render(
+      <ChatScreen
+        threadId={1}
+        initialMessages={[USER_MESSAGE, TEXT_MESSAGE]}
+        runId={7}
+        evidenceHref={null}
+        runs={[{ id: 7, after: 1, status: 'running', stage: 'S4', events: [] }]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '结束' }));
+
+    await waitFor(() => expect(mocks.loadThreadMessagesAction).toHaveBeenCalledWith(1));
+    await waitFor(() =>
+      expect(mocks.setMessages).toHaveBeenCalledWith([USER_MESSAGE, TEXT_MESSAGE, digest]),
+    );
+  });
+
+  it('waits for a streaming reply before swapping the transcript', async () => {
+    const user = userEvent.setup();
+    mocks.status = 'streaming';
+    mocks.loadThreadMessagesAction.mockResolvedValue({ ok: true, value: [TEXT_MESSAGE] });
+
+    const { rerender } = render(
+      <ChatScreen
+        threadId={1}
+        initialMessages={[USER_MESSAGE, TEXT_MESSAGE]}
+        runId={7}
+        evidenceHref={null}
+        runs={[{ id: 7, after: 1, status: 'running', stage: 'S4', events: [] }]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '结束' }));
+    expect(mocks.setMessages).not.toHaveBeenCalled();
+
+    mocks.status = 'ready';
+    rerender(
+      <ChatScreen
+        threadId={1}
+        initialMessages={[USER_MESSAGE, TEXT_MESSAGE]}
+        runId={7}
+        evidenceHref={null}
+        runs={[{ id: 7, after: 1, status: 'running', stage: 'S4', events: [] }]}
+      />,
+    );
+
+    await waitFor(() => expect(mocks.setMessages).toHaveBeenCalledWith([TEXT_MESSAGE]));
   });
 });

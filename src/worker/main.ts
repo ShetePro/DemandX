@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import { PgBoss } from 'pg-boss';
 
+import { writeRunDigest } from '@/lib/chat/run-digest';
 import { createCrawler, type Crawler } from '@/lib/crawl';
 import { browserRoot, profileDirFor } from '@/lib/crawl/platform-profile';
 import { createRobotsCache } from '@/lib/crawl/robots';
@@ -282,6 +283,12 @@ async function runStages(runId: number): Promise<void> {
   }
 
   if (!outcome.ok) {
+    // Before the terminal event: a client that reacts to `run.failed` fetches
+    // the conversation and must already see the digest turn.
+    await writeRunDigest(runId, outcome.summary, {
+      stage,
+      message: outcome.message,
+    });
     await setRunState(runId, {
       status: 'failed',
       stage,
@@ -298,6 +305,7 @@ async function runStages(runId: number): Promise<void> {
     return;
   }
 
+  await writeRunDigest(runId, outcome.value, null);
   await setRunState(runId, { status: 'finished', stage: 'S6', finishedAt: new Date() });
   await writeEvent(runId, 'run.finished', {
     stage: 'S6',

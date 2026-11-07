@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
+
 import { useRunStream } from '@/lib/hooks/use-run-stream';
 import type { RunEvent, RunStateSeed } from '@/lib/runs/event-reducer';
 import { STATUS_META, stageLabel } from '@/lib/runs/stages';
@@ -12,10 +14,12 @@ export interface RunInlineProgressProps {
   status?: string | undefined;
   stage?: string | null | undefined;
   workerOnline?: boolean | undefined;
+  /** Fires once when a live run becomes terminal (finished / failed / cancelled). */
+  onSettled?: (() => void) | undefined;
 }
 
 /**
- * The chat-side progress line for one run. Full cards live in the right deck;
+ * The chat-side progress line for one run. Full cards live in the left deck;
  * here only the current stage, counters and the newest query/source events are
  * streamed, so the answer area never waits on a bare spinner.
  */
@@ -25,8 +29,22 @@ export function RunInlineProgress({
   status,
   stage,
   workerOnline = true,
+  onSettled,
 }: RunInlineProgressProps) {
   const { state } = useRunStream(runId, events, { status, stage } satisfies RunStateSeed);
+
+  // A run that was already over when the page loaded has its digest in the
+  // first paint; only a transition the tab witnessed needs a transcript reload.
+  const settled = useRef(state.terminal);
+  useEffect(() => {
+    if (!state.terminal) {
+      settled.current = false;
+      return;
+    }
+    if (settled.current) return;
+    settled.current = true;
+    onSettled?.();
+  }, [state.terminal, onSettled]);
 
   if (state.terminal) {
     return (
