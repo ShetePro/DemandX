@@ -23,6 +23,8 @@
     "crawl:login": "tsx scripts/crawl-login.ts",
     "acceptance": "tsx scripts/acceptance.ts",
     "eval:extract": "tsx scripts/eval-extract.ts",
+    "cases:ingest": "tsx scripts/ingest-cases.ts",
+    "cases:ideas": "tsx scripts/ingest-case-ideas.ts",
     "verify": "pnpm typecheck && pnpm lint && pnpm test",
     "tokens:check": "node scripts/check-tokens.mjs"
   },
