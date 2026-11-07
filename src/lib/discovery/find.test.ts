@@ -261,6 +261,51 @@ describe('findOpportunities', () => {
     if (!result.ok) expect(result.code).toBe('TOO_SIMILAR');
   });
 
+  it('ships a grounded idea without a paid signal, flagged as a commercial gap', async () => {
+    const plainHit: SearchHit = {
+      url: 'https://example.com/plain-1',
+      title: '门店排班太麻烦',
+      snippet: '店长每天用 Excel 排班，换班全靠群里吼，经常漏人。',
+      platform: 'web',
+    };
+    const plainHit2: SearchHit = {
+      url: 'https://example.com/plain-2',
+      title: '排班表总对不上',
+      snippet: '三个人手工维护排班表，换班一多就乱。',
+      platform: 'web',
+    };
+    const idea = {
+      ...OPPORTUNITY,
+      title: '门店排班表同步',
+      problem: '店长每天用 Excel 排班，换班全靠群里吼',
+      audience: '门店店长',
+      angle: '门店排班',
+      evidence: [{ url: 'https://example.com/plain-1', quote: '每天用 Excel 排班' }],
+    };
+
+    const result = await findOpportunities({
+      searchPorts: [port('ddg', [plainHit, plainHit2])],
+      queries: ['门店 排班', '排班 换班'],
+      llm: llmReturning({ opportunities: [idea] }),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.commercialGap).toBe(true);
+    expect(result.value.opportunities).toHaveLength(1);
+  });
+
+  it('does not flag a commercial gap when an idea cites a paid source', async () => {
+    const result = await findOpportunities({
+      searchPorts: [port('ddg', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
+      queries: ['库存 同步'],
+      llm: llmReturning({ opportunities: [OPPORTUNITY] }),
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.commercialGap).toBe(false);
+  });
+
   it('reports search → filter → model phases in order', async () => {
     const phases: string[] = [];
     const result = await findOpportunities({

@@ -59,6 +59,7 @@ const VALUE: DiscoveryValue = {
       evidence: [{ url: 'https://example.com/a', quote: 'Excel 排班' }],
     },
   ],
+  commercialGap: false,
   providers: ['hn'],
   elapsedMs: 1200,
   model: 'stub',

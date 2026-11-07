@@ -50,6 +50,8 @@ export type DiscoveryPorts = {
 export interface DiscoveryValue {
   sources: DiscoverySource[];
   opportunities: Opportunity[];
+  /** True when the returned ideas had to be shipped without a paid signal. */
+  commercialGap: boolean;
   providers: string[];
   elapsedMs: number;
   model: string;
@@ -207,7 +209,16 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
     }
   }
 
-  const { opportunities, duplicates, offAngle, ungrounded, unanchored } = checked;
+  const { duplicates, offAngle, ungrounded, unanchored } = checked;
+  // Evidence beats silence: a grounded, on-angle idea without a paid source is
+  // still a lead. It ships flagged rather than failing the whole scan, and the
+  // UI tells the operator what is missing.
+  let opportunities = checked.opportunities;
+  let commercialGap = false;
+  if (opportunities.length === 0 && checked.unanchoredItems.length > 0) {
+    opportunities = checked.unanchoredItems;
+    commercialGap = true;
+  }
 
   if (opportunities.length === 0) {
     if (duplicates > 0) {
@@ -229,6 +240,7 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
     value: {
       sources,
       opportunities,
+      commercialGap,
       providers: [...providers],
       elapsedMs: Date.now() - startedAt,
       model: asked.value.used.modelId,
@@ -259,11 +271,17 @@ function buildPrompt(
   angles: readonly string[],
   hint?: string,
 ): { system: string; user: string } {
-  const businessIndexes = sources.flatMap((source, index) =>
+  const ordered = [...sources].sort((left, right) => {
+    const leftBusiness = hasBusinessSignal(`${left.title}\n${left.snippet}`) ? 1 : 0;
+    const rightBusiness = hasBusinessSignal(`${right.title}\n${right.snippet}`) ? 1 : 0;
+    return rightBusiness - leftBusiness;
+  });
+
+  const businessIndexes = ordered.flatMap((source, index) =>
     hasBusinessSignal(`${source.title}\n${source.snippet}`) ? [index + 1] : [],
   );
 
-  const list = sources
+  const list = ordered
     .map((source, index) => {
       const business = businessIndexes.includes(index + 1) ? '[商业线索] ' : '';
       return `[${index + 1}] ${business}${source.title}\nURL: ${source.url}\n片段: ${source.snippet.slice(0, 300)}`;
@@ -301,6 +319,8 @@ function buildPrompt(
 
 type CandidateCheck = {
   opportunities: Opportunity[];
+  /** Grounded, on-angle, novel ideas with no commercial citation. */
+  unanchoredItems: Opportunity[];
   duplicates: number;
   offAngle: number;
   ungrounded: number;
@@ -322,6 +342,7 @@ function validateCandidates(
   },
 ): CandidateCheck {
   const opportunities: Opportunity[] = [];
+  const unanchoredItems: Opportunity[] = [];
   let duplicates = 0;
   let offAngle = 0;
   let ungrounded = 0;
@@ -362,17 +383,6 @@ function validateCandidates(
       continue;
     }
 
-    // Commercial anchoring: at least one cited page must talk about money,
-    // hiring or a paid alternative. Without it the idea is just a complaint.
-    const anchored = evidence.some((item) => {
-      const source = context.allowed.get(item.url);
-      return source !== undefined && hasBusinessSignal(`${source.title}\n${source.snippet}`);
-    });
-    if (!anchored) {
-      unanchored += 1;
-      continue;
-    }
-
     // Cross-scan novelty: a direction already produced in a recent round is
     // dropped even when the wording changes, so the radar does not hand back
     // the same idea with a new title.
@@ -381,8 +391,21 @@ function validateCandidates(
       continue;
     }
 
+    // Commercial anchoring: at least one cited page must talk about money,
+    // hiring or a paid alternative. Without it the idea is a complaint, not a
+    // market signal; it is kept aside only as a flagged fallback.
+    const anchored = evidence.some((item) => {
+      const source = context.allowed.get(item.url);
+      return source !== undefined && hasBusinessSignal(`${source.title}\n${source.snippet}`);
+    });
+    if (!anchored) {
+      unanchored += 1;
+      unanchoredItems.push({ ...candidate, angle, evidence });
+      continue;
+    }
+
     opportunities.push({ ...candidate, angle, evidence });
   }
 
-  return { opportunities, duplicates, offAngle, ungrounded, unanchored };
+  return { opportunities, unanchoredItems, duplicates, offAngle, ungrounded, unanchored };
 }

@@ -116,6 +116,11 @@ export interface DiscoveryResult {
   opportunities: Opportunity[];
   /** Angles the scan was planned around. */
   angles: string[];
+  /**
+   * True when no idea could cite a paid/hiring signal; the ideas still ship,
+   * flagged, because a grounded complaint is a lead the operator can judge.
+   */
+  commercialGap: boolean;
   /** Why this round looked different, from the planner. */
   rationale: string;
   /** `planned` (model), `directed` (operator), or `fallback` (static pool). */

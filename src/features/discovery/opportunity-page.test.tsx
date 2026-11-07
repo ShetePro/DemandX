@@ -32,6 +32,7 @@ const RESULT: DiscoveryResult = {
   angles: ['跨境库存', '小店主财务'],
   rationale: '最近热点集中在库存同步与手工对账。',
   strategy: 'planned',
+  commercialGap: false,
   novelty: { newUrls: 2, total: 2, ratio: 1 },
   avoided: 0,
   providers: ['ddg', 'bing'],
@@ -221,6 +222,18 @@ describe('OpportunityPage', () => {
     await user.click(screen.getByRole('button', { name: '移除方向 诊所排班' }));
 
     expect(screen.queryByText('诊所排班')).toBeNull();
+  });
+
+  it('warns when a round had no paid signal but still shows its ideas', async () => {
+    const gap: DiscoveryResult = { ...RESULT, commercialGap: true };
+    render(<OpportunityPage find={async () => ({ ok: true, value: gap })} start={vi.fn()} />);
+
+    expect(await screen.findByText('跨境库存同步')).toBeVisible();
+    expect(
+      screen.getByText(
+        '本轮没有可引用的付费/商业线索：以下方向只基于问题信号，开始研究前需补证据',
+      ),
+    ).toBeVisible();
   });
 
   it('reports a failed scan and rescans on demand', async () => {

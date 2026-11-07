@@ -433,6 +433,11 @@ function Results({
           {result.strategy === 'fallback' ? (
             <span className="text-warning">本轮为固定池兜底：模型未能规划新角度</span>
           ) : null}
+          {result.commercialGap ? (
+            <span className="text-warning">
+              本轮没有可引用的付费/商业线索：以下方向只基于问题信号，开始研究前需补证据
+            </span>
+          ) : null}
           {result.scanId === null ? (
             <span className="text-warning">本轮未写入记忆，下一轮无法据此去重</span>
           ) : null}
