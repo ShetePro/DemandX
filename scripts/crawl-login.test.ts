@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { LOGIN_USAGE, resolveLoginTarget } from './crawl-login';
+import { LOGIN_USAGE, loginUrlFor, resolveLoginTarget } from './crawl-login';
 
 describe('resolveLoginTarget', () => {
   it('rejects a missing platform with the usage text', () => {
@@ -31,5 +31,23 @@ describe('resolveLoginTarget', () => {
     expect(() => resolveLoginTarget(['zhihu', 'javascript:alert(1)'], '/home/lin')).toThrow(
       /http\(s\)/,
     );
+  });
+});
+
+
+describe('loginUrlFor', () => {
+  it('defaults to the platform login page when no URL is given', () => {
+    const target = resolveLoginTarget(['xiaohongshu'], '/home/lin');
+    expect(loginUrlFor(target)).toBe('https://www.xiaohongshu.com');
+  });
+
+  it('keeps an explicit URL', () => {
+    const target = resolveLoginTarget(['zhihu', 'https://www.zhihu.com/signin'], '/home/lin');
+    expect(loginUrlFor(target)).toBe('https://www.zhihu.com/signin');
+  });
+
+  it('returns undefined for a platform without a default', () => {
+    const target = resolveLoginTarget(['example'], '/home/lin');
+    expect(loginUrlFor(target)).toBeUndefined();
   });
 });

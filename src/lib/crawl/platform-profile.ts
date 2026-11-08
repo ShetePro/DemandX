@@ -61,3 +61,11 @@ export function profileDirFor(url: string, options: ProfileDirOptions = {}): str
   if (platform !== null) return path.join(baseDir, platform);
   return options.fallback ?? path.join(baseDir, 'pipeline');
 }
+
+
+/** Login page per platform; the login script falls back to these. */
+export const PLATFORM_LOGIN_URLS: Readonly<Record<string, string>> = {
+  xiaohongshu: 'https://www.xiaohongshu.com',
+  douyin: 'https://www.douyin.com',
+  zhihu: 'https://www.zhihu.com',
+};

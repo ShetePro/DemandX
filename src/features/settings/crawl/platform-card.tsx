@@ -113,7 +113,9 @@ export function PlatformCard({ status: initialStatus, loginUrl }: PlatformCardPr
         <Button size="sm" onClick={() => void start()} disabled={pending}>
           {pending ? '等待登录…' : status.state === 'missing' ? '去登录' : '重新登录'}
         </Button>
-        {pending ? <span className="text-[11px] text-muted">登录后自动刷新</span> : null}
+        {pending ? (
+          <span className="text-[11px] text-muted">登录后自动刷新</span>
+        ) : null}
         {loginUrl !== undefined ? (
           <a
             href={loginUrl}
@@ -129,6 +131,12 @@ export function PlatformCard({ status: initialStatus, loginUrl }: PlatformCardPr
       {message ? (
         <p role="status" className="text-[11px] text-muted">
           {message}
+        </p>
+      ) : null}
+
+      {pending ? (
+        <p className="text-[11px] text-faint">
+          窗口一直是空白？把 ~/.demandx/logs/login-{platform}.log 发给我排查。
         </p>
       ) : null}
     </li>

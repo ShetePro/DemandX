@@ -5,8 +5,8 @@ import { spawn } from 'node:child_process';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
+import { PLATFORM_LOGIN_URLS } from '@/lib/crawl/platform-profile';
 import { readSessionStatus, type SessionStatus } from '@/lib/crawl/session-status';
-import { PLATFORM_LOGIN_URLS } from './platforms';
 import { enqueueS1 } from '@/lib/runs/queue';
 import {
   CRAWL_SETTINGS_KEY,
@@ -56,7 +56,7 @@ const runIdSchema = z.number().int('runId 必须是整数').positive('runId 必�
  */
 export async function startLoginAction(
   platform: unknown,
-): Promise<CrawlActionResult<{ started: true; url: string | null }>> {
+): Promise<CrawlActionResult<{ started: true; url: string | null; logPath: string }>> {
   const parsed = platformSchema.safeParse(platform);
   if (!parsed.success) return failure('VALIDATION_FAILED', formatIssues(parsed.error));
 
@@ -80,7 +80,10 @@ export async function startLoginAction(
     return failure('SPAWN_FAILED', `无法启动登录进程：${messageOf(error)}`);
   }
 
-  return { ok: true, value: { started: true, url } };
+  return {
+    ok: true,
+    value: { started: true, url, logPath: `~/.demandx/logs/login-${parsed.data}.log` },
+  };
 }
 
 /** Read-only: the page polls this while a login window is open. */

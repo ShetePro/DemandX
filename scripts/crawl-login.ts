@@ -1,9 +1,12 @@
+import { appendFileSync, mkdirSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { pathToFileURL } from 'node:url';
+
+import { PLATFORM_LOGIN_URLS } from '@/lib/crawl/platform-profile';
 
 /**
  * `pnpm crawl:login <platform> [url]` opens a headed browser on a persistent
@@ -58,32 +61,75 @@ export function resolveLoginTarget(argv: string[], home: string): LoginTarget {
   return url === undefined ? { platform, profileDir } : { platform, url, profileDir };
 }
 
+/**
+ * The settings page spawns this detached with stdio ignored, so a blank window
+ * has no visible error. Mirror every step into a log the operator can read
+ * (and that never contains cookies).
+ */
+function createLogger(platform: string): (message: string) => void {
+  const dir = path.join(homedir(), '.demandx', 'logs');
+  const file = path.join(dir, `login-${platform}.log`);
+
+  return (message: string) => {
+    console.log(message);
+    try {
+      mkdirSync(dir, { recursive: true });
+      appendFileSync(file, `[${new Date().toISOString()}] ${message}\n`);
+    } catch {
+      // Logging must never break the login window.
+    }
+  };
+}
+
+/** Explicit URL wins; otherwise the platform's login page. */
+export function loginUrlFor(target: LoginTarget): string | undefined {
+  return target.url ?? PLATFORM_LOGIN_URLS[target.platform];
+}
+
 async function openLogin(argv: string[]): Promise<void> {
   const target = resolveLoginTarget(argv, homedir());
+  // Old callers/short commands may omit the URL; default to the platform's
+  // login page so the window never opens on about:blank.
+  const targetUrl = loginUrlFor(target);
+  const log = createLogger(target.platform);
+  log(`启动：pnpm crawl:login ${argv.join(' ')}`);
+  log(`会话目录：${target.profileDir}`);
   await mkdir(target.profileDir, { recursive: true });
 
   // Same driver as the crawler; loaded lazily so argument errors never need it.
   const { chromium } = await import('@playwright/test');
+  log('启动 Chromium…');
   const context = await chromium.launchPersistentContext(target.profileDir, {
     headless: false,
   });
 
   try {
-    if (target.url !== undefined) {
-      const page = context.pages()[0] ?? (await context.newPage());
+    if (targetUrl !== undefined) {
+      // Always navigate a fresh tab and close the persistent context's blank
+      // start page, so a failed first tab cannot leave the window on about:blank
+      // with no address in the bar.
+      const blank = context.pages()[0];
+      const page = await context.newPage();
+      if (blank !== undefined && blank !== page) void blank.close().catch(() => undefined);
+
+      log(`打开 ${targetUrl}`);
       try {
-        await page.goto(target.url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.goto(targetUrl, { waitUntil: 'commit', timeout: 30_000 });
+        log(`已跳转：${page.url()}`);
+        await page
+          .waitForLoadState('domcontentloaded', { timeout: 20_000 })
+          .catch(() => log('页面加载较慢，窗口保持打开'));
       } catch (error) {
         // Keep the window open: the operator can retry or type the URL by hand
         // instead of watching the browser close on a transient network error.
-        console.error(
-          `打开 ${target.url} 失败：${error instanceof Error ? error.message : String(error)}`,
+        log(
+          `打开 ${targetUrl} 失败：${error instanceof Error ? error.message : String(error)}（当前地址：${page.url()}）`,
         );
-        console.error('请在打开的窗口里手动输入网址并完成登录。');
+        log('请在打开的窗口里手动输入网址并完成登录。');
       }
+    } else {
+      log('未配置登录网址：窗口保持空白，请手动输入。');
     }
-
-    console.log(`会话目录：${target.profileDir}`);
 
     if (stdin.isTTY) {
       console.log('请在打开的浏览器里完成登录，登录完成后回到终端按 Enter。');

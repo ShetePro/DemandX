@@ -7,11 +7,3 @@ export const PLATFORM_LABELS: Readonly<Record<string, string>> = {
   douyin: '抖音',
   zhihu: '知乎',
 };
-
-
-/** Login pages the platform cards open; the script receives the same URL. */
-export const PLATFORM_LOGIN_URLS: Readonly<Record<string, string>> = {
-  xiaohongshu: 'https://www.xiaohongshu.com',
-  douyin: 'https://www.douyin.com',
-  zhihu: 'https://www.zhihu.com',
-};

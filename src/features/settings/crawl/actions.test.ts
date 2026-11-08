@@ -45,7 +45,11 @@ describe('startLoginAction', () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { started: true, url: 'https://www.xiaohongshu.com' },
+      value: {
+        started: true,
+        url: 'https://www.xiaohongshu.com',
+        logPath: '~/.demandx/logs/login-xiaohongshu.log',
+      },
     });
     expect(mocks.spawn).toHaveBeenCalledWith(
       'pnpm',
