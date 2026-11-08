@@ -14,7 +14,7 @@ import {
 import type { ChainItem, LlmPort, Profile, Prompt, Usage } from '@/lib/llm/port';
 import type { Result as LlmResult } from '@/lib/llm/types';
 import { fail, ok, type Result } from '@/lib/quota/types';
-import { reportSectionsSchema } from '@/lib/report/assemble';
+import { exploratoryReportSchema, reportSectionsSchema } from '@/lib/report/assemble';
 import type { SaveReportInput } from '@/lib/report/persist';
 import { REPORT_SECTIONS } from '@/lib/report/validate';
 import type {
@@ -194,8 +194,16 @@ function createHarness(options: HarnessOptions = {}): Harness {
       // S4's ordinal answer: no tier chosen, so every ordinal dimension is 0.
       if ((schema as unknown) === ordinalsSchema) return reply({});
 
-      if ((schema as unknown) === reportSectionsSchema) {
-        const ids = opportunities.flatMap((opportunity) => opportunity.evidenceIds);
+      if (
+        (schema as unknown) === reportSectionsSchema ||
+        (schema as unknown) === exploratoryReportSchema
+      ) {
+        const ids =
+          opportunities.length > 0
+            ? opportunities.flatMap((opportunity) => opportunity.evidenceIds)
+            : evidenceRows()
+                .filter((row) => row.rejectedReason === null)
+                .map((row) => row.id);
         return reply(reportAnswer(ids));
       }
 
@@ -401,7 +409,7 @@ describe('runPipeline', () => {
     });
     expect(fake.s2Rows).toHaveLength(1);
     expect(fake.s2Rows[0]?.rejectedReason).toBeNull();
-    expect(fake.profiles).toEqual(['bulk', 'quality']);
+    expect(fake.profiles).toEqual(['bulk', 'quality', 'bulk']);
   });
 
   it('does not start S2 when S1 fails', async () => {

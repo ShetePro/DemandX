@@ -274,7 +274,7 @@ export function ReportView({ runId, ideaTitle, report, scores, evidenceMap }: Re
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Badge tone={DECISION_TONES[report.decision] ?? 'neutral'}>{report.decision}</Badge>
             <span className="rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs font-medium text-fg">
-              {total} / 100
+              {report.rubricTotal === 0 ? '未评分' : `${total} / 100`}
             </span>
             {isGrade(report.grade) ? (
               <span className="inline-flex items-center gap-1.5 text-xs text-muted">

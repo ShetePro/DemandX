@@ -72,6 +72,10 @@ export interface AssembleInput {
   /** Accepted rows only; the whitelist is built from this list. */
   evidence: readonly ReportEvidence[];
   derivation: ReportDerivation;
+  /** The run's idea, used by the exploratory prompt. */
+  idea?: string;
+  /** No cluster cleared the gate: write an evidence-first exploration. */
+  exploratory?: boolean;
 }
 
 /** The stored shape of `reports.sections`. */
@@ -112,6 +116,24 @@ export const reportSectionsSchema = z.object({
 });
 
 export type ReportAnswer = z.infer<typeof reportSectionsSchema>;
+
+/** Claims may be empty in an exploratory section: inference carries the prose. */
+const exploratorySectionSchema = sectionSchema.extend({
+  claims: z.array(claimSchema).max(MAX_CLAIMS_PER_SECTION),
+});
+
+export const exploratoryReportSchema = z.object({
+  sections: z.object({
+    summary: exploratorySectionSchema,
+    evidence: exploratorySectionSchema,
+    competitors: exploratorySectionSchema,
+    ranking: exploratorySectionSchema,
+    bestDirection: exploratorySectionSchema,
+    finance: exploratorySectionSchema,
+    plan: exploratorySectionSchema,
+    decision: exploratorySectionSchema,
+  }),
+});
 
 /** Why a report has no prose: no evidence to cite, or no time left to write. */
 export const NO_EVIDENCE_REASON = '本轮没有可引用的证据，报告只保留结论框架';
@@ -194,6 +216,32 @@ function summarizeEvidence(item: ReportEvidence): string {
  * unsupported conclusions as unknowns. Rule 4 names the one legal way to write
  * a score, which is also what the post-check looks for.
  */
+/**
+ * The evidence-first exploratory prompt: no opportunity cleared the gate, so
+ * the model may form hypotheses, but facts still need citations and every
+ * judgement is labelled inference. This is what keeps sections 3–8 from being
+ * empty while the corpus is thin.
+ */
+export function buildExploratoryPrompt(input: AssembleInput): Prompt {
+  const list = input.evidence.map(summarizeEvidence).join('\n');
+
+  return {
+    system: `你是一名资深市场分析师。这次没有任何方向达到「3 个独立来源」的门槛，请基于已采集证据写一份**探索性分析报告**：可以把单源证据整理成假设，但不能把假设写成结论。
+
+硬性规则：
+1. 事实只能来自给定证据；每个 claim 的 evidenceIds 至少 1 个，且只能填列表里的 id。引用原文用中文引号，不得编造数字、价格、用户数或收入。
+2. 竞品、财务、获客、风险等无法直接引用证据的判断，写进 inferences，并以“推断：”开头说明依据。
+3. ranking / bestDirection 可以给暂定优先级，但必须写明“基于单源证据的暂定判断”。
+4. finance 只能给带“假设”的区间，不得编造真实价格或收入。
+5. plan 给出 14 天内可执行的访谈 / 预售 / 着陆页步骤。
+6. decision 写“建议暂缓”，并列出还需要补齐的 3 类证据。
+7. 八个 section 都必须有内容：claims 或 inferences 至少一个，不要只写“没有证据”。
+
+输出 JSON：{ sections: { summary, evidence, competitors, ranking, bestDirection, finance, plan, decision } }。每个 section 形如 { claims: [{ text, evidenceIds }], inferences: string[], unknowns: string[] }。`,
+    user: `想法：${input.idea ?? ''}\n\n已接受证据（只能引用这些 id）：\n${list}`,
+  };
+}
+
 export function buildReportPrompt(input: AssembleInput): Prompt {
   const { opportunity, evidence, derivation } = input;
 
@@ -310,12 +358,15 @@ export async function buildReportSections(
 ): Promise<StageOutcome<ReportSections>> {
   if (input.evidence.length === 0) return ok(buildEmptyReport(NO_EVIDENCE_REASON));
 
-  const asked = await input.llm.structured(reportSectionsSchema, buildReportPrompt(input), {
-    profile: 'quality',
-    // A report is the run's deliverable: a quality cooldown must degrade to
-    // the bulk chain rather than end the run without one.
-    fallbackProfile: 'bulk',
-    timeoutMs: 90_000,
+  const schema = input.exploratory === true ? exploratoryReportSchema : reportSectionsSchema;
+  const prompt = input.exploratory === true ? buildExploratoryPrompt(input) : buildReportPrompt(input);
+
+  const asked = await input.llm.structured(schema, prompt, {
+    // The exploratory report is already a degraded artefact: the fast chain
+    // writes it, and waiting on a slow quality model only delays the fallback.
+    profile: input.exploratory === true ? 'bulk' : 'quality',
+    ...(input.exploratory === true ? {} : { fallbackProfile: 'bulk' as const }),
+    timeoutMs: input.exploratory === true ? 60_000 : 90_000,
   });
   if (!asked.ok) {
     return { ok: false, code: 'LLM_UNAVAILABLE', message: `报告合成失败：${asked.message}` };
@@ -324,7 +375,7 @@ export async function buildReportSections(
   // The port already validates against this schema, but the report is the one
   // artefact that must never be written half-formed: re-checking here keeps the
   // guarantee local instead of relying on which adapter answered.
-  const parsed = reportSectionsSchema.safeParse(asked.value.data);
+  const parsed = schema.safeParse(asked.value.data);
   if (!parsed.success) {
     const detail = parsed.error.issues
       .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)

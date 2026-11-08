@@ -48,6 +48,9 @@ const claimSchema = z.object({
 const sectionShellSchema = z.object({
   claims: z.array(z.unknown()).default([]),
   unknowns: z.array(z.string().trim().min(1)).default([]),
+  // The stored contract has always carried inferences; dropping them here made
+  // the page look emptier than the report actually is.
+  inferences: z.array(z.string().trim().min(1)).default([]),
 });
 
 const sectionsBlobSchema = z.record(z.string(), z.unknown());
@@ -77,7 +80,12 @@ function parseSections(value: unknown): Record<string, ReportSectionBody> {
       });
     }
 
-    parsed[section] = { claims, unknowns: [...new Set(shell.data.unknowns)] };
+    const inferences = [...new Set(shell.data.inferences)];
+    parsed[section] = {
+      claims,
+      unknowns: [...new Set(shell.data.unknowns)],
+      ...(inferences.length === 0 ? {} : { inferences }),
+    };
   }
 
   return parsed;

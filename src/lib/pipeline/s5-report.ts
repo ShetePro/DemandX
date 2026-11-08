@@ -153,8 +153,26 @@ export async function reportS5(
 
   const candidate = picked.value;
 
-  const evidence =
-    candidate === null ? ok<ReportEvidence[]>([]) : await reportEvidenceOf(deps.repo, candidate);
+  let evidence: Result<ReportEvidence[]>;
+  if (candidate === null) {
+    const accepted = await deps.repo.listAcceptedEvidence(ctx.runId);
+    if (!accepted.ok) {
+      await emit(deps, 'stage.finished', { stage: 'S5', status: 'failed', code: accepted.code });
+      return accepted;
+    }
+    evidence = ok(
+      accepted.value.map((row) => ({
+        id: row.id,
+        sourceId: row.sourceId,
+        signal: row.signal,
+        platform: row.platform,
+        quote: row.quote,
+        supports: row.supports ?? null,
+      })),
+    );
+  } else {
+    evidence = await reportEvidenceOf(deps.repo, candidate);
+  }
   if (!evidence.ok) {
     await emit(deps, 'stage.finished', { stage: 'S5', status: 'failed', code: evidence.code });
     return evidence;
@@ -165,7 +183,21 @@ export async function reportS5(
   // number and can differ after a quote is rejected.
   const independentSources = new Set(evidence.value.map((row) => row.sourceId)).size;
   const verdict = deriveVerdict(candidate?.scores ?? [], independentSources);
-  const derivation: ReportDerivation = { scores: candidate?.scores ?? [], ...verdict };
+  const derivation: ReportDerivation = {
+    scores: candidate?.scores ?? [],
+    ...verdict,
+    ...(candidate === null && evidence.value.length > 0
+      ? {
+          // The five-way decision has no "insufficient" value; 暂缓 is the
+          // honest one when the corpus exists but cannot support a direction.
+          decision: {
+            decision: '建议暂缓' as const,
+            reason: '没有方向达到 3 个独立来源的门槛，现有证据只够形成假设。',
+            nextStep: '先补齐 3 个独立来源或做小范围预售，再决定是否开发。',
+          },
+        }
+      : {}),
+  };
 
   // Past the deadline no new model call may start (spec §8). The report still
   // gets written from what is already stored, as the degraded shell.
@@ -174,28 +206,25 @@ export async function reportS5(
   if (!alive.ok) {
     sections = buildEmptyReport(DEADLINE_REASON);
   } else if (candidate === null) {
-    // Evidence may exist without a cluster reaching three independent sources.
-    // Saying "no evidence" would be wrong; name the gate that stopped it.
-    const accepted = await deps.repo.listAcceptedEvidence(ctx.runId);
-    if (!accepted.ok) {
-      await emit(deps, 'stage.finished', { stage: 'S5', status: 'failed', code: accepted.code });
-      return accepted;
-    }
-    const sources = new Set(accepted.value.map((row) => row.sourceId)).size;
-    if (accepted.value.length === 0) {
+    if (evidence.value.length === 0) {
       sections = buildEmptyReport(NO_EVIDENCE_REASON);
     } else {
-      sections = buildEvidenceOnlyReport(
-        accepted.value.map((row) => ({
-          id: row.id,
-          sourceId: row.sourceId,
-          signal: row.signal,
-          platform: row.platform,
-          quote: row.quote,
-          supports: row.supports ?? null,
-        })),
-        `这次只找到 ${accepted.value.length} 条真实证据（来自 ${sources} 个来源）。判断一个方向至少要有 ${MIN_INDEPENDENT_SOURCES} 个不同来源说同一件事，所以现在还不能下结论；下面列出已经找到的证据，供你先判断。`,
-      );
+      // No opportunity, but real evidence: let the model write the eight
+      // sections as explicit inference instead of leaving 3–8 blank.
+      const built = await buildReportSections({
+        llm: deps.llm,
+        idea: ctx.idea,
+        exploratory: true,
+        opportunity: { name: null, positioning: null, independentSources },
+        evidence: evidence.value,
+        derivation,
+      });
+      sections = built.ok
+        ? built.value
+        : buildEvidenceOnlyReport(
+            evidence.value,
+            `这次只找到 ${evidence.value.length} 条真实证据（来自 ${independentSources} 个来源）。判断一个方向至少要有 ${MIN_INDEPENDENT_SOURCES} 个不同来源说同一件事，所以现在还不能下结论；下面列出已经找到的证据，供你先判断。`,
+          );
     }
   } else {
     const built = await buildReportSections({

@@ -322,7 +322,7 @@ describe('reportS5', () => {
     expect(events.at(-1)?.type).toBe('report.ready');
   });
 
-  it('lists the collected evidence when no cluster cleared the gate', async () => {
+  it('writes an exploratory report from the evidence when no cluster cleared the gate', async () => {
     const rows = [
       evidence(1, { sourceId: 11, platform: 'reddit', quote: 'We chase invoices by hand.' }),
       evidence(2, { sourceId: 12, platform: 'hn', quote: 'Cold email domains get banned.' }),
@@ -332,10 +332,30 @@ describe('reportS5', () => {
     const summary = expectOk(await reportS5(context(), deps));
     const saved = repo.saves[0];
 
-    expect(llm.prompts).toEqual([]);
+    expect(llm.prompts).toHaveLength(1);
+    expect(llm.prompts[0]?.user).toContain('We chase invoices by hand.');
+    expect(summary).toMatchObject({ opportunityId: null, claims: 8 });
+    expect(saved?.decision).toBe('建议暂缓');
+    expect(saved?.sections.competitors?.claims.length).toBeGreaterThan(0);
+  });
+
+  it('falls back to the evidence list when the exploratory model fails', async () => {
+    const rows = [
+      evidence(1, { sourceId: 11, platform: 'reddit', quote: 'We chase invoices by hand.' }),
+      evidence(2, { sourceId: 12, platform: 'hn', quote: 'Cold email domains get banned.' }),
+    ];
+    const { deps, repo } = setup({
+      opportunities: [],
+      evidence: rows,
+      reply: () => ({ fail: 'provider down' }),
+    });
+
+    const summary = expectOk(await reportS5(context(), deps));
+    const saved = repo.saves[0];
+
     expect(summary).toMatchObject({ opportunityId: null, claims: 2 });
+    expect(saved?.decision).toBe('建议暂缓');
     expect(saved?.sections.summary?.unknowns[0]).toContain('只找到 2 条真实证据');
-    expect(saved?.sections.summary?.unknowns[0]).toContain('至少要有 3 个不同来源');
     expect(saved?.sections.evidence?.claims).toEqual([
       { text: '[reddit] “We chase invoices by hand.”', evidenceIds: [1] },
       { text: '[hn] “Cold email domains get banned.”', evidenceIds: [2] },
