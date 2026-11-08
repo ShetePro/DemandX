@@ -456,14 +456,14 @@ function Results({
           <li key={`${opportunity.title}-${opportunity.evidence[0]?.url ?? index}`}>
             <article className="flex h-full flex-col gap-3 rounded-2xl border border-border bg-surface p-5">
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-2">
+                <div className="flex min-w-0 items-start gap-2">
                   <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-md bg-surface-2 text-[11px] font-semibold text-muted tabular-nums">
                     {String(index + 1).padStart(2, '0')}
                   </span>
-                  <h2 className="text-[15px] leading-6 font-semibold text-fg">
+                  <h2 className="min-w-0 text-[15px] leading-6 font-semibold text-fg">
                     {opportunity.title}
                   </h2>
-                  <span className="mt-0.5 shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 text-[10.5px] text-muted">
+                  <span className="mt-0.5 shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 text-[10.5px] whitespace-nowrap text-muted">
                     {opportunity.angle}
                   </span>
                 </div>

@@ -51,7 +51,7 @@ export function SignalBadge({ signal, className }: SignalBadgeProps) {
       role="img"
       aria-label={meta.ariaLabel}
       className={cn(
-        'inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] leading-none font-semibold',
+        'inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11px] leading-none font-semibold whitespace-nowrap',
         meta.tone,
         className,
       )}
