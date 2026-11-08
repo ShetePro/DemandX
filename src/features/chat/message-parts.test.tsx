@@ -67,7 +67,7 @@ describe('MessageParts', () => {
     expect(onStart).toHaveBeenCalledWith('跨境卖家的多平台库存同步工具');
   });
 
-  it('says so when an evidence query returns nothing', () => {
+  it('explains an empty evidence query and shows what was searched', () => {
     render(
       <MessageParts
         message={message([
@@ -82,7 +82,61 @@ describe('MessageParts', () => {
       />,
     );
 
-    expect(screen.getByText('没有找到足够证据')).toBeVisible();
+    expect(screen.getByText('证据检索')).toBeVisible();
+    expect(screen.getByText('检索条件：关键词“库存同步”')).toBeVisible();
+    expect(screen.getByText('本会话还没有可引用的证据。')).toBeVisible();
+  });
+
+  it('collapses repeated evidence searches into one card with the reason', () => {
+    render(
+      <MessageParts
+        message={message([
+          {
+            type: 'tool-query_evidence',
+            toolCallId: 'call-3',
+            state: 'output-available',
+            input: { signal: 'problem' },
+            output: {
+              items: [],
+              note: 'run 238 正在进行（S1）；证据通过 S2 抽取校验后才会入库，现在检索不到是正常的。',
+            },
+          },
+          {
+            type: 'tool-query_evidence',
+            toolCallId: 'call-4',
+            state: 'output-available',
+            input: { signal: 'switching' },
+            output: {
+              items: [],
+              note: 'run 238 正在进行（S1）；证据通过 S2 抽取校验后才会入库，现在检索不到是正常的。',
+            },
+          },
+        ])}
+      />,
+    );
+
+    expect(screen.getByText('证据检索')).toBeVisible();
+    expect(screen.getByText('· 2 次')).toBeVisible();
+    expect(screen.getByText(/检索条件：信号 问题；信号 切换/)).toBeVisible();
+    expect(screen.getByText(/S2 抽取校验后才会入库/)).toBeVisible();
+  });
+
+  it('tags conclusions and inferences so the answer has a hierarchy', () => {
+    const { container } = render(
+      <MessageParts
+        message={message([
+          {
+            type: 'text',
+            text: '**结论：** 值得先验证，但还不到下结论的时候。\n\n**推断：** 这个痛点是结构性的。\n\n**未知：** 还没有真实的付费样本。',
+            state: 'done',
+          },
+        ])}
+      />,
+    );
+
+    expect(container.querySelector('[data-claim="conclusion"]')).not.toBeNull();
+    expect(container.querySelector('[data-claim="inference"]')).not.toBeNull();
+    expect(container.querySelector('[data-claim="unknown"]')).not.toBeNull();
   });
 
   it('renders a data-evidence mini card with platform and summary', () => {

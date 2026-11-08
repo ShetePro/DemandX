@@ -12,10 +12,12 @@ import { CitationChip } from '@/components/common/citation-chip';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { EvidenceItem } from '@/lib/chat/tools';
 import type { ChatMessage } from '@/lib/chat/types';
 import { useCodeHighlighter } from '@/lib/hooks/use-code-highlighter';
 import { cn } from '@/lib/utils/cn';
 
+import { claimRehypePlugin } from './claim-rehype';
 import { CITATION_TAG, citationRehypePlugin, citationSanitizeSchema } from './citations';
 
 /**
@@ -40,6 +42,9 @@ const REHYPE_PLUGINS: RehypePlugins = [
   rehypeRaw,
   citationRehypePlugin,
   [rehypeSanitize, citationSanitizeSchema],
+  // After sanitize: the claim kind is derived from the text, and the sanitizer
+  // would strip an attribute it does not know.
+  claimRehypePlugin,
   [harden, HARDEN_OPTIONS],
 ];
 
@@ -60,6 +65,10 @@ type StartResearchPart = Extract<ChatPart, { type: 'tool-start_research' }>;
 type QueryEvidencePart = Extract<ChatPart, { type: 'tool-query_evidence' }>;
 type EvidenceDataPart = Extract<ChatPart, { type: 'data-evidence' }>;
 type PresentOptionsPart = Extract<ChatPart, { type: 'tool-present_options' }>;
+/** Consecutive evidence searches collapse into one card; repeating the same
+ *  empty result twice tells the reader nothing new. */
+type EvidenceGroupPart = { type: 'evidence-group'; parts: QueryEvidencePart[] };
+type RenderPart = ChatPart | EvidenceGroupPart;
 
 export type MessagePartsProps = {
   message: ChatMessage;
@@ -89,7 +98,7 @@ export function MessageParts({
           基于 {citationCount} 条证据 · 事实与推断已分开标注
         </p>
       ) : null}
-      {coalesceReasoning(message.parts).map((part, index) => {
+      {groupEvidence(coalesceReasoning(message.parts)).map((part, index) => {
         switch (part.type) {
           case 'text':
             return (
@@ -121,7 +130,9 @@ export function MessageParts({
           case 'tool-present_options':
             return <OptionsCard key={index} part={part} onChoose={onChooseOption} />;
           case 'tool-query_evidence':
-            return <QueryEvidenceCard key={index} part={part} />;
+            return <QueryEvidenceCard key={index} parts={[part]} />;
+          case 'evidence-group':
+            return <QueryEvidenceCard key={index} parts={part.parts} />;
           case 'tool-get_run_status':
             // Status is spoken in the reply; the card would duplicate it.
             return null;
@@ -152,6 +163,20 @@ const warnedPartTypes = new Set<string>();
  * of nearly empty "思考过程" bars; merged, it is one block with the full
  * reasoning, and empty segments disappear entirely.
  */
+function groupEvidence(parts: ChatPart[]): RenderPart[] {
+  const grouped: RenderPart[] = [];
+  for (const part of parts) {
+    if (part.type !== 'tool-query_evidence') {
+      grouped.push(part);
+      continue;
+    }
+    const last = grouped.at(-1);
+    if (last?.type === 'evidence-group') last.parts.push(part);
+    else grouped.push({ type: 'evidence-group', parts: [part] });
+  }
+  return grouped;
+}
+
 function coalesceReasoning(parts: ChatPart[]): ChatPart[] {
   const merged: ChatPart[] = [];
   for (const part of parts) {
@@ -349,20 +374,64 @@ function StartResearchCard({
   );
 }
 
-/** Evidence retrieval runs on an empty set until P4 wires the real store. */
-function QueryEvidenceCard({ part }: { part: QueryEvidencePart }) {
-  const output = part.state === 'output-available' ? part.output : undefined;
-  const items = output?.items ?? [];
+const SIGNAL_LABELS: Readonly<Record<string, string>> = {
+  problem: '问题',
+  seeking: '寻找',
+  paying: '付费',
+  switching: '切换',
+  recurring: '持续',
+};
+
+function evidenceConditions(part: QueryEvidencePart): string {
+  const conditions: string[] = [];
+  const input = part.input;
+  if (input?.signal !== undefined) {
+    conditions.push(`信号 ${SIGNAL_LABELS[input.signal] ?? input.signal}`);
+  }
+  if (input?.platform !== undefined) conditions.push(`平台 ${input.platform}`);
+  if (input?.q !== undefined) conditions.push(`关键词“${input.q}”`);
+  return conditions.length === 0 ? '未加筛选' : conditions.join(' · ');
+}
+
+/**
+ * Evidence searches grouped per answer. An empty result shows what was asked
+ * and why nothing came back (still collecting, failed run, no evidence yet)
+ * instead of a bare "没有找到足够证据" the reader cannot act on.
+ */
+function QueryEvidenceCard({ parts }: { parts: QueryEvidencePart[] }) {
+  const outputs = parts.map((part) =>
+    part.state === 'output-available' ? part.output : undefined,
+  );
+
+  const seen = new Set<string>();
+  const items: EvidenceItem[] = [];
+  for (const output of outputs) {
+    for (const item of output?.items ?? []) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      items.push(item);
+    }
+  }
+
+  const note = [...outputs].reverse().find((output) => output?.note !== undefined)?.note;
+  const errored = parts.some((part) => part.state === 'output-error');
+  const conditions = [...new Set(parts.map(evidenceConditions))];
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>证据检索</CardTitle>
+        <CardTitle>
+          证据检索
+          {parts.length > 1 ? (
+            <span className="ml-1 text-[11px] font-normal text-faint">· {parts.length} 次</span>
+          ) : null}
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
+        <p className="text-[11px] text-faint">检索条件：{conditions.join('；')}</p>
         {items.length === 0 ? (
           <p className="text-sm text-muted">
-            {part.state === 'output-error' ? '证据检索失败' : '没有找到足够证据'}
+            {errored ? '证据检索失败' : (note ?? '本会话还没有可引用的证据。')}
           </p>
         ) : (
           <ul className="flex flex-col gap-2">

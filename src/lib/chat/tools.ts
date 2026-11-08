@@ -100,7 +100,7 @@ export type StartResearchOutput = {
 
 /** The tool set `/api/chat` streams with; UI message parts are typed from it. */
 export type ChatTools = {
-  query_evidence: Tool<QueryEvidenceInput, { items: EvidenceItem[] }>;
+  query_evidence: Tool<QueryEvidenceInput, { items: EvidenceItem[]; note?: string }>;
   start_research: Tool<StartResearchInput, StartResearchOutput>;
   rerun_research: Tool<RerunResearchInput, RerunResearchOutput>;
   get_run_status: Tool<RunStatusInput, RunStatusOutput>;
@@ -111,8 +111,8 @@ export type ChatTools = {
 async function queryEvidence(
   threadId: number | undefined,
   input: QueryEvidenceInput,
-): Promise<{ items: EvidenceItem[] }> {
-  if (threadId === undefined) return { items: [] };
+): Promise<{ items: EvidenceItem[]; note?: string }> {
+  if (threadId === undefined) return { items: [], note: '当前对话没有关联会话。' };
 
   const filters = {
     ...(input.signal === undefined ? {} : { signal: input.signal }),
@@ -129,15 +129,36 @@ async function queryEvidence(
   }
   if (!rows.ok) return { items: [] };
 
-  return {
-    items: rows.value.map((row) => ({
+  const items = rows.value.map((row) => ({
       id: String(row.id),
       platform: row.platform,
       summary: row.supports === null ? row.quote : `${row.quote}（${row.supports}）`,
       signal: row.signal,
       ...(row.url === '' ? {} : { url: row.url }),
-    })),
-  };
+    }));
+
+  if (items.length > 0) return { items };
+
+  // An empty result must say why it is empty: "still collecting" and "this
+  // conversation has no evidence at all" are different answers.
+  const runs = await listRunsForThread(threadId);
+  const latest = runs.ok ? runs.value.at(-1) : undefined;
+  if (latest === undefined) {
+    return { items, note: '该会话还没有研究任务；开始研究后证据才会入库。' };
+  }
+  if (latest.status === 'queued' || latest.status === 'running') {
+    return {
+      items,
+      note: `run #${latest.id} 正在进行（${latest.stage ?? '排队'}）；证据通过 S2 抽取校验后才会入库，现在检索不到是正常的。`,
+    };
+  }
+  if (latest.status === 'failed' || latest.status === 'cancelled') {
+    return {
+      items,
+      note: `run #${latest.id} 已结束（${latest.status}），可能没有可引用的证据。`,
+    };
+  }
+  return { items, note: '该会话目前没有可引用的证据。' };
 }
 
 /** Prepares parameters only: no run is created, nothing is collected. */
