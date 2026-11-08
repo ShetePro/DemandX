@@ -143,6 +143,17 @@ S3 聚类与 S4 评分优先使用 quality 链；单次调用 90 秒超时后自
 
 单 run 的墙钟上限是 90 分钟；超时/配额中断会留下已采集证据，并把 run 标记为失败。
 
+### S1 检索与证据来源
+
+S1 不再把整段想法直接当查询词：
+
+- 由 `bulk` 链把想法规划成 8–14 条短查询（中英各半，按 problem / seeking / paying / switching / frequency / competitor 分组）；模型不可用时回退到 `buildAngles`，并用 `condenseIdea` 只取想法的标题从句（≤24 字）。
+- 端口顺序按一手来源优先：HN 评论 → GitHub Issues → Reddit → HN 故事 → DDG → Bing。Reddit 只跑英文查询且每轮最多 2 条，GitHub 最多 4 条；其它端口不消耗其额度。
+- HN 评论、Reddit 帖子、GitHub Issue 的搜索摘要本身就是正文：S1 直接把它写成快照（`sources.crawl_tier = 'snippet'`，每轮上限 40 条），不再去爬被 robots/反爬挡住的原页；S2 的引文校验仍然对着这段真实文本做。
+- 进入抓取前先过滤：命中内容农场/词典/维基，或与查询零相关且没有商业线索的页面直接跳过（`source.skipped` 的 `blocked_host` / `off_topic`），不浪费抓取配额。
+
+因此「0 条证据」通常意味着：查询太笼统、搜索端口全部被限流/拦截，或页面与查询不相关；先看 `queries` 表的 `result_count` 与 `run_events` 里 `source.skipped` 的 reason，再决定是否启用在下方配置的兜底搜索 API。
+
 ### 兜底搜索（社交平台不可用时）
 
 国内社交平台（小红书 / 抖音 / 知乎）依赖浏览器会话；没有会话、被验证码拦截或适配器返回空时，S1 会对该查询调用一次网页搜索 API：
@@ -163,6 +174,7 @@ S3 聚类与 S4 评分优先使用 quality 链；单次调用 90 秒超时后自
 | run 失败，`runs.error.code = LLM_UNAVAILABLE` | 链为空或所有 provider 都失败。提示里的 `bulk 链为空：请先在设置中配置 provider` 表示没有配置；否则逐个 provider 点「测试连接」，看真实的 401/403/429。 |
 | 对话返回 `CHAT_PROVIDER_UNSUPPORTED` | quality 链里没有 `ollama` 或 `openai-compatible` 类型的模型。把可对话模型放到 quality 链首位；`anthropic-compatible` / `google` 只用于结构化调用，不能用于聊天。 |
 | 报告页写「报告尚未生成」 | 正常状态：run 还在跑、已失败或已取消。页面会给出对应原因，并链接到证据库。 |
+| 报告显示「0 条证据 / 没有可引用的论断」 | 先看 `sources` / `evidence` 是否为空。S1 的 `source.skipped` 会写 `robots`、`off_topic`、`blocked_host` 等原因；如果 `queries.result_count` 全是 0，说明搜索端口被限流或查询太窄，建议启用在 `/settings/crawl` 配置的兜底搜索 API。 |
 | `pnpm test` 里的数据库用例全部 skipped | 没设置 `TEST_DATABASE_URL`。集成测试会 TRUNCATE 表，因此只接受库名以 `_test` 结尾的数据库。见下一节。 |
 
 ## 6. 验收与测试命令

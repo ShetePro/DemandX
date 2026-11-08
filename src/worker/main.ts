@@ -14,6 +14,7 @@ import { getChain } from '@/lib/llm/chain-repository';
 import { recordLlmUsage } from '@/lib/llm/usage-recorder';
 import { resolveApiKey } from '@/lib/llm/repository';
 import { buildAngles } from '@/lib/pipeline/angles';
+import { planSearchQueries } from '@/lib/pipeline/query-plan';
 import { runPipeline } from '@/lib/pipeline/run';
 import { createQuotaGuard } from '@/lib/quota/guard';
 import { DEFAULT_QUOTA } from '@/lib/quota/policy';
@@ -35,10 +36,12 @@ import { listScores, replaceScores } from '@/lib/runs/scores-repository';
 import { insertSource, listSourceUrls, recordQuery } from '@/lib/runs/sources-repository';
 import { createAppStoreSearch } from '@/lib/search/appstore';
 import { resolveWebSearch, createResolvedWebSearchPort } from '@/lib/search/web-search-config';
+import { createHnCommentSearch } from '@/lib/discovery/hn-comments';
 import { createBingSearch } from '@/lib/search/bing';
 import { createDuckDuckGoSearch } from '@/lib/search/ddg';
 import { createGitHubSearch } from '@/lib/search/github';
 import { createHnSearch } from '@/lib/search/hn';
+import { createRedditSearch } from '@/lib/search/reddit';
 import type { SearchPort } from '@/lib/search/port';
 import {
   CRAWL_SETTINGS_KEY,
@@ -79,10 +82,14 @@ const PROFILE_DIR = process.env.CRAWL_PROFILE_DIR?.trim() || path.join(BROWSER_D
  */
 async function buildSearchPorts(): Promise<SearchPort[]> {
   const ports: SearchPort[] = [
+    // First-hand APIs first: their hits carry the complaint/ask in the snippet
+    // and do not need a crawl, so junk web results cannot crowd them out.
+    createHnCommentSearch(),
+    createGitHubSearch(),
+    createRedditSearch(),
+    createHnSearch(),
     createDuckDuckGoSearch(),
     createBingSearch(),
-    createHnSearch(),
-    createGitHubSearch(),
   ];
 
   const appStoreAppId = process.env.APPSTORE_APP_ID?.trim() ?? '';
@@ -237,6 +244,7 @@ async function runStages(runId: number): Promise<void> {
         recordQuery,
         limits: { delayMs: pickDelayMs(settings), maxPages: settings.maxPagesPerRun },
         ...(SNAPSHOT_DIR === '' ? {} : { snapshotDir: SNAPSHOT_DIR }),
+        planQueries: (idea) => planSearchQueries(idea, llm),
       },
       s2: {
         llm,

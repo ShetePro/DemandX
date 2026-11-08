@@ -30,6 +30,32 @@ const TEMPLATES: ReadonlyArray<{ angle: AngleKind; suffixes: readonly string[] }
   { angle: 'competitor', suffixes: ['竞品 对比', '替代方案 有哪些', '定价 方案 对比'] },
 ];
 
+/** Long enough to keep the nouns, short enough for an engine to parse. */
+const SUBJECT_MAX = 24;
+
+/**
+ * Search engines answer a paragraph with noise. Take the pitch's first clause
+ * (its title) and cap it, so "独立开发者的'可验证收入动作'优先级看板：…一段话"
+ * becomes "独立开发者的可验证收入动作优先级看板" instead of a 100-char query.
+ */
+export function condenseIdea(idea: string): string {
+  const cleaned = idea
+    .replace(/\s+/g, ' ')
+    .replace(/[「」『』“”"'（）()【】\[\]]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (cleaned === '') return '';
+  if (cleaned.length <= SUBJECT_MAX) return cleaned;
+
+  const clause = cleaned.split(/[：:，,。；;！!？?\n]/)[0]?.trim() ?? '';
+  const base = clause.length >= 4 ? clause : cleaned;
+  if (base.length <= SUBJECT_MAX) return base;
+
+  const slice = base.slice(0, SUBJECT_MAX);
+  const lastSpace = slice.lastIndexOf(' ');
+  return (lastSpace >= 8 ? slice.slice(0, lastSpace) : slice).trim();
+}
+
 /**
  * Build one group per signal class. An empty idea has nothing to search for,
  * so it yields no groups rather than queries that begin with a space. A query
@@ -37,8 +63,9 @@ const TEMPLATES: ReadonlyArray<{ angle: AngleKind; suffixes: readonly string[] }
  * template suffix) is dropped from the later group.
  */
 export function buildAngles(idea: string): AngleGroup[] {
-  // Collapse whitespace so the same pitch typed twice yields one query.
-  const subject = idea.replace(/\s+/g, ' ').trim();
+  // Collapse whitespace so the same pitch typed twice yields one query, and
+  // condense long pitches: an engine cannot search a paragraph.
+  const subject = condenseIdea(idea);
   if (subject === '') return [];
 
   const seen = new Set<string>();

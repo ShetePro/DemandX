@@ -277,6 +277,10 @@ export async function buildReportSections(
 
   const asked = await input.llm.structured(reportSectionsSchema, buildReportPrompt(input), {
     profile: 'quality',
+    // A report is the run's deliverable: a quality cooldown must degrade to
+    // the bulk chain rather than end the run without one.
+    fallbackProfile: 'bulk',
+    timeoutMs: 90_000,
   });
   if (!asked.ok) {
     return { ok: false, code: 'LLM_UNAVAILABLE', message: `报告合成失败：${asked.message}` };

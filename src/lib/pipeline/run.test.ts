@@ -142,8 +142,8 @@ function createHarness(options: HarnessOptions = {}): Harness {
       return [
         {
           url: 'https://example.com/a',
-          title: '页面',
-          snippet: '摘要',
+          title: '跨境库存同步工具',
+          snippet: '每天手工同步库存太麻烦，愿意付费。',
           platform: 'web',
         },
       ];

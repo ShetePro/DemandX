@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildAngles } from './angles';
+import { buildAngles, condenseIdea } from './angles';
 
 const IDEA = '跨境库存同步';
 
@@ -45,5 +45,22 @@ describe('buildAngles', () => {
   it('does not repeat a query when the idea already contains a template suffix', () => {
     const queries = buildAngles('库存同步 太麻烦').flatMap((group) => group.queries);
     expect(new Set(queries).size).toBe(queries.length);
+  });
+});
+
+
+describe('condenseIdea', () => {
+  it('keeps a short idea unchanged', () => {
+    expect(condenseIdea('跨境库存同步')).toBe('跨境库存同步');
+  });
+
+  it('reduces a paragraph to its title clause', () => {
+    const idea =
+      "独立开发者的'可验证收入动作'优先级看板：独立开发者在 GitHub issue 里自述：没有 Upwork Connects、没有 Stripe 支付链接，渠道一个个失效没人管";
+    expect(condenseIdea(idea)).toBe('独立开发者的 可验证收入动作 优先级看板');
+  });
+
+  it('caps a long unpunctuated pitch', () => {
+    expect(condenseIdea('跨境卖家多平台库存同步超卖提醒工具以及自动补货预测功能').length).toBeLessThanOrEqual(24);
   });
 });

@@ -9,11 +9,28 @@ import { ok, type Result } from '@/lib/quota/types';
 import type { SearchHit, SearchPort } from '@/lib/search/port';
 import type { InsertSourceInput, RecordQueryInput } from '@/lib/runs/sources-repository';
 
+import { hasBusinessSignal, isBlockedSource, relevanceScore } from '@/lib/discovery/sources';
+
 import { buildAngles, type AngleGroup } from './angles';
 import type { RunContext } from './context';
 
 /** Matches the build plan's "5 hits per query" cap. */
 const SEARCH_LIMIT = 5;
+
+/**
+ * API-backed platforms already returned the content in the search hit (an HN
+ * comment, a Reddit self-post, an issue body). Crawling them is often blocked
+ * by robots or an anti-bot wall, so their snippet becomes the snapshot and the
+ * quote gate still verifies against real text.
+ */
+const SNIPPET_PLATFORMS: Readonly<Record<string, true>> = {
+  reddit: true,
+  hn: true,
+  github: true,
+};
+const SNIPPET_MIN_CHARS = 40;
+/** Bound extraction cost: snippets bypass the crawl cap, not the run budget. */
+const SNIPPET_SOURCE_CAP = 40;
 
 /** Two pages this close are the same content republished; keep the first. */
 export const SIMHASH_DUPLICATE_THRESHOLD = 3;
@@ -45,6 +62,8 @@ export interface CollectDeps {
    * "no extra delay, no page cap" — the pre-settings behaviour.
    */
   limits?: { delayMs: number; maxPages: number };
+  /** LLM query planning; `null`/absent falls back to the template groups. */
+  planQueries?: ((idea: string) => Promise<AngleGroup[] | null>) | undefined;
   onEvent?: (type: string, payload: Record<string, unknown>) => Promise<void>;
   now?: () => Date;
 }
@@ -96,7 +115,9 @@ export async function collectS1(ctx: RunContext, deps: CollectDeps): Promise<Res
   const alive = assertAlive(ctx.deadlineAt, now());
   if (!alive.ok) return alive;
 
-  const groups = selectGroups(ctx);
+  const planned =
+    deps.planQueries === undefined ? null : await deps.planQueries(ctx.idea).catch(() => null);
+  const groups = planned !== null && planned.length > 0 ? planned : selectGroups(ctx);
   const total = groups.reduce((sum, group) => sum + group.queries.length, 0);
   if (total === 0) return ok({ sources: 0, skipped: 0, needsHuman: 0 });
 
@@ -117,6 +138,9 @@ export async function collectS1(ctx: RunContext, deps: CollectDeps): Promise<Res
   let skipped = 0;
   let needsHuman = 0;
   let done = 0;
+  /** Slow ports (Reddit, GitHub) serve a bounded number of queries per run. */
+  const portCalls = new Map<string, number>();
+  let snippetSources = 0;
 
   /** One port sweep: records queries, crawls hits, and reports what happened. */
   async function collectFromPorts(
@@ -127,6 +151,13 @@ export async function collectS1(ctx: RunContext, deps: CollectDeps): Promise<Res
     let hitsFound = 0;
 
     for (const port of ports) {
+      // A port that cannot answer this language is skipped without spending
+      // its query budget or a quota claim.
+      if (port.supportsQuery !== undefined && !port.supportsQuery(query)) continue;
+      const used = portCalls.get(port.id) ?? 0;
+      if (port.maxQueries !== undefined && used >= port.maxQueries) continue;
+      portCalls.set(port.id, used + 1);
+
       const claimed = await deps.quota.claim(port.id);
       if (!claimed.ok) {
         skipped += 1;
@@ -176,6 +207,106 @@ export async function collectS1(ctx: RunContext, deps: CollectDeps): Promise<Res
         }
         // Already stored by this run (or a previous attempt of it): no re-fetch.
         if (seen.has(canonical)) continue;
+
+        // Search engines happily return Wikipedia or an events listing for a
+        // Stripe query. Drop pages that share no term with the query and carry
+        // no commercial signal before they spend a crawl and a page slot.
+        const hitText = `${hit.title}\n${hit.snippet}`;
+        if (isBlockedSource(hit.url)) {
+          skipped += 1;
+          seen.add(canonical);
+          await emit(deps, 'source.skipped', {
+            stage: 'S1',
+            url: canonical,
+            platform: hit.platform,
+            reason: 'blocked_host',
+          });
+          continue;
+        }
+        if (relevanceScore(hit, query) === 0 && !hasBusinessSignal(hitText)) {
+          skipped += 1;
+          seen.add(canonical);
+          await emit(deps, 'source.skipped', {
+            stage: 'S1',
+            url: canonical,
+            platform: hit.platform,
+            reason: 'off_topic',
+          });
+          continue;
+        }
+
+        // First-hand API content: store its snippet instead of crawling a page
+        // that robots/anti-bot rules will refuse anyway.
+        if (
+          SNIPPET_PLATFORMS[hit.platform] === true &&
+          hit.snippet.trim().length >= SNIPPET_MIN_CHARS &&
+          snippetSources < SNIPPET_SOURCE_CAP
+        ) {
+          const text = `${hit.title}\n${hit.snippet}`.trim();
+          const fingerprint = simhash64(text);
+          if (
+            fingerprints.some(
+              (stored) => hammingDistance(stored, fingerprint) <= SIMHASH_DUPLICATE_THRESHOLD,
+            )
+          ) {
+            skipped += 1;
+            seen.add(canonical);
+            await emit(deps, 'source.skipped', {
+              stage: 'S1',
+              url: canonical,
+              platform: hit.platform,
+              reason: 'near_duplicate',
+            });
+            continue;
+          }
+
+          let writtenFromSnippet;
+          try {
+            writtenFromSnippet = await writeSnapshot({
+              text,
+              url: canonical,
+              ...(deps.snapshotDir === undefined ? {} : { dir: deps.snapshotDir }),
+            });
+          } catch (error) {
+            skipped += 1;
+            await emit(deps, 'source.failed', {
+              stage: 'S1',
+              url: canonical,
+              code: 'SNAPSHOT_FAILED',
+              message: messageOf(error),
+            });
+            continue;
+          }
+
+          const insertedFromSnippet = await deps.repo.insertSource({
+            runId: ctx.runId,
+            canonicalUrl: canonical,
+            platform: hit.platform,
+            contentHash: writtenFromSnippet.hash,
+            snapshotPath: writtenFromSnippet.textPath,
+            crawlTier: 'snippet',
+            fetchedAt: now(),
+          });
+          if (!insertedFromSnippet.ok) return { ok: false, failure: insertedFromSnippet };
+
+          seen.add(canonical);
+          fingerprints.push(fingerprint);
+          if (insertedFromSnippet.value.inserted) {
+            sources += 1;
+            snippetSources += 1;
+          }
+          await emit(deps, 'source.added', {
+            stage: 'S1',
+            url: canonical,
+            platform: hit.platform,
+            title: hit.title,
+            sourceId: insertedFromSnippet.value.id,
+            snapshotHash: writtenFromSnippet.hash,
+            duplicate: !insertedFromSnippet.value.inserted,
+            via: 'snippet',
+          });
+          continue;
+        }
 
         // The cap is a run budget, not a per-query one: once it is reached the
         // remaining hits are not fetched at all.

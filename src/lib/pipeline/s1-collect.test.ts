@@ -16,7 +16,12 @@ const IDEA = '跨境库存同步';
 const NOW = new Date('2026-10-30T12:00:00.000Z');
 
 function hit(url: string, platform: SearchHit['platform'] = 'web'): SearchHit {
-  return { url, title: `标题 ${url}`, snippet: '摘要', platform };
+  return {
+    url,
+    title: `${IDEA} 工具 ${url}`,
+    snippet: `每天手工${IDEA}，太麻烦，愿意付费。`,
+    platform,
+  };
 }
 
 function okSnapshot(url: string, text: string): CrawlResult {
@@ -185,6 +190,52 @@ describe('collectS1', () => {
     expect(summary.skipped).toBe(1);
     expect(repo.rows.size).toBe(1);
     expect(crawlCalls).toEqual([first, second]);
+  });
+
+  it('stores a first-hand API snippet without crawling the page', async () => {
+    const repo = createRepo();
+    const crawlCalls: string[] = [];
+    const url = 'https://www.reddit.com/r/smallbusiness/comments/x/invoicing/';
+    const port = createPort('reddit', [
+      {
+        url,
+        title: 'How do you handle invoicing?',
+        snippet:
+          'We chase invoices by hand every month and would gladly pay for something that just works.',
+        platform: 'reddit',
+      },
+    ]);
+    const crawl = createCrawl({}, crawlCalls);
+
+    const summary = expectOk(await collectS1(context(), deps(port, crawl, repo)));
+
+    expect(summary.sources).toBe(1);
+    expect(summary.skipped).toBe(0);
+    expect(crawlCalls).toEqual([]);
+    expect(repo.rows.size).toBe(1);
+  });
+
+  it('uses the LLM query plan instead of the templates when provided', async () => {
+    const repo = createRepo();
+    const searchCalls: string[] = [];
+    const url = 'https://example.com/post';
+    const port = createPort('ddg', [hit(url)], searchCalls);
+    const crawl = createCrawl({ [url]: okSnapshot(url, '手工同步库存很麻烦。') }, []);
+
+    const summary = expectOk(
+      await collectS1(
+        context(),
+        deps(port, crawl, repo, {
+          planQueries: async () => [
+            { angle: 'problem', queries: ['invoice chasing spreadsheet'] },
+            { angle: 'seeking', queries: ['looking for invoicing tool'] },
+          ],
+        }),
+      ),
+    );
+
+    expect(summary.sources).toBe(1);
+    expect(searchCalls).toEqual(['invoice chasing spreadsheet', 'looking for invoicing tool']);
   });
 
   it('skips a source whose quota claim is refused without searching', async () => {
