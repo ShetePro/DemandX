@@ -101,8 +101,14 @@ function SectionInferences({ items }: { items: readonly string[] }) {
   );
 }
 
-function SectionUnknowns({ items }: { items: readonly string[] }) {
-  const [open, setOpen] = useState(false);
+function SectionUnknowns({
+  items,
+  defaultOpen = false,
+}: {
+  items: readonly string[];
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
 
   if (items.length === 0) return null;
 
@@ -375,7 +381,7 @@ export function ReportView({ runId, ideaTitle, report, scores, evidenceMap }: Re
                 ) : null}
 
                 <SectionInferences items={inferences} />
-                <SectionUnknowns items={unknowns} />
+                <SectionUnknowns items={unknowns} defaultOpen={claims.length === 0} />
               </section>
             );
           })}
