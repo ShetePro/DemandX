@@ -231,14 +231,19 @@ export function buildExploratoryPrompt(input: AssembleInput): Prompt {
 硬性规则：
 1. 事实只能来自给定证据；每个 claim 的 evidenceIds 至少 1 个，且只能填列表里的 id。引用原文用中文引号，不得编造数字、价格、用户数或收入。
 2. 竞品、财务、获客、风险等无法直接引用证据的判断，写进 inferences，并以“推断：”开头说明依据。
-3. ranking / bestDirection 可以给暂定优先级，但必须写明“基于单源证据的暂定判断”。
+3. ranking / bestDirection 要给出明确倾向（哪个方向先做、为什么），以资深创业者/投资人的身份判断；证据不足时也要说“我倾向先验证 X”，而不是只罗列可能性。
 4. finance 只能给带“假设”的区间，不得编造真实价格或收入。
 5. plan 给出 14 天内可执行的访谈 / 预售 / 着陆页步骤。
 6. decision 写“建议暂缓”，并列出还需要补齐的 3 类证据。
 7. 八个 section 都必须有内容：claims 或 inferences 至少一个，不要只写“没有证据”。
+8. 如果没有任何证据：claims 一律为空（不得编造）；inferences 仍要以“推断/假设”开头给出判断、优先级与验证动作。
 
 输出 JSON：{ sections: { summary, evidence, competitors, ranking, bestDirection, finance, plan, decision } }。每个 section 形如 { claims: [{ text, evidenceIds }], inferences: string[], unknowns: string[] }。`,
-    user: `想法：${input.idea ?? ''}\n\n已接受证据（只能引用这些 id）：\n${list}`,
+    user: `想法：${input.idea ?? ''}\n\n${
+      input.evidence.length === 0
+        ? '本轮没有采集到任何外部证据：不要编造事实，claims 留空，用 inferences 给出假设性判断。'
+        : `已接受证据（只能引用这些 id）：\n${list}`
+    }`,
   };
 }
 
@@ -356,7 +361,9 @@ function sanitizeSection(
 export async function buildReportSections(
   input: AssembleInput,
 ): Promise<StageOutcome<ReportSections>> {
-  if (input.evidence.length === 0) return ok(buildEmptyReport(NO_EVIDENCE_REASON));
+  if (input.evidence.length === 0 && input.exploratory !== true) {
+    return ok(buildEmptyReport(NO_EVIDENCE_REASON));
+  }
 
   const schema = input.exploratory === true ? exploratoryReportSchema : reportSectionsSchema;
   const prompt = input.exploratory === true ? buildExploratoryPrompt(input) : buildReportPrompt(input);

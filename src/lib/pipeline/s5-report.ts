@@ -186,7 +186,7 @@ export async function reportS5(
   const derivation: ReportDerivation = {
     scores: candidate?.scores ?? [],
     ...verdict,
-    ...(candidate === null && evidence.value.length > 0
+    ...(candidate === null
       ? {
           // The five-way decision has no "insufficient" value; 暂缓 is the
           // honest one when the corpus exists but cannot support a direction.
@@ -206,26 +206,26 @@ export async function reportS5(
   if (!alive.ok) {
     sections = buildEmptyReport(DEADLINE_REASON);
   } else if (candidate === null) {
-    if (evidence.value.length === 0) {
-      sections = buildEmptyReport(NO_EVIDENCE_REASON);
-    } else {
-      // No opportunity, but real evidence: let the model write the eight
-      // sections as explicit inference instead of leaving 3–8 blank.
-      const built = await buildReportSections({
-        llm: deps.llm,
-        idea: ctx.idea,
-        exploratory: true,
-        opportunity: { name: null, positioning: null, independentSources },
-        evidence: evidence.value,
-        derivation,
-      });
-      sections = built.ok
+    // No qualifying direction: still write the analyst's judgement. The model
+    // gets the accepted evidence when there is any, and works from assumptions
+    // when there is none.
+    const built = await buildReportSections({
+      llm: deps.llm,
+      idea: ctx.idea,
+      exploratory: true,
+      opportunity: { name: null, positioning: null, independentSources },
+      evidence: evidence.value,
+      derivation,
+    });
+    sections =
+      built.ok && (evidence.value.length === 0 || built.value.sections.evidence?.claims.length > 0)
         ? built.value
-        : buildEvidenceOnlyReport(
-            evidence.value,
-            `这次只找到 ${evidence.value.length} 条真实证据（来自 ${independentSources} 个来源）。判断一个方向至少要有 ${MIN_INDEPENDENT_SOURCES} 个不同来源说同一件事，所以现在还不能下结论；下面列出已经找到的证据，供你先判断。`,
-          );
-    }
+        : evidence.value.length === 0
+          ? buildEmptyReport(NO_EVIDENCE_REASON)
+          : buildEvidenceOnlyReport(
+              evidence.value,
+              `这次只找到 ${evidence.value.length} 条真实证据（来自 ${independentSources} 个来源）。判断一个方向至少要有 ${MIN_INDEPENDENT_SOURCES} 个不同来源说同一件事，所以现在还不能下结论；下面列出已经找到的证据，供你先判断。`,
+            );
   } else {
     const built = await buildReportSections({
       llm: deps.llm,

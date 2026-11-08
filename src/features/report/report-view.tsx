@@ -91,8 +91,10 @@ function SectionInferences({ items }: { items: readonly string[] }) {
 
   return (
     <div className="mt-4 rounded-xl border border-accent/30 bg-accent-soft/40 p-3">
-      <p className="mb-1.5 text-xs font-semibold text-accent">分析判断（推断，非事实）</p>
-      <ul className="flex list-disc flex-col gap-1.5 pl-4 text-[13px] leading-6 text-muted">
+      <p className="mb-1.5 text-xs font-semibold text-accent">
+        资深从业者判断（推断，非事实）
+      </p>
+      <ul className="flex list-disc flex-col gap-1.5 pl-4 text-[13px] leading-6 text-fg/85">
         {items.map((item) => (
           <li key={item}>{item}</li>
         ))}
@@ -360,9 +362,11 @@ export function ReportView({ runId, ideaTitle, report, scores, evidenceMap }: Re
                   {meta.ordinal}、{meta.label}
                 </h2>
 
-                {claims.length === 0 ? (
-                  <p className="mt-2 text-sm text-muted">本节没有可引用的论断。</p>
-                ) : (
+                {claims.length === 0 && inferences.length === 0 ? (
+                  <p className="mt-2 text-sm text-muted">本节暂无可引用的证据，下面是需要补齐的未知项。</p>
+                ) : null}
+
+                {claims.length === 0 ? null : (
                   <ul className="mt-3 space-y-3">
                     {claims.map((claim, index) => (
                       <Claim key={index} claim={claim} onOpen={openCitation} />
@@ -381,7 +385,10 @@ export function ReportView({ runId, ideaTitle, report, scores, evidenceMap }: Re
                 ) : null}
 
                 <SectionInferences items={inferences} />
-                <SectionUnknowns items={unknowns} defaultOpen={claims.length === 0} />
+                <SectionUnknowns
+                  items={unknowns}
+                  defaultOpen={claims.length === 0 && inferences.length === 0}
+                />
               </section>
             );
           })}

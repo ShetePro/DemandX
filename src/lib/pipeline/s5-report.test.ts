@@ -300,26 +300,23 @@ describe('reportS5', () => {
     expect(s6?.payload).toMatchObject({ status: 'failed', code: 'REPORT_INVALID' });
   });
 
-  it('writes the evidence-insufficient report when no opportunity survived S3', async () => {
-    const { deps, repo, events, llm } = setup({ opportunities: [], evidence: [] });
+  it('asks for an inference-only report when no opportunity and no evidence', async () => {
+    const { deps, repo, llm } = setup({ opportunities: [], evidence: [] });
 
     const summary = expectOk(await reportS5(context(), deps));
 
-    expect(llm.prompts).toEqual([]);
+    expect(llm.prompts).toHaveLength(1);
+    expect(llm.prompts[0]?.user).toContain('没有采集到任何外部证据');
     expect(summary).toMatchObject({
       reportId: 42,
       opportunityId: null,
       total: 0,
       grade: 'D',
-      decision: '建议放弃',
+      decision: '建议暂缓',
       claims: 0,
       citations: 0,
     });
-    expect(repo.saves[0]?.sections.summary).toEqual({
-      claims: [],
-      unknowns: [expect.stringContaining('没有可引用的证据')],
-    });
-    expect(events.at(-1)?.type).toBe('report.ready');
+    expect(repo.saves[0]?.decision).toBe('建议暂缓');
   });
 
   it('writes an exploratory report from the evidence when no cluster cleared the gate', async () => {

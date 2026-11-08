@@ -231,7 +231,7 @@ describe('ReportView', () => {
       />,
     );
 
-    expect(screen.getByText('分析判断（推断，非事实）')).toBeVisible();
+    expect(screen.getByText('资深从业者判断（推断，非事实）')).toBeVisible();
     expect(screen.getByText(/竞品按席位收费/)).toBeVisible();
     expect(screen.getByText('手工对账每天三小时')).toBeInTheDocument();
   });
