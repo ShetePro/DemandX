@@ -1,0 +1,2 @@
+DROP INDEX "sources_canonical_url_content_hash_key";--> statement-breakpoint
+CREATE UNIQUE INDEX "sources_run_id_canonical_url_content_hash_key" ON "sources" USING btree ("run_id","canonical_url","content_hash");

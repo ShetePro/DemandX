@@ -39,9 +39,9 @@ export const queries = pgTable('queries', {
 });
 
 /**
- * A fetched page. Identity is `(canonical_url, content_hash)`: the same URL
- * may legitimately be re-crawled when its content changes, and each snapshot
- * backs the quotes extracted from it.
+ * A fetched page. Identity is `(run_id, canonical_url, content_hash)`: one row
+ * per run, so a rerun can reuse an already stored snapshot while still owning
+ * its own source row — evidence, citations and independence counts are per run.
  */
 export const sources = pgTable(
   'sources',
@@ -60,7 +60,11 @@ export const sources = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
-    uniqueIndex('sources_canonical_url_content_hash_key').on(t.canonicalUrl, t.contentHash),
+    uniqueIndex('sources_run_id_canonical_url_content_hash_key').on(
+      t.runId,
+      t.canonicalUrl,
+      t.contentHash,
+    ),
     index('sources_canonical_url_idx').on(t.canonicalUrl),
   ],
 );

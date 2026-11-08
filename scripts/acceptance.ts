@@ -428,7 +428,13 @@ async function execute(parsed: ParsedArgs & { ok: true }, session: Session): Pro
   const reported = await timed(timing, 'S5', () =>
     reportS5(context, {
       llm: stub,
-      repo: { listOpportunities, listScores, listEvidenceByIds, saveReport },
+      repo: {
+        listOpportunities,
+        listScores,
+        listEvidenceByIds,
+        listAcceptedEvidence,
+        saveReport,
+      },
     }),
   );
   if (!reported.ok) {

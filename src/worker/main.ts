@@ -264,7 +264,13 @@ async function runStages(runId: number): Promise<void> {
       },
       s5: {
         llm,
-        repo: { listOpportunities, listScores, listEvidenceByIds, saveReport },
+        repo: {
+          listOpportunities,
+          listScores,
+          listEvidenceByIds,
+          listAcceptedEvidence,
+          saveReport,
+        },
       },
       onEvent: (type, payload) => {
         if (

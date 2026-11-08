@@ -16,6 +16,7 @@ import {
   buildEmptyReport,
   buildReportSections,
   DEADLINE_REASON,
+  NO_EVIDENCE_REASON,
   type ReportDerivation,
   type ReportEvidence,
   type ReportSections,
@@ -24,7 +25,10 @@ import { countCitations } from '@/lib/report/citations';
 import type { SaveReportInput } from '@/lib/report/persist';
 import { validateReport } from '@/lib/report/validate';
 import type { ScoringEvidenceRow } from '@/lib/runs/evidence-repository';
-import type { OpportunityRow } from '@/lib/runs/opportunities-repository';
+import type {
+  AcceptedEvidence,
+  OpportunityRow,
+} from '@/lib/runs/opportunities-repository';
 import { pickBestScored, type ScoredOpportunity } from '@/lib/scoring/best';
 import type { CredibilityGrade } from '@/lib/scoring/credibility';
 import type { Decision } from '@/lib/scoring/decision';
@@ -32,6 +36,7 @@ import type { DimensionScore } from '@/lib/scoring/types';
 import { deriveVerdict } from '@/lib/scoring/verdict';
 
 import type { RunContext, StageOutcome } from './context';
+import { MIN_INDEPENDENT_SOURCES } from './s3-cluster';
 
 export interface ReportS5Summary {
   reportId: number;
@@ -52,6 +57,8 @@ export interface ReportDeps {
     listScores(opportunityId: number): Promise<Result<DimensionScore[]>>;
     /** Rows behind `evidenceIds`; rejected rows are filtered here. */
     listEvidenceByIds(ids: readonly number[]): Promise<Result<ScoringEvidenceRow[]>>;
+    /** Accepted rows for the run, used when no cluster cleared the gate. */
+    listAcceptedEvidence(runId: number): Promise<Result<AcceptedEvidence[]>>;
     saveReport(input: SaveReportInput): Promise<Result<{ reportId: number }>>;
   };
   /** Optional audit log; its failure never fails the stage. */
@@ -165,6 +172,20 @@ export async function reportS5(
   let sections: ReportSections;
   if (!alive.ok) {
     sections = buildEmptyReport(DEADLINE_REASON);
+  } else if (candidate === null) {
+    // Evidence may exist without a cluster reaching three independent sources.
+    // Saying "no evidence" would be wrong; name the gate that stopped it.
+    const accepted = await deps.repo.listAcceptedEvidence(ctx.runId);
+    if (!accepted.ok) {
+      await emit(deps, 'stage.finished', { stage: 'S5', status: 'failed', code: accepted.code });
+      return accepted;
+    }
+    const sources = new Set(accepted.value.map((row) => row.sourceId)).size;
+    sections = buildEmptyReport(
+      accepted.value.length === 0
+        ? NO_EVIDENCE_REASON
+        : `本轮采集到 ${accepted.value.length} 条证据（来自 ${sources} 个来源），但没有方向达到 ${MIN_INDEPENDENT_SOURCES} 个独立来源的聚类门槛，因此不出结论；已采集证据可在证据库查看。`,
+    );
   } else {
     const built = await buildReportSections({
       llm: deps.llm,

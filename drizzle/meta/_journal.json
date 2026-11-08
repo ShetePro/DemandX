@@ -50,6 +50,13 @@
       "when": 1793716327998,
       "tag": "0006_romantic_northstar",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794132741224,
+      "tag": "0007_broken_nomad",
+      "breakpoints": true
     }
   ]
 }

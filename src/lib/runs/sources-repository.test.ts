@@ -103,6 +103,18 @@ suite('sources repository', () => {
     expect(unwrap(await repo.countSources(runId))).toBe(1);
   });
 
+  it('gives each run its own row for the same URL and snapshot', async () => {
+    const firstRun = await seedRun();
+    const secondRun = await seedRun();
+
+    const first = unwrap(await repo.insertSource({ ...SOURCE, runId: firstRun }));
+    const second = unwrap(await repo.insertSource({ ...SOURCE, runId: secondRun }));
+
+    expect(first.inserted).toBe(true);
+    expect(second.inserted).toBe(true);
+    expect(second.id).not.toBe(first.id);
+  });
+
   it('keeps the same URL when its content hash changes', async () => {
     const runId = await seedRun();
 

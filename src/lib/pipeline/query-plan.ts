@@ -34,20 +34,23 @@ export interface QueryPlanPrompt {
   user: string;
 }
 
-export function buildQueryPlanPrompt(idea: string): QueryPlanPrompt {
+export function buildQueryPlanPrompt(idea: string, hint?: string): QueryPlanPrompt {
   return {
     system: `你是市场研究的检索规划员。把用户的想法变成短搜索查询：
 - 每个信号角度给 1–3 条查询；总共 8–14 条。
 - 查询 2–6 个词，像真实用户会搜索的关键词；不要粘贴整段想法，不要用 site: 操作符，不要堆砌同义词。
 - 中英文都要有，英文至少 4 条；英文查询用于 Hacker News、Reddit、GitHub Issues 等英文社区。
 - 使用想法里的具体名词（工具名、支付渠道、职位、行业）；拿不准的英文术语照常见写法。
-- problem=抱怨/太麻烦；seeking=求推荐；paying=价格/付费；switching=替代/迁移；frequency=使用频率；competitor=竞品/定价对比。`,
+- problem=抱怨/太麻烦；seeking=求推荐；paying=价格/付费；switching=替代/迁移；frequency=使用频率；competitor=竞品/定价对比。${hint === undefined ? '' : `\n\n上一轮的问题：${hint}`}`,
     user: `想法：${idea}\n\n请输出 JSON：{ groups: [{ angle, queries: string[] }] }`,
   };
 }
 
 /** Dedupe + require real breadth; `null` means "use the template fallback". */
-export function normalizeQueryPlan(groups: readonly AngleGroup[]): AngleGroup[] | null {
+export function normalizeQueryPlan(
+  groups: readonly AngleGroup[],
+  minEnglish = 4,
+): AngleGroup[] | null {
   const seenAngles = new Set<AngleKind>();
   const seenQueries = new Set<string>();
   const normalized: AngleGroup[] = [];
@@ -69,7 +72,11 @@ export function normalizeQueryPlan(groups: readonly AngleGroup[]): AngleGroup[] 
   }
 
   if (normalized.length < 3) return null;
-  if (normalized.reduce((sum, group) => sum + group.queries.length, 0) < 8) return null;
+  const queries = normalized.flatMap((group) => group.queries);
+  if (queries.length < 8) return null;
+  // English queries are what reach HN / Reddit / GitHub; a plan without them
+  // silently collapses back to Chinese web results.
+  if (queries.filter((query) => !/[\u4e00-\u9fff]/.test(query)).length < minEnglish) return null;
   return normalized;
 }
 
@@ -82,11 +89,18 @@ export async function planSearchQueries(
   idea: string,
   llm: Pick<LlmPort, 'structured'>,
 ): Promise<AngleGroup[] | null> {
-  const prompt = buildQueryPlanPrompt(idea);
-  const asked = await llm
-    .structured(queryPlanSchema, prompt, { profile: 'bulk', timeoutMs: QUERY_PLAN_TIMEOUT_MS })
-    .catch(() => null);
+  let hint: string | undefined;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const prompt = buildQueryPlanPrompt(idea, hint);
+    const asked = await llm
+      .structured(queryPlanSchema, prompt, { profile: 'bulk', timeoutMs: QUERY_PLAN_TIMEOUT_MS })
+      .catch(() => null);
 
-  if (asked === null || !asked.ok) return null;
-  return normalizeQueryPlan(asked.value.data.groups);
+    if (asked !== null && asked.ok) {
+      const plan = normalizeQueryPlan(asked.value.data.groups);
+      if (plan !== null) return plan;
+    }
+    hint = '英文查询少于 4 条，或查询/角度数量不足。请把关键术语翻成英文，保持 8–14 条、中英各半。';
+  }
+  return null;
 }

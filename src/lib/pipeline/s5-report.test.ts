@@ -7,6 +7,7 @@ import { fail, ok, type Result } from '@/lib/quota/types';
 import type { SaveReportInput } from '@/lib/report/persist';
 import { REPORT_SECTIONS, type ReportSectionBody } from '@/lib/report/validate';
 import type { ScoringEvidenceRow } from '@/lib/runs/evidence-repository';
+import type { AcceptedEvidence } from '@/lib/runs/opportunities-repository';
 import type { OpportunityRow } from '@/lib/runs/opportunities-repository';
 import { DIMENSIONS, type Dimension, type DimensionScore } from '@/lib/scoring/types';
 import { deriveVerdict } from '@/lib/scoring/verdict';
@@ -147,6 +148,19 @@ function createRepo(options: RepoOptions = {}): FakeRepo {
     },
     async listEvidenceByIds(ids): Promise<Result<ScoringEvidenceRow[]>> {
       return ok((options.evidence ?? []).filter((row) => ids.includes(row.id)));
+    },
+    async listAcceptedEvidence(): Promise<Result<AcceptedEvidence[]>> {
+      return ok(
+        (options.evidence ?? []).map((row) => ({
+          id: row.id,
+          sourceId: row.sourceId,
+          signal: row.signal,
+          platform: row.platform,
+          quote: row.quote,
+          supports: row.supports ?? null,
+          canonicalUrl: '',
+        })),
+      );
     },
     async saveReport(input): Promise<Result<{ reportId: number }>> {
       if (options.failSave) return fail('STORAGE_FAILED', '写入报告失败');

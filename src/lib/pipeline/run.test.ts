@@ -319,6 +319,21 @@ function createHarness(options: HarnessOptions = {}): Harness {
         async listEvidenceByIds(ids): Promise<Result<ScoringEvidenceRow[]>> {
           return ok(evidenceRows().filter((row) => ids.includes(row.id)));
         },
+        async listAcceptedEvidence(): Promise<Result<AcceptedEvidence[]>> {
+          return ok(
+            evidenceRows()
+              .filter((row) => row.rejectedReason === null)
+              .map((row) => ({
+                id: row.id,
+                sourceId: row.sourceId,
+                signal: row.signal,
+                platform: row.platform,
+                quote: row.quote,
+                supports: row.supports ?? null,
+                canonicalUrl: '',
+              })),
+          );
+        },
         async saveReport(input): Promise<Result<{ reportId: number }>> {
           reportSaves.push(input);
           return ok({ reportId: 42 });

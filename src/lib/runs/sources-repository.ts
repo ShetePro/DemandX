@@ -48,7 +48,9 @@ export async function insertSource(input: InsertSourceInput): Promise<Result<Ins
         ...(input.crawlTier === undefined ? {} : { crawlTier: input.crawlTier }),
         ...(input.fetchedAt === undefined ? {} : { fetchedAt: input.fetchedAt }),
       })
-      .onConflictDoNothing({ target: [sources.canonicalUrl, sources.contentHash] })
+      .onConflictDoNothing({
+        target: [sources.runId, sources.canonicalUrl, sources.contentHash],
+      })
       .returning({ id: sources.id });
 
     const created = rows[0];
