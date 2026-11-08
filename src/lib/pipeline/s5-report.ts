@@ -14,6 +14,7 @@ import { assertAlive } from '@/lib/quota/deadline';
 import { ok, type Result } from '@/lib/quota/types';
 import {
   buildEmptyReport,
+  buildEvidenceOnlyReport,
   buildReportSections,
   DEADLINE_REASON,
   NO_EVIDENCE_REASON,
@@ -181,11 +182,21 @@ export async function reportS5(
       return accepted;
     }
     const sources = new Set(accepted.value.map((row) => row.sourceId)).size;
-    sections = buildEmptyReport(
-      accepted.value.length === 0
-        ? NO_EVIDENCE_REASON
-        : `本轮采集到 ${accepted.value.length} 条证据（来自 ${sources} 个来源），但没有方向达到 ${MIN_INDEPENDENT_SOURCES} 个独立来源的聚类门槛，因此不出结论；已采集证据可在证据库查看。`,
-    );
+    if (accepted.value.length === 0) {
+      sections = buildEmptyReport(NO_EVIDENCE_REASON);
+    } else {
+      sections = buildEvidenceOnlyReport(
+        accepted.value.map((row) => ({
+          id: row.id,
+          sourceId: row.sourceId,
+          signal: row.signal,
+          platform: row.platform,
+          quote: row.quote,
+          supports: row.supports ?? null,
+        })),
+        `这次只找到 ${accepted.value.length} 条真实证据（来自 ${sources} 个来源）。判断一个方向至少要有 ${MIN_INDEPENDENT_SOURCES} 个不同来源说同一件事，所以现在还不能下结论；下面列出已经找到的证据，供你先判断。`,
+      );
+    }
   } else {
     const built = await buildReportSections({
       llm: deps.llm,

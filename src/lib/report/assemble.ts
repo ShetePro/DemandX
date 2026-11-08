@@ -126,6 +126,41 @@ function emptyBody(reason: string): ReportSectionBody {
  * It still passes `validateReport` (no uncited claim exists) and still carries
  * S4's total, grade and decision in the row, which is what the page shows.
  */
+/**
+ * Evidence exists, but no cluster cleared the three-source gate. The report
+ * still shows what was actually collected — one quote per claim, each cited —
+ * and says in plain words why no direction is recommended. This is not a
+ * conclusion: every claim is a single-source observation.
+ */
+export function buildEvidenceOnlyReport(
+  evidence: readonly ReportEvidence[],
+  reason: string,
+): ReportSections {
+  const claims = evidence.slice(0, MAX_CLAIMS_PER_SECTION).map((row) => ({
+    text: `[${row.platform}] “${row.quote.replace(/\s+/g, ' ').trim().slice(0, 160)}”`,
+    evidenceIds: [row.id],
+  }));
+
+  return {
+    sections: {
+      summary: { claims: [], unknowns: [reason] },
+      evidence: {
+        claims,
+        unknowns:
+          evidence.length > claims.length
+            ? [`仅列出前 ${claims.length} 条，其余 ${evidence.length - claims.length} 条在证据库。`]
+            : [],
+      },
+      competitors: emptyBody('没有足够的独立来源对比竞品，暂时不判断竞争格局。'),
+      ranking: emptyBody('没有方向达到证据门槛，暂时不排名。'),
+      bestDirection: emptyBody('没有方向达到证据门槛，暂时不推荐方向。'),
+      finance: emptyBody('缺少独立来源，暂时不估算收入与成本。'),
+      plan: emptyBody('先按上面的线索做几次访谈或预售，再决定是否进入 14 天验证。'),
+      decision: emptyBody('证据不足，暂时不能给出开发或放弃的结论。'),
+    },
+  };
+}
+
 export function buildEmptyReport(reason: string): ReportSections {
   return {
     sections: {
