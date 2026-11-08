@@ -348,76 +348,68 @@ html {
   }
 }
 
-/* Answer typography: a paragraph that opens with a bold label is a section
-   marker. The claim kind (conclusion / fact / inference / unknown / risk) is
-   derived in claim-rehype; hierarchy matters more than decoration here, so the
-   conclusion carries the accent, facts read as verified, and inference stays
-   deliberately quiet. */
-.answer-markdown > p:where(:has(> :is(strong, span[data-streamdown='strong']):first-child)) {
-  margin: 14px 0;
-  padding: 10px 12px;
-  border-left: 2px solid var(--accent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--panel-2) 60%, transparent);
+/* Answer typography: markdown first. Claim labels stay colour-coded so facts
+   and inference remain distinguishable, but no paragraph becomes a card; the
+   answer keeps headings, lists, tables and code as the structure. */
+.answer-markdown :is(strong, span[data-streamdown='strong']) {
+  font-weight: 600;
+}
+
+.answer-markdown
+  > p[data-claim]
+  > :is(strong, span[data-streamdown='strong']):first-child::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 0.85em;
+  margin-right: 6px;
+  border-radius: 2px;
+  background: currentColor;
+  vertical-align: -0.08em;
 }
 
 .answer-markdown > p[data-claim='conclusion'] {
-  border-left: 3px solid var(--accent);
-  background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
   font-weight: 500;
 }
 
-.answer-markdown > p[data-claim='conclusion']
-  :is(strong, span[data-streamdown='strong']):first-child {
+.answer-markdown
+  > p[data-claim='conclusion']
+  > :is(strong, span[data-streamdown='strong']):first-child {
   color: var(--accent);
 }
 
-.answer-markdown > p[data-claim='fact'] {
-  border-left-color: var(--success);
-  background: color-mix(in srgb, var(--success-soft) 55%, transparent);
-}
-
-.answer-markdown > p[data-claim='fact']
-  :is(strong, span[data-streamdown='strong']):first-child {
+.answer-markdown
+  > p[data-claim='fact']
+  > :is(strong, span[data-streamdown='strong']):first-child {
   color: var(--success);
 }
 
 .answer-markdown > p[data-claim='inference'] {
-  border-left-style: dashed;
-  border-left-color: var(--border-strong);
-  background: transparent;
   color: var(--muted);
 }
 
-.answer-markdown > p[data-claim='inference']
-  :is(strong, span[data-streamdown='strong']):first-child {
+.answer-markdown
+  > p[data-claim='inference']
+  > :is(strong, span[data-streamdown='strong']):first-child {
   color: var(--muted);
 }
 
-.answer-markdown > p[data-claim='unknown'] {
-  border-left: 2px dotted var(--warning);
-  background: color-mix(in srgb, var(--warning-soft) 60%, transparent);
-}
-
-.answer-markdown > p[data-claim='unknown']
-  :is(strong, span[data-streamdown='strong']):first-child {
+.answer-markdown
+  > p[data-claim='unknown']
+  > :is(strong, span[data-streamdown='strong']):first-child {
   color: var(--warning);
 }
 
-.answer-markdown > p[data-claim='risk'] {
-  border-left-color: var(--error);
-  background: color-mix(in srgb, var(--error-soft) 55%, transparent);
-}
-
-.answer-markdown > p[data-claim='risk']
-  :is(strong, span[data-streamdown='strong']):first-child {
+.answer-markdown
+  > p[data-claim='risk']
+  > :is(strong, span[data-streamdown='strong']):first-child {
   color: var(--error);
 }
 
-.answer-markdown > p[data-claim='next'] {
-  border-left-style: dashed;
-  border-left-color: var(--accent);
-  background: transparent;
+.answer-markdown
+  > p[data-claim='next']
+  > :is(strong, span[data-streamdown='strong']):first-child {
+  color: var(--accent);
 }
 
 .answer-markdown ul > li::marker,
