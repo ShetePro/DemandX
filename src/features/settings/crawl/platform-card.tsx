@@ -29,6 +29,8 @@ const MAX_POLLS = 200;
 
 export interface PlatformCardProps {
   status: SessionStatus;
+  /** Direct link, used when the spawned browser window cannot open. */
+  loginUrl?: string | undefined;
 }
 
 /**
@@ -36,7 +38,7 @@ export interface PlatformCardProps {
  * "recently active" deliberately does not claim "logged in", because a
  * directory can be touched by a launch that never completed a login.
  */
-export function PlatformCard({ status: initialStatus }: PlatformCardProps) {
+export function PlatformCard({ status: initialStatus, loginUrl }: PlatformCardProps) {
   const { platform } = initialStatus;
   const label = PLATFORM_LABELS[platform] ?? platform;
 
@@ -112,6 +114,16 @@ export function PlatformCard({ status: initialStatus }: PlatformCardProps) {
           {pending ? '等待登录…' : status.state === 'missing' ? '去登录' : '重新登录'}
         </Button>
         {pending ? <span className="text-[11px] text-muted">登录后自动刷新</span> : null}
+        {loginUrl !== undefined ? (
+          <a
+            href={loginUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[11px] text-accent underline-offset-2 hover:underline"
+          >
+            窗口打不开？手动打开
+          </a>
+        ) : null}
       </div>
 
       {message ? (

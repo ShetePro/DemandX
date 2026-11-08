@@ -43,13 +43,20 @@ describe('startLoginAction', () => {
   it('spawns a detached login process and returns without waiting for it', async () => {
     const result = await startLoginAction('xiaohongshu');
 
-    expect(result).toEqual({ ok: true, value: { started: true } });
-    expect(mocks.spawn).toHaveBeenCalledWith('pnpm', ['crawl:login', 'xiaohongshu'], {
+    expect(result).toEqual({
+      ok: true,
+      value: { started: true, url: 'https://www.xiaohongshu.com' },
+    });
+    expect(mocks.spawn).toHaveBeenCalledWith(
+      'pnpm',
+      ['crawl:login', 'xiaohongshu', 'https://www.xiaohongshu.com'],
+      {
       cwd: process.cwd(),
       detached: true,
       stdio: 'ignore',
-      env: process.env,
-    });
+        env: process.env,
+      },
+    );
     expect(mocks.unref).toHaveBeenCalledTimes(1);
     // An unhandled 'error' event would crash the server process.
     expect(mocks.on).toHaveBeenCalledWith('error', expect.any(Function));

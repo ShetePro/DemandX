@@ -3,7 +3,7 @@ import { SettingsTabs } from '@/components/shell/settings-tabs';
 import { HumanQueue } from '@/features/settings/crawl/human-queue';
 import { LimitsForm } from '@/features/settings/crawl/limits-form';
 import { PlatformCard } from '@/features/settings/crawl/platform-card';
-import { PLATFORM_LABELS } from '@/features/settings/crawl/platforms';
+import { PLATFORM_LABELS, PLATFORM_LOGIN_URLS } from '@/features/settings/crawl/platforms';
 import { getCrawlSettingsAction } from '@/features/settings/crawl/actions';
 import { WebSearchForm } from '@/features/settings/crawl/web-search-form';
 import { getWebSearchSettingsAction } from '@/features/settings/crawl/web-search-actions';
@@ -92,7 +92,11 @@ export default async function CrawlSettingsPage() {
           </div>
           <ul className="flex flex-col gap-3">
             {sessionsResult.sessions.map((status) => (
-              <PlatformCard key={status.platform} status={status} />
+              <PlatformCard
+                key={status.platform}
+                status={status}
+                loginUrl={PLATFORM_LOGIN_URLS[status.platform]}
+              />
             ))}
           </ul>
           <p className="text-[11px] text-faint">

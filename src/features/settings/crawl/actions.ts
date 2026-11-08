@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { readSessionStatus, type SessionStatus } from '@/lib/crawl/session-status';
+import { PLATFORM_LOGIN_URLS } from './platforms';
 import { enqueueS1 } from '@/lib/runs/queue';
 import {
   CRAWL_SETTINGS_KEY,
@@ -55,12 +56,15 @@ const runIdSchema = z.number().int('runId 必须是整数').positive('runId 必�
  */
 export async function startLoginAction(
   platform: unknown,
-): Promise<CrawlActionResult<{ started: true }>> {
+): Promise<CrawlActionResult<{ started: true; url: string | null }>> {
   const parsed = platformSchema.safeParse(platform);
   if (!parsed.success) return failure('VALIDATION_FAILED', formatIssues(parsed.error));
 
+  const url = PLATFORM_LOGIN_URLS[parsed.data] ?? null;
+
   try {
-    const child = spawn('pnpm', ['crawl:login', parsed.data], {
+    const args = ['crawl:login', parsed.data, ...(url === null ? [] : [url])];
+    const child = spawn('pnpm', args, {
       cwd: process.cwd(),
       detached: true,
       stdio: 'ignore',
@@ -76,7 +80,7 @@ export async function startLoginAction(
     return failure('SPAWN_FAILED', `无法启动登录进程：${messageOf(error)}`);
   }
 
-  return { ok: true, value: { started: true } };
+  return { ok: true, value: { started: true, url } };
 }
 
 /** Read-only: the page polls this while a login window is open. */

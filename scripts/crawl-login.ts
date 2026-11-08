@@ -71,7 +71,16 @@ async function openLogin(argv: string[]): Promise<void> {
   try {
     if (target.url !== undefined) {
       const page = context.pages()[0] ?? (await context.newPage());
-      await page.goto(target.url, { waitUntil: 'domcontentloaded' });
+      try {
+        await page.goto(target.url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+      } catch (error) {
+        // Keep the window open: the operator can retry or type the URL by hand
+        // instead of watching the browser close on a transient network error.
+        console.error(
+          `打开 ${target.url} 失败：${error instanceof Error ? error.message : String(error)}`,
+        );
+        console.error('请在打开的窗口里手动输入网址并完成登录。');
+      }
     }
 
     console.log(`会话目录：${target.profileDir}`);
