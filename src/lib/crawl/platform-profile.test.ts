@@ -13,6 +13,8 @@ describe('platformForUrl', () => {
     ['https://www.douyin.com/video/123', 'douyin'],
     ['https://v.douyin.com/abc', 'douyin'],
     ['https://www.zhihu.com/question/1', 'zhihu'],
+    ['https://x.com/someone/status/1', 'twitter'],
+    ['https://twitter.com/someone/status/1', 'twitter'],
     ['https://zhuanlan.zhihu.com/p/1', 'zhihu'],
     ['https://example.com/post', null],
     // A lookalike suffix is not the platform.

@@ -132,9 +132,22 @@ describe('createPlaywrightCrawler', () => {
       launch,
     });
 
-    await crawler.crawl(PAGE_URL);
+    await crawler.crawl('https://example.com/post');
 
     expect(launch).toHaveBeenCalledWith('/tmp/demandx/profile', { headless: true });
+  });
+
+  it('forces a headed session for logged-in social profiles', async () => {
+    const { launch } = harness(article);
+    const crawler = createPlaywrightCrawler({
+      profileDir: '/tmp/demandx/profile',
+      headless: true,
+      launch,
+    });
+
+    await crawler.crawl(PAGE_URL);
+
+    expect(launch).toHaveBeenCalledWith('/tmp/demandx/profile', { headless: false });
   });
 
   it('reuses one context across crawls and closes a page per run', async () => {

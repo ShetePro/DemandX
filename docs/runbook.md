@@ -162,6 +162,9 @@ S3 的硬门槛是**每个聚类至少 3 个独立来源**；达不到的方向�
 
 `/settings/crawl` → 「平台会话」→「去登录」会启动 `pnpm crawl:login <platform> <平台首页>`，打开一个持久化的 Chromium 窗口并直接跳转到该平台（小红书 / 抖音 / 知乎）；完成登录后关闭窗口即可，页面会轮询 `~/.demandx/browser/<platform>` 的 mtime 判断会话是否更新。
 
+- 登录与抓取都尽量使用本机已安装的 Chrome（`channel: 'chrome'`，缺失时回退 Playwright Chromium）、`zh-CN` locale 与 `Asia/Shanghai` 时区，并移除 `navigator.webdriver` 等自动化标记；`CRAWL_BROWSER_CHANNEL=bundled` 可强制使用内置 Chromium。
+- 小红书 / 抖音 / 知乎 / X 的抓取**强制 headed**（即使 `CRAWL_HEADLESS` 为 true），读取前做几秒随机滚动与鼠标移动，再通过 Playwright/CDP 读取渲染后的 DOM；帖子/文章节点会追加到快照文本供 S2 抽取。验证码和登录墙仍然只记录为 `needs_human`，不会自动破解。
+- X / Twitter 的反爬与账号风控更严，抓取前请确认遵守其 ToS；需要登录的页面先用「去登录」完成人工登录。
 - 如果浏览器窗口没弹出或页面打不开，卡片右侧有「窗口打不开？手动打开」链接；
 - 登录脚本不会读取、打印或保存 cookie，只保留浏览器 profile 目录；
 - 页面打不开是网络/站点侧问题时会保留窗口并提示手动输入网址，不会直接关闭。

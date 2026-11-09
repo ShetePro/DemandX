@@ -1,7 +1,9 @@
 import { detectChallenge } from './challenge';
 import { isTimeoutError } from './error';
 import { extractReadable } from './extract';
+import { platformForUrl } from './platform-profile';
 import type { CrawlPort, CrawlResult } from './port';
+import { applyStealth, domDigest, humanizeSocialPage } from './stealth';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 /** Hydration budget: a CSR app that misses it is still read, just un-settled. */
@@ -21,11 +23,15 @@ export interface BrowserPage {
   waitForSelector(selector: string, options: { timeout: number }): Promise<unknown>;
   content(): Promise<string>;
   close(): Promise<void>;
+  /** Optional so the unit fakes stay tiny; the real page always has it. */
+  evaluate?: <T>(fn: () => T) => Promise<T>;
+  mouse?: { move(x: number, y: number, options?: { steps?: number }): Promise<void> };
 }
 
 export interface BrowserContext {
   newPage(): Promise<BrowserPage>;
   close(): Promise<void>;
+  addInitScript?: (script: string) => Promise<unknown>;
 }
 
 export type LaunchPersistent = (
@@ -60,6 +66,22 @@ export interface PlaywrightCrawlerOptions {
   settleTimeoutMs?: number;
 }
 
+/** Flags a normal Chrome window has; automation-only flags stay off. */
+const LAUNCH_ARGS = [
+  '--disable-blink-features=AutomationControlled',
+  '--no-first-run',
+  '--no-default-browser-check',
+];
+
+const LAUNCH_OPTIONS = {
+  args: LAUNCH_ARGS,
+  // `null` keeps the real window size in headed mode; a fixed viewport is one
+  // of the cheapest automation signals.
+  viewport: null,
+  locale: 'zh-CN',
+  timezoneId: 'Asia/Shanghai',
+} as const;
+
 async function launchChromium(
   profileDir: string,
   options: { headless: boolean },
@@ -70,7 +92,30 @@ async function launchChromium(
   // production install without devDependencies fail at module load, taking the
   // static tier down with it; here the failure is confined to the browser tier.
   const { chromium } = await import('@playwright/test');
-  return chromium.launchPersistentContext(profileDir, { headless: options.headless });
+  const channel = process.env.CRAWL_BROWSER_CHANNEL?.trim() || 'chrome';
+
+  // Prefer the operator's real Chrome: its TLS/HTTP fingerprint and fonts are
+  // what a normal browser on this machine looks like.
+  if (channel !== 'bundled') {
+    try {
+      const context = await chromium.launchPersistentContext(profileDir, {
+        ...LAUNCH_OPTIONS,
+        headless: options.headless,
+        channel: channel as 'chrome',
+      });
+      await applyStealth(context);
+      return context;
+    } catch {
+      // Chrome is not installed at that channel; fall back to the bundle.
+    }
+  }
+
+  const context = await chromium.launchPersistentContext(profileDir, {
+    ...LAUNCH_OPTIONS,
+    headless: options.headless,
+  });
+  await applyStealth(context);
+  return context;
 }
 
 /**
@@ -87,19 +132,24 @@ export function createPlaywrightCrawler(options: PlaywrightCrawlerOptions): Play
   const fixedProfile = options.profileDir;
   const profileFor = typeof fixedProfile === 'string' ? () => fixedProfile : fixedProfile;
 
-  /** One launch per profile directory, shared by every URL that resolves to it. */
+  /**
+   * One launch per (profile, headless) pair, shared by every URL that resolves
+   * to it. Social profiles are forced headed: a headless session on a
+   * logged-in account is the fastest route to a ban.
+   */
   const contexts = new Map<string, Promise<BrowserContext>>();
 
-  function contextFor(profileDir: string): Promise<BrowserContext> {
-    const cached = contexts.get(profileDir);
+  function contextFor(profileDir: string, sessionHeadless: boolean): Promise<BrowserContext> {
+    const key = `${profileDir}|${sessionHeadless}`;
+    const cached = contexts.get(key);
     if (cached !== undefined) return cached;
 
     // A rejected launch must not poison later crawls for this profile.
-    const created = launch(profileDir, { headless }).catch((error: unknown) => {
-      contexts.delete(profileDir);
+    const created = launch(profileDir, { headless: sessionHeadless }).catch((error: unknown) => {
+      contexts.delete(key);
       throw error;
     });
-    contexts.set(profileDir, created);
+    contexts.set(key, created);
     return created;
   }
 
@@ -107,7 +157,11 @@ export function createPlaywrightCrawler(options: PlaywrightCrawlerOptions): Play
     async crawl(url: string): Promise<CrawlResult> {
       let page: BrowserPage | null = null;
       try {
-        page = await (await contextFor(profileFor(url))).newPage();
+        const social = platformForUrl(url) !== null;
+        // Logged-in platforms: a real headed window, never the configured
+        // headless mode; a headless session on the same profile is a ban signal.
+        const sessionHeadless = social ? false : headless;
+        page = await (await contextFor(profileFor(url), sessionHeadless)).newPage();
         const response = await page.goto(url, {
           waitUntil: 'domcontentloaded',
           timeout: timeoutMs,
@@ -120,6 +174,19 @@ export function createPlaywrightCrawler(options: PlaywrightCrawlerOptions): Play
           await page.waitForSelector(waitForSelector, { timeout: settleTimeoutMs });
         } catch {
           settled = false;
+        }
+
+        // Logged-in social pages: a few seconds of human-like scrolling and
+        // pointer movement before reading, then take the rendered post text.
+        // Failures here are cosmetic; the page is still read.
+        let rendered = '';
+        if (social) {
+          try {
+            await humanizeSocialPage(page);
+            rendered = await domDigest(page);
+          } catch {
+            rendered = '';
+          }
         }
 
         const html = await page.content();
@@ -136,9 +203,16 @@ export function createPlaywrightCrawler(options: PlaywrightCrawlerOptions): Play
         const article = extractReadable(html, url);
         if (article === null) return { status: 'error', code: 'NOT_HTML', url };
 
+        // A CSR timeline is invisible to jsdom; append the live DOM text when
+        // the readable extraction did not already contain it.
+        const text =
+          rendered !== '' && !article.text.includes(rendered.slice(0, 80))
+            ? `${article.text}\n\n${rendered}`
+            : article.text;
+
         return {
           status: 'ok',
-          snapshot: { url, html, text: article.text, title: article.title },
+          snapshot: { url, html, text, title: article.title },
           settled,
         };
       } catch (error) {

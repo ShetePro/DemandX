@@ -5,7 +5,7 @@ import path from 'node:path';
 import { browserRoot } from './platform-profile';
 
 /** Platforms the crawl settings page offers a login button for. */
-export const PLATFORMS = ['xiaohongshu', 'douyin', 'zhihu'] as const;
+export const PLATFORMS = ['xiaohongshu', 'douyin', 'zhihu', 'twitter'] as const;
 
 export type Platform = (typeof PLATFORMS)[number];
 

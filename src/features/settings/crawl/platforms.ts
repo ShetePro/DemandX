@@ -6,4 +6,5 @@ export const PLATFORM_LABELS: Readonly<Record<string, string>> = {
   xiaohongshu: '小红书',
   douyin: '抖音',
   zhihu: '知乎',
+  twitter: 'X / Twitter',
 };

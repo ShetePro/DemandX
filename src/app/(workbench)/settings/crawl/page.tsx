@@ -102,7 +102,7 @@ export default async function CrawlSettingsPage() {
           </ul>
           <p className="text-[11px] text-faint">
             登录窗口由 {PLATFORM_LABELS.xiaohongshu} / {PLATFORM_LABELS.douyin} /{' '}
-            {PLATFORM_LABELS.zhihu} 各自的站点完成，完成后回到这里刷新即可。
+            {PLATFORM_LABELS.zhihu} / {PLATFORM_LABELS.twitter} 各自的站点完成，完成后回到这里刷新即可。
           </p>
         </section>
 

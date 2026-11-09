@@ -2,7 +2,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 
 /** Platforms with a logged-in persistent browser profile on disk. */
-export type CrawlPlatform = 'xiaohongshu' | 'douyin' | 'zhihu';
+export type CrawlPlatform = 'xiaohongshu' | 'douyin' | 'zhihu' | 'twitter';
 
 /**
  * Host suffixes that belong to a platform. Matched on label boundaries so
@@ -15,6 +15,7 @@ const PLATFORM_HOSTS: ReadonlyArray<{
   { platform: 'xiaohongshu', hosts: ['xiaohongshu.com', 'xhslink.com'] },
   { platform: 'douyin', hosts: ['douyin.com'] },
   { platform: 'zhihu', hosts: ['zhihu.com'] },
+  { platform: 'twitter', hosts: ['x.com', 'twitter.com'] },
 ];
 
 /** Default root when the caller does not inject one (dev machine, tests inject tmp). */
@@ -68,4 +69,5 @@ export const PLATFORM_LOGIN_URLS: Readonly<Record<string, string>> = {
   xiaohongshu: 'https://www.xiaohongshu.com',
   douyin: 'https://www.douyin.com',
   zhihu: 'https://www.zhihu.com',
+  twitter: 'https://x.com',
 };

@@ -7,6 +7,7 @@ import { createInterface } from 'node:readline/promises';
 import { pathToFileURL } from 'node:url';
 
 import { PLATFORM_LOGIN_URLS } from '@/lib/crawl/platform-profile';
+import { applyStealth } from '@/lib/crawl/stealth';
 
 /**
  * `pnpm crawl:login <platform> [url]` opens a headed browser on a persistent
@@ -98,10 +99,31 @@ async function openLogin(argv: string[]): Promise<void> {
 
   // Same driver as the crawler; loaded lazily so argument errors never need it.
   const { chromium } = await import('@playwright/test');
-  log('启动 Chromium…');
-  const context = await chromium.launchPersistentContext(target.profileDir, {
+  log('启动浏览器…');
+  const launchOptions = {
     headless: false,
-  });
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--no-first-run',
+      '--no-default-browser-check',
+    ],
+    viewport: null,
+    locale: 'zh-CN',
+    timezoneId: 'Asia/Shanghai',
+  };
+
+  const channel = process.env.CRAWL_BROWSER_CHANNEL?.trim() || 'chrome';
+  let context;
+  try {
+    context = await chromium.launchPersistentContext(target.profileDir, {
+      ...launchOptions,
+      channel: channel as 'chrome',
+    });
+  } catch {
+    // Installed Chrome is unavailable; the bundled Chromium still works.
+    context = await chromium.launchPersistentContext(target.profileDir, launchOptions);
+  }
+  await applyStealth(context);
 
   try {
     if (targetUrl !== undefined) {
