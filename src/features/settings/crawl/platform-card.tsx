@@ -6,15 +6,18 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { SessionState, SessionStatus } from '@/lib/crawl/session-status';
+import { cn } from '@/lib/utils/cn';
 import { formatRelativeTime } from '@/lib/utils/format';
 
-import { getSessionStatusAction, startLoginAction } from './actions';
+import type { LoginCheck } from '@/lib/crawl/login-check';
+
+import { checkLoginAction, getSessionStatusAction, startLoginAction } from './actions';
 import { PLATFORM_LABELS } from './platforms';
 
 const STATE_LABEL: Readonly<Record<SessionState, string>> = {
-  active: '近期活跃',
-  stale: '可能过期',
-  missing: '未登录',
+  active: '近期使用',
+  stale: '较久未用',
+  missing: '无会话目录',
 };
 
 const STATE_TONE: Readonly<Record<SessionState, 'success' | 'warning' | 'neutral'>> = {
@@ -45,6 +48,20 @@ export function PlatformCard({ status: initialStatus, loginUrl }: PlatformCardPr
   const [status, setStatus] = useState(initialStatus);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [login, setLogin] = useState<LoginCheck | null>(null);
+
+  async function check(): Promise<void> {
+    setChecking(true);
+    setLogin(null);
+    try {
+      const result = await checkLoginAction(platform);
+      if (result.ok) setLogin(result.value);
+      else setLogin({ platform, state: 'unknown', found: [], message: result.message });
+    } finally {
+      setChecking(false);
+    }
+  }
 
   async function start() {
     setMessage(null);
@@ -116,6 +133,14 @@ export function PlatformCard({ status: initialStatus, loginUrl }: PlatformCardPr
         {pending ? (
           <span className="text-[11px] text-muted">登录后自动刷新</span>
         ) : null}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => void check()}
+          disabled={checking}
+        >
+          {checking ? '检测中…' : '检测登录'}
+        </Button>
         {loginUrl !== undefined ? (
           <a
             href={loginUrl}
@@ -127,6 +152,26 @@ export function PlatformCard({ status: initialStatus, loginUrl }: PlatformCardPr
           </a>
         ) : null}
       </div>
+
+      {login ? (
+        <p
+          role="status"
+          className={cn(
+            'text-[11px]',
+            login.state === 'logged-in'
+              ? 'text-success'
+              : login.state === 'logged-out'
+                ? 'text-warning'
+                : 'text-muted',
+          )}
+        >
+          {login.state === 'logged-in'
+            ? `已登录（cookie：${login.found.join(', ')}）`
+            : login.state === 'logged-out'
+              ? '未检测到登录 cookie，需要重新登录'
+              : `无法检测：${login.message ?? '浏览器配置被占用'}`}
+        </p>
+      ) : null}
 
       {message ? (
         <p role="status" className="text-[11px] text-muted">

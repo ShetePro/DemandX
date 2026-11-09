@@ -165,8 +165,10 @@ S3 的硬门槛是**每个聚类至少 3 个独立来源**；达不到的方向�
 - 登录与抓取都尽量使用本机已安装的 Chrome（`channel: 'chrome'`，缺失时回退 Playwright Chromium）、`zh-CN` locale 与 `Asia/Shanghai` 时区，并移除 `navigator.webdriver` 等自动化标记；`CRAWL_BROWSER_CHANNEL=bundled` 可强制使用内置 Chromium。
 - 小红书 / 抖音 / 知乎 / X 的抓取**强制 headed**（即使 `CRAWL_HEADLESS` 为 true），读取前做几秒随机滚动与鼠标移动，再通过 Playwright/CDP 读取渲染后的 DOM；帖子/文章节点会追加到快照文本供 S2 抽取。验证码和登录墙仍然只记录为 `needs_human`，不会自动破解。
 - X / Twitter 的反爬与账号风控更严，抓取前请确认遵守其 ToS；需要登录的页面先用「去登录」完成人工登录。
+- 卡片上的「近期使用 / 较久未用」只表示 profile 目录的 mtime；真实登录状态点「检测登录」：会用无头浏览器打开该 profile，只检查登录 cookie 的**名称**（小红书 `web_session`、抖音 `sessionid/sessionid_ss/sid_tt`、知乎 `z_c0`、X `auth_token`），不会读取 cookie 值。显示「未检测到登录 cookie」就说明目录虽被使用过，但当前没有有效会话。
 - 如果浏览器窗口没弹出或页面打不开，卡片右侧有「窗口打不开？手动打开」链接；
-- 登录脚本不会读取、打印或保存 cookie，只保留浏览器 profile 目录；
+- 登录状态检测只读 cookie 名称，不读取、打印或保存 cookie 值；
+- 「平台采集情况（最近 30 天）」按 `sources` 的 URL 域名统计各平台被抓取的页面数、涉及的 run 与抓取方式。数字为 0 不代表登录失败：搜索查询来自 Bing/DDG/HN/Reddit/GitHub，只有搜索结果指向这些平台域名时才会用对应登录会话抓取；如需平台内搜索，需要另外的平台搜索适配器；
 - 页面打不开是网络/站点侧问题时会保留窗口并提示手动输入网址，不会直接关闭。
 
 ### 兜底搜索（社交平台不可用时）

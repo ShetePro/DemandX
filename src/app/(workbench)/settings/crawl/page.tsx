@@ -1,6 +1,7 @@
 import { PageHeader } from '@/components/common/page-header';
 import { SettingsTabs } from '@/components/shell/settings-tabs';
 import { HumanQueue } from '@/features/settings/crawl/human-queue';
+import { PlatformUsageTable } from '@/features/settings/crawl/platform-usage-table';
 import { LimitsForm } from '@/features/settings/crawl/limits-form';
 import { PlatformCard } from '@/features/settings/crawl/platform-card';
 import { PLATFORM_LOGIN_URLS } from '@/lib/crawl/platform-profile';
@@ -14,6 +15,7 @@ import {
   readSessionStatus,
   type SessionStatus,
 } from '@/lib/crawl/session-status';
+import { readPlatformUsage } from '@/lib/crawl/platform-usage-repository';
 import { listNeedsHuman } from '@/lib/runs/human-queue';
 
 export const dynamic = 'force-dynamic';
@@ -45,18 +47,21 @@ async function readSessions(): Promise<{ sessions: SessionStatus[]; errors: stri
 }
 
 export default async function CrawlSettingsPage() {
-  const [settingsResult, queueResult, sessionsResult, webSearchResult] = await Promise.all([
-    getCrawlSettingsAction(),
-    listNeedsHuman(),
-    readSessions(),
-    getWebSearchSettingsAction(),
-  ]);
+  const [settingsResult, queueResult, sessionsResult, webSearchResult, usageResult] =
+    await Promise.all([
+      getCrawlSettingsAction(),
+      listNeedsHuman(),
+      readSessions(),
+      getWebSearchSettingsAction(),
+      readPlatformUsage(30),
+    ]);
 
   const errors = [
     ...sessionsResult.errors,
     ...(settingsResult.ok ? [] : [`采集设置：${settingsResult.message}`]),
     ...(queueResult.ok ? [] : [`待人工队列：${queueResult.message}`]),
     ...(webSearchResult.ok ? [] : [`兜底搜索：${webSearchResult.message}`]),
+    ...(usageResult.ok ? [] : [`平台采集统计：${usageResult.message}`]),
   ];
 
   const settings = settingsResult.ok ? settingsResult.value : null;
@@ -66,7 +71,7 @@ export default async function CrawlSettingsPage() {
     <div className="mx-auto max-w-[1200px] p-6">
       <PageHeader
         title="采集设置"
-        description="平台会话只读目录状态；限速参数在每次 worker 任务开始时读取"
+        description="登录状态按 cookie 名称检测（不读值）；采集统计按来源域名汇总"
       />
       <SettingsTabs />
 
@@ -88,7 +93,7 @@ export default async function CrawlSettingsPage() {
               平台会话
             </h2>
             <p className="mt-0.5 text-[11px] text-muted">
-              只检查目录是否存在及最近修改时间，不读取 cookie 内容。
+              目录时间只表示最近使用；点「检测登录」会用无头浏览器读取 cookie 名称（不读值）判断是否登录。
             </p>
           </div>
           <ul className="flex flex-col gap-3">
@@ -117,6 +122,8 @@ export default async function CrawlSettingsPage() {
           {webSearchResult.ok ? <WebSearchForm status={webSearchResult.value} /> : null}
         </div>
       </div>
+
+      {usageResult.ok ? <PlatformUsageTable usage={usageResult.value} /> : null}
 
       <div className="mt-6">
         <HumanQueue items={items} />

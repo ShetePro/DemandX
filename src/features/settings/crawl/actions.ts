@@ -6,7 +6,12 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { PLATFORM_LOGIN_URLS } from '@/lib/crawl/platform-profile';
-import { readSessionStatus, type SessionStatus } from '@/lib/crawl/session-status';
+import { detectLogin, type LoginCheck } from '@/lib/crawl/login-check';
+import {
+  platformProfileDir,
+  readSessionStatus,
+  type SessionStatus,
+} from '@/lib/crawl/session-status';
 import { enqueueS1 } from '@/lib/runs/queue';
 import {
   CRAWL_SETTINGS_KEY,
@@ -84,6 +89,17 @@ export async function startLoginAction(
     ok: true,
     value: { started: true, url, logPath: `~/.demandx/logs/login-${parsed.data}.log` },
   };
+}
+
+/** Launch a short headless check of the profile's auth cookie names. */
+export async function checkLoginAction(
+  platform: unknown,
+): Promise<CrawlActionResult<LoginCheck>> {
+  const parsed = platformSchema.safeParse(platform);
+  if (!parsed.success) return failure('VALIDATION_FAILED', formatIssues(parsed.error));
+
+  const check = await detectLogin(platformProfileDir(parsed.data), parsed.data);
+  return { ok: true, value: check };
 }
 
 /** Read-only: the page polls this while a login window is open. */
