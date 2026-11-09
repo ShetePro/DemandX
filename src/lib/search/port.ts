@@ -4,7 +4,16 @@
  * the provenance the report must cite.
  */
 export type Platform =
-  'xiaohongshu' | 'douyin' | 'zhihu' | 'v2ex' | 'reddit' | 'hn' | 'appstore' | 'github' | 'web';
+  | 'xiaohongshu'
+  | 'douyin'
+  | 'zhihu'
+  | 'twitter'
+  | 'v2ex'
+  | 'reddit'
+  | 'hn'
+  | 'appstore'
+  | 'github'
+  | 'web';
 
 /** Web-search APIs the fallback can talk to. Kept here so client code importing
  * the settings schema does not pull the adapter (and its fetch plumbing) in. */

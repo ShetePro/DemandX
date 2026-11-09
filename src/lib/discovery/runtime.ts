@@ -7,6 +7,7 @@ import { createBingSearch } from '@/lib/search/bing';
 import { createGitHubSearch } from '@/lib/search/github';
 import { createRateLimiter } from '@/lib/search/limiter';
 import { createRedditSearch } from '@/lib/search/reddit';
+import { createSocialSearch } from '@/lib/search/social';
 import type { SearchPort } from '@/lib/search/port';
 import { createResolvedWebSearchPort, resolveWebSearch } from '@/lib/search/web-search-config';
 
@@ -29,6 +30,12 @@ export async function createDiscoveryRuntime(): Promise<
     // First-hand demand on slow, rate-limited platforms: a few queries each.
     createRedditSearch(deps),
     { ...createGitHubSearch(deps), maxQueries: 4 },
+    // Logged-in platforms: one Chinese/English query each, headed browser.
+    // A missing profile returns no hits without launching anything.
+    createSocialSearch('zhihu'),
+    createSocialSearch('xiaohongshu'),
+    createSocialSearch('douyin'),
+    createSocialSearch('twitter'),
   ];
 
   const webSearch = await resolveWebSearch();
