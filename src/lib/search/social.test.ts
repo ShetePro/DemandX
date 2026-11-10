@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import path from 'node:path';
 
-import { createSocialSearch, socialQueryFor, socialSearchUrl } from './social';
+import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { afterEach, describe, expect, it } from 'vitest';
+
+import { acquireSearchLock, createSocialSearch, socialQueryFor, socialSearchUrl } from './social';
 
 describe('social search', () => {
   it('builds each platform search URL with the encoded query', () => {
@@ -50,5 +54,41 @@ describe('socialQueryFor', () => {
 
   it('falls back to the first terms when everything is an intent word', () => {
     expect(socialQueryFor('zhihu', '工具 软件 推荐')).toBe('工具 软件');
+  });
+});
+
+
+describe('acquireSearchLock', () => {
+  const dirs: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  it('lets one caller own a profile and blocks the rest until release', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'demandx-social-'));
+    dirs.push(dir);
+
+    const release = acquireSearchLock(dir);
+    expect(release).not.toBeNull();
+    expect(acquireSearchLock(dir)).toBeNull();
+
+    release?.();
+    const again = acquireSearchLock(dir);
+    expect(again).not.toBeNull();
+    again?.();
+  });
+
+  it('takes over a stale lock left by a crashed search', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'demandx-social-'));
+    dirs.push(dir);
+    const lock = path.join(dir, '.demandx-search.lock');
+    await writeFile(lock, '999999');
+    const old = new Date(Date.now() - 11 * 60_000);
+    await utimes(lock, old, old);
+
+    const release = acquireSearchLock(dir);
+    expect(release).not.toBeNull();
+    release?.();
   });
 });

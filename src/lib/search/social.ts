@@ -1,4 +1,11 @@
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 
 import type { Page } from '@playwright/test';
 import { homedir } from 'node:os';
@@ -136,6 +143,44 @@ interface RawItem {
 }
 
 /** One platform, one query per scan: a search page plus a human-like scroll. */
+/** In-process guard: two scans in one server must not launch one profile twice. */
+const activeSearches = new Set<CrawlPlatform>();
+
+/** A crashed search must not block the platform forever. */
+const SEARCH_LOCK_TTL_MS = 10 * 60_000;
+
+/**
+ * Cross-process guard (Next server, worker, login script). Chrome's own
+ * `SingletonLock` only appears after launch, so two launches racing the gap
+ * still pile about:blank tabs into one window; this file closes that gap.
+ */
+export function acquireSearchLock(profileDir: string): (() => void) | null {
+  const lockFile = path.join(profileDir, '.demandx-search.lock');
+  const create = (): void => {
+    writeFileSync(lockFile, String(process.pid), { flag: 'wx' });
+  };
+  try {
+    create();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return null;
+    try {
+      const age = Date.now() - statSync(lockFile).mtimeMs;
+      if (age < SEARCH_LOCK_TTL_MS) return null;
+      unlinkSync(lockFile);
+      create();
+    } catch {
+      return null;
+    }
+  }
+  return () => {
+    try {
+      unlinkSync(lockFile);
+    } catch {
+      // Another process already cleaned it up.
+    }
+  };
+}
+
 export function createSocialSearch(platform: CrawlPlatform): SearchPort {
   return {
     id: platform,
@@ -151,6 +196,17 @@ export function createSocialSearch(platform: CrawlPlatform): SearchPort {
       // would pile about:blank tabs into it, so skip this platform.
       if (isProfileLocked(profileDir)) {
         socialLog(platform, 'profile is in use (SingletonLock); skipped');
+        return [];
+      }
+      if (activeSearches.has(platform)) {
+        socialLog(platform, 'another search is already using this profile; skipped');
+        return [];
+      }
+      activeSearches.add(platform);
+      const release = acquireSearchLock(profileDir);
+      if (release === null) {
+        activeSearches.delete(platform);
+        socialLog(platform, 'another process holds this profile; skipped');
         return [];
       }
 
@@ -182,7 +238,13 @@ export function createSocialSearch(platform: CrawlPlatform): SearchPort {
         }
         await applyStealth(context);
 
-        page = await context.newPage();
+        // Reuse Chrome's initial tab instead of opening a second one: leaving
+        // it behind is how a failed run shows up as an about:blank tab.
+        const blank = context.pages().find((candidate) => candidate.url() === 'about:blank');
+        page = blank ?? context.pages()[0] ?? (await context.newPage());
+        for (const other of context.pages()) {
+          if (other !== page) await other.close().catch(() => undefined);
+        }
         // Platform search boxes need keywords, not the planner's full phrase.
         const socialQuery = socialQueryFor(platform, query);
         socialLog(platform, `search query="${query}" socialQuery="${socialQuery}"`);
@@ -256,6 +318,8 @@ export function createSocialSearch(platform: CrawlPlatform): SearchPort {
         // leaves an about:blank tab behind in the profile's window.
         await page?.close().catch(() => undefined);
         await context?.close().catch(() => undefined);
+        release();
+        activeSearches.delete(platform);
       }
     },
   };

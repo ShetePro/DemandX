@@ -36,6 +36,9 @@ type Phase = 'plan' | 'search' | 'filter' | 'model';
 /** One replan is enough: two model attempts still fit the interactive budget. */
 const MAX_ATTEMPTS = 2;
 
+/** One scan at a time: two tabs must not fight over the same browser profiles. */
+let scanInFlight = false;
+
 /**
  * Proven business-shaped probes appended to every plan. The planner supplies
  * the novelty; these guarantee the pool contains commercially anchored
@@ -68,6 +71,13 @@ export async function POST(request: Request): Promise<Response> {
       const send = (event: Record<string, unknown>): void => {
         controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
       };
+
+      if (scanInFlight) {
+        send({ type: 'error', code: 'SCAN_BUSY', message: '已有一轮扫描在进行中，请等它结束再扫。' });
+        controller.close();
+        return;
+      }
+      scanInFlight = true;
 
       try {
         const runtime = await createDiscoveryRuntime();
@@ -208,6 +218,7 @@ export async function POST(request: Request): Promise<Response> {
       } catch {
         send({ type: 'error', code: 'SCAN_FAILED', message: '扫描失败：服务端错误' });
       } finally {
+        scanInFlight = false;
         controller.close();
       }
     },
