@@ -75,6 +75,8 @@ export type DiscoveryOutcome =
       ok: false;
       code: 'NO_SOURCES' | 'LLM_UNAVAILABLE' | 'INVALID_OUTPUT' | 'TOO_SIMILAR';
       message: string;
+      /** What was already collected, so a model outage still shows the search. */
+      partial?: { sources: DiscoverySource[]; providers: string[] };
     };
 
 /**
@@ -177,7 +179,12 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
       // Bulk on purpose: the scan is interactive and the quality chain has
       // timed out the 45s budget in practice. The quality rules live in the
       // prompt and the evidence gates instead.
-      deps.llm.structured(discoverySchema, prompt, { profile: 'bulk' }),
+      deps.llm.structured(discoverySchema, prompt, {
+        profile: 'bulk',
+        // A bulk-only outage (all chat models cooling down / unavailable)
+        // must not fail the radar: the quality chain can still analyse.
+        fallbackProfile: 'quality',
+      }),
       new Promise<null>((resolve) => {
         timer = setTimeout(() => resolve(null), DISCOVERY_LLM_TIMEOUT_MS);
       }),
@@ -197,11 +204,13 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
     });
 
   let asked = await askModel(buildPrompt(sources, angles, priorIdeas));
+  const partial = { sources, providers: [...providers] };
   if (asked === null) {
     return {
       ok: false,
       code: 'LLM_UNAVAILABLE',
       message: '模型响应超时，请重试（本次扫描未完成）。',
+      partial,
     };
   }
   if (!asked.ok) {
@@ -209,6 +218,7 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
       ok: false,
       code: 'LLM_UNAVAILABLE',
       message: `灵感分析失败：${asked.message}${failureHint(asked.message)}`,
+      partial,
     };
   }
 

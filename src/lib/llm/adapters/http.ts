@@ -20,8 +20,19 @@ function codeFor(reason: AdapterFailureReason, status: number): string {
   }
 }
 
-export function failed(reason: AdapterFailureReason, status = 0): AdapterFailure {
-  return { ok: false, status, reason, code: codeFor(reason, status) };
+export function failed(
+  reason: AdapterFailureReason,
+  status = 0,
+  detail?: string,
+): AdapterFailure {
+  const clean = detail?.replace(/\s+/g, ' ').trim().slice(0, 200);
+  return {
+    ok: false,
+    status,
+    reason,
+    code: codeFor(reason, status),
+    ...(clean === undefined || clean === '' ? {} : { detail: clean }),
+  };
 }
 
 /**
@@ -48,9 +59,26 @@ export async function postJson(
     return name === 'TimeoutError' || name === 'AbortError' ? failed('timeout') : failed('network');
   }
 
-  // The body is never read on failure: it is the likeliest place the prompt
-  // comes back, and the status code is already enough to classify the item.
-  if (!response.ok) return failed('http', response.status);
+  if (!response.ok) {
+    // Read only the provider's own error message: it explains a 400 (model
+    // name, schema support, context length) without echoing the prompt.
+    let detail: string | undefined;
+    try {
+      const raw = await response.text();
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        const record = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
+        const error = typeof record['error'] === 'object' && record['error'] !== null ? (record['error'] as Record<string, unknown>) : {};
+        const message = typeof error['message'] === 'string' ? error['message'] : typeof record['message'] === 'string' ? record['message'] : '';
+        detail = message;
+      } catch {
+        detail = raw.slice(0, 200);
+      }
+    } catch {
+      detail = undefined;
+    }
+    return failed('http', response.status, detail);
+  }
 
   let raw: string;
   try {

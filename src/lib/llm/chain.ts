@@ -26,10 +26,12 @@ export function adapterFor(kind: ProviderKind): Adapter {
 const DEFAULT_COOLDOWN_MS = 5 * 60_000;
 
 /** One item that could not answer, rendered as `provider#model: code`. */
-type Failure = { item: ChainItem; code: string };
+type Failure = { item: ChainItem; code: string; detail?: string };
 
 /** What a single adapter call resolved to once the key is known. */
-type Attempt = { ok: true; text: string; usage: Usage } | { ok: false; code: string };
+type Attempt =
+  | { ok: true; text: string; usage: Usage }
+  | { ok: false; code: string; detail?: string };
 
 export type LlmPortDeps = {
   loadChain: (profile: Profile) => Promise<Result<ChainItem[]>>;
@@ -56,7 +58,13 @@ function label(item: ChainItem): string {
 
 /** Messages carry names, models and short codes — never a key or a response body. */
 function summarize(failures: Failure[]): string {
-  return failures.map((failure) => `${label(failure.item)}: ${failure.code}`).join('、');
+  return failures
+    .map((failure) =>
+      failure.detail === undefined
+        ? `${label(failure.item)}: ${failure.code}`
+        : `${label(failure.item)}: ${failure.code}（${failure.detail}）`,
+    )
+    .join('、');
 }
 
 /**
@@ -178,7 +186,11 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
 
     if (!result.ok) {
       if (needsCooldown(result)) coolingUntil.set(cooldownKey(item), now() + cooldownMs);
-      return { ok: false, code: result.code };
+      return {
+        ok: false,
+        code: result.code,
+        ...(result.detail === undefined ? {} : { detail: result.detail }),
+      };
     }
 
     return { ok: true, text: result.text, usage: result.usage };
@@ -212,7 +224,11 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
             deps.recordUsage?.(item, result.usage);
             return ok({ text: result.text, used: item, usage: result.usage });
           }
-          failures.push({ item, code: result.code });
+          failures.push({
+            item,
+            code: result.code,
+            ...(result.detail === undefined ? {} : { detail: result.detail }),
+          });
         }
       }
 
@@ -252,7 +268,11 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
           for (let attemptNo = 1; attemptNo <= 2; attemptNo += 1) {
             const result = await attempt(item, prompt, true, jsonSchema, options.timeoutMs);
             if (!result.ok) {
-              failures.push({ item, code: result.code });
+              failures.push({
+            item,
+            code: result.code,
+            ...(result.detail === undefined ? {} : { detail: result.detail }),
+          });
               sawOtherFailure = true;
               break;
             }

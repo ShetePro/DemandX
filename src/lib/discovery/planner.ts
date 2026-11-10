@@ -206,6 +206,7 @@ export async function planScan(ports: PlanPorts): Promise<DiscoveryPlan> {
     const asked = await ports.llm
       .structured(discoveryPlanSchema, { system: prompt.system, user: prompt.user }, {
         profile: 'bulk',
+        fallbackProfile: 'quality',
         timeoutMs: PLAN_TIMEOUT_MS,
       })
       .catch(() => null);

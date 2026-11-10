@@ -2,8 +2,14 @@ import type { DiscoveryResult } from '@/lib/discovery/types';
 
 export type ScanPhase = 'plan' | 'search' | 'filter' | 'model';
 
+export type ScanPartial = {
+  sources: { url: string; title: string; snippet: string; platform: string }[];
+  providers: string[];
+};
+
 export type ScanResult =
-  { ok: true; value: DiscoveryResult } | { ok: false; code: string; message: string };
+  | { ok: true; value: DiscoveryResult }
+  | { ok: false; code: string; message: string; partial?: ScanPartial };
 
 /**
  * Reads the NDJSON scan stream: phase events drive the stepper, the result (or
@@ -46,7 +52,13 @@ export async function streamDiscoveryScan(
       if (parsed === null) continue;
       if (parsed.type === 'phase') onPhase(parsed.phase);
       else if (parsed.type === 'result') return { ok: true, value: parsed.value };
-      else return { ok: false, code: parsed.code, message: parsed.message };
+      else
+        return {
+          ok: false,
+          code: parsed.code,
+          message: parsed.message,
+          ...(parsed.partial === undefined ? {} : { partial: parsed.partial }),
+        };
     }
   }
 
@@ -56,7 +68,7 @@ export async function streamDiscoveryScan(
 type StreamEvent =
   | { type: 'phase'; phase: ScanPhase }
   | { type: 'result'; value: DiscoveryResult }
-  | { type: 'error'; code: string; message: string };
+  | { type: 'error'; code: string; message: string; partial?: ScanPartial };
 
 function parseEvent(line: string): StreamEvent | null {
   const trimmed = line.trim();
@@ -90,10 +102,16 @@ function parseEvent(line: string): StreamEvent | null {
   }
 
   if (record['type'] === 'error') {
+    const partial = record['partial'];
+    const validPartial =
+      typeof partial === 'object' && partial !== null && Array.isArray((partial as { sources?: unknown }).sources)
+        ? (partial as ScanPartial)
+        : undefined;
     return {
       type: 'error',
       code: typeof record['code'] === 'string' ? record['code'] : 'SCAN_FAILED',
       message: typeof record['message'] === 'string' ? record['message'] : '扫描失败',
+      ...(validPartial === undefined ? {} : { partial: validPartial }),
     };
   }
 

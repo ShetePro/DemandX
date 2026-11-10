@@ -238,6 +238,32 @@ describe('OpportunityPage', () => {
     ).toBeVisible();
   });
 
+  it('keeps the collected sources visible when the analysis model fails', async () => {
+    const find = vi.fn().mockResolvedValue({
+      ok: false as const,
+      code: 'LLM_UNAVAILABLE',
+      message: '模型不可用',
+      partial: {
+        providers: ['zhihu', 'bing'],
+        sources: [
+          {
+            url: 'https://www.zhihu.com/question/1',
+            title: '有什么好用的发票工具？',
+            snippet: '每个月手工贴发票太麻烦。',
+            platform: 'zhihu',
+          },
+        ],
+      },
+    });
+    render(<OpportunityPage find={find} start={vi.fn()} />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('模型不可用');
+    expect(alert).toHaveTextContent('采集到 1 条公开片段');
+    expect(alert).toHaveTextContent('zhihu · bing');
+    expect(screen.getByText('有什么好用的发票工具？')).toBeInTheDocument();
+  });
+
   it('reports a failed scan and rescans on demand', async () => {
     const user = userEvent.setup();
     const find = vi

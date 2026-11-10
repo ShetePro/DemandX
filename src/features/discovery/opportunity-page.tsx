@@ -10,7 +10,7 @@ import type { DiscoveryResult, Opportunity } from '@/lib/discovery/types';
 import { cn } from '@/lib/utils/cn';
 
 import { startDiscoveredResearchAction } from './actions';
-import { streamDiscoveryScan, type ScanPhase } from './stream';
+import { streamDiscoveryScan, type ScanPhase, type ScanPartial } from './stream';
 
 const SCAN_PHRASES = [
   'HN · 最近 14 天热点',
@@ -48,7 +48,10 @@ export interface OpportunityPageProps {
     excludeUrls: readonly string[],
     directions: readonly string[],
     onPhase: (phase: ScanPhase) => void,
-  ) => Promise<{ ok: true; value: DiscoveryResult } | { ok: false; code: string; message: string }>;
+  ) => Promise<
+    | { ok: true; value: DiscoveryResult }
+    | { ok: false; code: string; message: string; partial?: ScanPartial }
+  >;
   start?: (
     input: {
       idea: string;
@@ -77,7 +80,7 @@ export function OpportunityPage({
   /** Empty means "let the model plan"; otherwise the scan must use these. */
   const [directions, setDirections] = useState<string[]>([]);
   const [scanning, setScanning] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; partial?: ScanPartial } | null>(null);
   const [starting, setStarting] = useState<string | null>(null);
   const [phrase, setPhrase] = useState(0);
   const [elapsed, setElapsed] = useState(0);
@@ -109,11 +112,14 @@ export function OpportunityPage({
         // Append: earlier rounds stay on screen and stay accountable.
         setBatches((previous) => [...previous, result.value]);
       } else {
-        setError(result.message);
+        setError({
+          message: result.message,
+          ...(result.partial === undefined ? {} : { partial: result.partial }),
+        });
       }
     } catch {
       if (id === requestId.current) {
-        setError('扫描失败：网络或服务端错误，请重试。');
+        setError({ message: '扫描失败：网络或服务端错误，请重试。' });
       }
     } finally {
       if (id === requestId.current) setScanning(false);
@@ -238,7 +244,36 @@ export function OpportunityPage({
           role="alert"
           className="flex flex-col items-start gap-3 rounded-2xl border border-danger/40 bg-danger-soft px-5 py-4"
         >
-          <p className="text-sm text-danger">{error}</p>
+          <p className="text-sm text-danger">{error.message}</p>
+          {error.partial !== undefined && error.partial.sources.length > 0 ? (
+            <div className="w-full rounded-lg border border-border/60 bg-surface/60 px-3 py-2 text-[11px] text-muted">
+              <p className="text-fg">
+                检索已完成：采集到 {error.partial.sources.length} 条公开片段
+                {error.partial.providers.length > 0
+                  ? `（来源：${error.partial.providers.join(' · ')}）`
+                  : ''}
+                ；模型不可用，暂时无法分析成方向。
+              </p>
+              <details className="mt-1">
+                <summary className="cursor-pointer text-faint">查看已采集片段</summary>
+                <ul className="mt-1.5 flex flex-col gap-1.5">
+                  {error.partial.sources.slice(0, 12).map((source) => (
+                    <li key={source.url} className="flex flex-col gap-0.5">
+                      <a
+                        href={source.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="break-all text-accent underline-offset-2 hover:underline"
+                      >
+                        {source.title || source.url}
+                      </a>
+                      <span className="line-clamp-2 text-muted">{source.snippet}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={() => void scan()}

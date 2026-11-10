@@ -1,4 +1,6 @@
-import { existsSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import path from 'node:path';
 
 import type { CrawlPlatform } from '@/lib/crawl/platform-profile';
 import { platformProfileDir } from '@/lib/crawl/session-status';
@@ -59,6 +61,23 @@ export const SOCIAL_QUERY_OFFSETS: Readonly<Record<CrawlPlatform, number>> = {
   douyin: 2,
   twitter: 0,
 };
+
+/**
+ * A headed window that closes without results leaves no trace. Mirror each
+ * step into a log so "why was it empty" is answerable without re-running.
+ */
+function socialLog(platform: CrawlPlatform, message: string): void {
+  try {
+    const dir = path.join(homedir(), '.demandx', 'logs');
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(
+      path.join(dir, `social-${platform}.log`),
+      `[${new Date().toISOString()}] ${message}\n`,
+    );
+  } catch {
+    // Logging must never break the scan.
+  }
+}
 
 export function socialSearchUrl(platform: CrawlPlatform, query: string): string {
   return TARGETS[platform].searchUrl(query);
@@ -157,11 +176,15 @@ export function createSocialSearch(platform: CrawlPlatform): SearchPort {
         const page = await context.newPage();
         // Platform search boxes need keywords, not the planner's full phrase.
         const socialQuery = socialQueryFor(platform, query);
+        socialLog(platform, `search query="${query}" socialQuery="${socialQuery}"`);
         await page.goto(target.searchUrl(socialQuery), {
           waitUntil: 'domcontentloaded',
           timeout: 30_000,
         });
         await page.waitForSelector(target.itemSelector, { timeout: 10_000 }).catch(() => undefined);
+        const finalUrl = page.url();
+        const title = await page.title().catch(() => '');
+        socialLog(platform, `loaded url="${finalUrl}" title="${title.slice(0, 80)}"`);
         await humanizeSocialPage(page);
 
         const raw = await page.evaluate(
@@ -201,15 +224,23 @@ export function createSocialSearch(platform: CrawlPlatform): SearchPort {
           },
         );
 
+        socialLog(platform, `hits=${(raw as RawItem[]).length}`);
+        if ((raw as RawItem[]).length === 0 && /login|signin|passport/i.test(finalUrl)) {
+          socialLog(platform, 'possible login wall: search redirected to a sign-in page');
+        }
         return (raw as RawItem[]).slice(0, opts.limit).map((item) => ({
           url: item.url,
           title: item.title,
           snippet: item.text.slice(0, 300),
           platform,
         }));
-      } catch {
+      } catch (error) {
         // A login wall, captcha or changed DOM is a skipped source, not a
         // failed scan; other ports still answer.
+        socialLog(
+          platform,
+          `search failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
         return [];
       } finally {
         await context?.close().catch(() => undefined);

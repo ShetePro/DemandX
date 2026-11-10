@@ -89,7 +89,11 @@ export async function POST(request: Request): Promise<Response> {
           ].slice(0, 300),
         };
 
-        let lastError: { code: string; message: string } | null = null;
+        let lastError: {
+          code: string;
+          message: string;
+          partial?: { sources: { url: string; title: string; snippet: string; platform: string }[]; providers: string[] };
+        } | null = null;
         let attemptMemory = baseMemory;
 
         for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
@@ -161,7 +165,11 @@ export async function POST(request: Request): Promise<Response> {
             return;
           }
 
-          lastError = { code: result.code, message: result.message };
+          lastError = {
+            code: result.code,
+            message: result.message,
+            ...(result.partial === undefined ? {} : { partial: result.partial }),
+          };
 
           // A duplicate-heavy, empty or ungrounded round is worth exactly one
           // replan; a model/provider failure is not, because the next attempt
@@ -195,6 +203,7 @@ export async function POST(request: Request): Promise<Response> {
             lastError?.code === 'TOO_SIMILAR'
               ? '连续两轮结果都与最近扫描过于相似，稍后再扫或检查搜索配置。'
               : (lastError?.message ?? '扫描失败：服务端错误'),
+          ...(lastError?.partial === undefined ? {} : { partial: lastError.partial }),
         });
       } catch {
         send({ type: 'error', code: 'SCAN_FAILED', message: '扫描失败：服务端错误' });

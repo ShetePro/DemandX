@@ -47,6 +47,8 @@ export type AdapterFailure = {
   reason: AdapterFailureReason;
   /** Short token safe to embed in an aggregated error message. */
   code: string;
+  /** Truncated upstream `error.message`; never the prompt or an API key. */
+  detail?: string;
 };
 
 export type AdapterResult = { ok: true; text: string; usage: Usage } | AdapterFailure;
