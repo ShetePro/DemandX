@@ -50,7 +50,9 @@ describe('openai-compatible adapter', () => {
 
     const body = JSON.parse(String(init.body)) as Record<string, unknown>;
     expect(body.model).toBe('gpt-test');
-    expect(body.temperature).toBe(0);
+    // Temperature is provider-default on purpose: several models (e.g. Kimi
+    // K3.1) reject 0 with a 400, and the schema gate already constrains output.
+    expect(body).not.toHaveProperty('temperature');
     expect(body.messages).toEqual([
       { role: 'system', content: 'system text' },
       { role: 'user', content: 'user text' },
@@ -73,7 +75,9 @@ describe('openai-compatible adapter', () => {
       type: 'json_schema',
       json_schema: { name: 'result', schema: SCHEMA, strict: true },
     });
-    expect(body.temperature).toBe(0);
+    // Temperature is provider-default on purpose: several models (e.g. Kimi
+    // K3.1) reject 0 with a 400, and the schema gate already constrains output.
+    expect(body).not.toHaveProperty('temperature');
   });
 
   it('merges provider headers under the protocol auth header', async () => {

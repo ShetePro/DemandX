@@ -189,10 +189,16 @@ export async function planScan(ports: PlanPorts): Promise<DiscoveryPlan> {
       : [];
   let hint: string | undefined;
 
+  // One wall-clock budget for the whole plan: a chain of four 30s timeouts
+  // otherwise spends two minutes before the templates even start.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PLAN_TIMEOUT_MS);
+  try {
   // Two attempts: a small model often puts six angles in one domain on the
   // first try; the corrective prompt names the problem instead of falling
   // straight back to the generic pool.
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (controller.signal.aborted) break;
     const prompt = buildPlanPrompt(
       ports.memory,
       ports.trends,
@@ -208,6 +214,7 @@ export async function planScan(ports: PlanPorts): Promise<DiscoveryPlan> {
         profile: 'bulk',
         fallbackProfile: 'quality',
         timeoutMs: PLAN_TIMEOUT_MS,
+        signal: controller.signal,
       })
       .catch(() => null);
 
@@ -225,6 +232,9 @@ export async function planScan(ports: PlanPorts): Promise<DiscoveryPlan> {
   }
 
   return fallbackPlan(random, directions);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Dedupe + angle validation; `null` means "not usable, fall back". */

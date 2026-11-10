@@ -22,6 +22,7 @@ export async function complete(request: AdapterRequest): Promise<AdapterResult> 
     { ...request.headers },
     body,
     request.timeoutMs,
+    request.signal,
   );
   if (!outcome.ok) return outcome;
 

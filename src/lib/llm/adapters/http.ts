@@ -45,6 +45,7 @@ export async function postJson(
   headers: Record<string, string>,
   body: unknown,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  signal?: AbortSignal,
 ): Promise<HttpOutcome> {
   let response: Response;
   try {
@@ -52,7 +53,10 @@ export async function postJson(
       method: 'POST',
       headers: { ...headers, 'content-type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal:
+        signal === undefined
+          ? AbortSignal.timeout(timeoutMs)
+          : AbortSignal.any([AbortSignal.timeout(timeoutMs), signal]),
     });
   } catch (error) {
     const name = (error as { name?: unknown } | null)?.name;

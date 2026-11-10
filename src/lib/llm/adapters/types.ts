@@ -26,6 +26,8 @@ export type AdapterRequest = {
   jsonSchema?: Record<string, unknown> | undefined;
   /** Overrides `DEFAULT_TIMEOUT_MS`; the chain leaves it unset. */
   timeoutMs?: number | undefined;
+  /** Caller cancellation (a scan budget); aborts the in-flight request. */
+  signal?: AbortSignal | undefined;
 };
 
 export type AdapterFailureReason =

@@ -12,7 +12,6 @@ export async function complete(request: AdapterRequest): Promise<AdapterResult> 
       { role: 'system', content: request.prompt.system },
       { role: 'user', content: request.prompt.user },
     ],
-    temperature: 0,
   };
 
   if (request.jsonSchema) {
@@ -30,6 +29,7 @@ export async function complete(request: AdapterRequest): Promise<AdapterResult> 
     headers,
     body,
     request.timeoutMs,
+    request.signal,
   );
   if (!outcome.ok) return outcome;
 

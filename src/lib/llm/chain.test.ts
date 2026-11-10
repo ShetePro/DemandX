@@ -332,10 +332,11 @@ describe('createLlmPort · structured', () => {
     expect(again.ok).toBe(true);
   });
 
-  it('cools the provider when the retry also fails at the transport', async () => {
+  it('does not cool a provider down for a transport blip', async () => {
     fetchMock
       .mockRejectedValueOnce(new TypeError('fetch failed'))
-      .mockRejectedValueOnce(new TypeError('fetch failed'));
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(answer('recovered'));
 
     const port = makePort([A]);
     const first = await port.text(PROMPT, { profile: 'bulk' });
@@ -343,10 +344,10 @@ describe('createLlmPort · structured', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     const again = await port.text(PROMPT, { profile: 'bulk' });
-    expect(again.ok).toBe(false);
-    if (again.ok) return;
-    expect(again.message).toContain('A#a-model: cooldown');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect(again.value.text).toBe('recovered');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('falls back to the bulk chain after the quality chain fails', async () => {

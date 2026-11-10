@@ -25,7 +25,13 @@ export async function complete(request: AdapterRequest): Promise<AdapterResult> 
     messages: [{ role: 'user', content: request.prompt.user }],
   };
 
-  const outcome = await postJson(endpoint(request.baseUrl), headers, body, request.timeoutMs);
+  const outcome = await postJson(
+    endpoint(request.baseUrl),
+    headers,
+    body,
+    request.timeoutMs,
+    request.signal,
+  );
   if (!outcome.ok) return outcome;
 
   const root = asRecord(outcome.body);

@@ -16,7 +16,7 @@ import { existsSync } from 'node:fs';
 import type { DiscoveryPlan, DiscoveryResult, ScanMemory } from '@/lib/discovery/types';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 /** Sort key: English-only queries before mixed/Chinese ones. */
 function englishFirst(query: string): number {

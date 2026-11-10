@@ -18,6 +18,8 @@ export type CallOptions = {
   fallbackProfile?: Profile;
   /** Per-attempt timeout; defaults to the adapter's 120s. */
   timeoutMs?: number;
+  /** Aborting cancels the in-flight provider request and stops the chain. */
+  signal?: AbortSignal;
 };
 
 /** Token counts as reported by the provider; 0 when it reports nothing. */

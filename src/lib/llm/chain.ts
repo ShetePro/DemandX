@@ -1,3 +1,6 @@
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { z } from 'zod';
 
@@ -68,14 +71,37 @@ function summarize(failures: Failure[]): string {
 }
 
 /**
- * Auth, quota, timeouts, transport failures and 5xx mean this provider is
- * unusable for a while. `empty`/`malformed` answers and 400/404/422 say nothing
- * about the provider's health: degrade to the next item, but keep it in rotation.
+ * Auth, quota and 5xx mean this provider is unusable for a while. Timeouts and
+ * transport blips are deliberately NOT cooled down: a slow structured answer
+ * would otherwise lock every model out for five minutes even though the next
+ * request (or a smaller one) succeeds. `empty`/`malformed` answers and
+ * 400/404/422 say nothing about the provider's health either.
  */
 function needsCooldown(failure: AdapterFailure): boolean {
-  if (failure.reason === 'timeout' || failure.reason === 'network') return true;
   if (failure.reason !== 'http') return false;
   return failure.status >= 500 || [401, 403, 408, 429].includes(failure.status);
+}
+
+/** Last failure per provider#model, for the cooldown message and llm.log. */
+type Cooldown = { until: number; reason: string };
+
+function describeFailure(failure: AdapterFailure): string {
+  const base = failure.reason === 'http' ? `http ${failure.status}` : failure.reason;
+  return failure.detail === undefined ? base : `${base} ${failure.detail}`;
+}
+
+/** Provider failures are invisible in a local app; keep a short audit trail. */
+function logFailure(item: ChainItem, failure: AdapterFailure): void {
+  try {
+    const dir = path.join(homedir(), '.demandx', 'logs');
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(
+      path.join(dir, 'llm.log'),
+      `[${new Date().toISOString()}] ${item.providerName}#${item.modelId} ${describeFailure(failure)}\n`,
+    );
+  } catch {
+    // Diagnostics must never take the chain down.
+  }
 }
 
 /** JSON.parse + zod, with messages that never quote the payload. */
@@ -130,18 +156,25 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
   // In-memory on purpose: a restart re-probes providers, which is what we want
   // after the operator edits settings. Keyed by provider+model: one slow model
   // must not take the provider's other models (and the fallback chain) down.
-  const coolingUntil = new Map<string, number>();
+  const coolingUntil = new Map<string, Cooldown>();
 
   function cooldownKey(item: ChainItem): string {
     return `${item.providerId}#${item.modelId}`;
   }
 
   function cooling(item: ChainItem): boolean {
-    const until = coolingUntil.get(cooldownKey(item));
-    if (until === undefined) return false;
-    if (until > now()) return true;
+    const state = coolingUntil.get(cooldownKey(item));
+    if (state === undefined) return false;
+    if (state.until > now()) return true;
     coolingUntil.delete(cooldownKey(item));
     return false;
+  }
+
+  function cooldownFailure(item: ChainItem): Failure {
+    const state = coolingUntil.get(cooldownKey(item));
+    return state === undefined
+      ? { item, code: 'cooldown' }
+      : { item, code: 'cooldown', detail: `上次失败：${state.reason}` };
   }
 
   async function attempt(
@@ -150,6 +183,7 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
     structured: boolean,
     jsonSchema: Record<string, unknown> | undefined,
     timeoutMs: number | undefined,
+    signal: AbortSignal | undefined,
   ): Promise<Attempt> {
     const apiKey = await deps.resolveApiKey(item.providerId);
     // A broken secret store is local: retrying it on a timer buys nothing.
@@ -167,6 +201,7 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
           structured,
           jsonSchema,
           ...(timeoutMs === undefined ? {} : { timeoutMs }),
+          ...(signal === undefined ? {} : { signal }),
         });
       } catch {
         // An adapter bug must not take the rest of the chain down with it.
@@ -185,7 +220,13 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
     }
 
     if (!result.ok) {
-      if (needsCooldown(result)) coolingUntil.set(cooldownKey(item), now() + cooldownMs);
+      logFailure(item, result);
+      if (needsCooldown(result)) {
+        coolingUntil.set(cooldownKey(item), {
+          until: now() + cooldownMs,
+          reason: describeFailure(result),
+        });
+      }
       return {
         ok: false,
         code: result.code,
@@ -214,12 +255,13 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
         if (!chain.ok) return chain;
 
         for (const item of chain.value) {
+          if (options.signal?.aborted) break;
           if (cooling(item)) {
-            failures.push({ item, code: 'cooldown' });
+            failures.push(cooldownFailure(item));
             continue;
           }
 
-          const result = await attempt(item, prompt, false, undefined, options.timeoutMs);
+          const result = await attempt(item, prompt, false, undefined, options.timeoutMs, options.signal);
           if (result.ok) {
             deps.recordUsage?.(item, result.usage);
             return ok({ text: result.text, used: item, usage: result.usage });
@@ -256,8 +298,9 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
         if (!chain.ok) return chain;
 
         for (const item of chain.value) {
+          if (options.signal?.aborted) break;
           if (cooling(item)) {
-            failures.push({ item, code: 'cooldown' });
+            failures.push(cooldownFailure(item));
             // Unknown cause, so a pure "bad output" verdict would be a guess.
             sawOtherFailure = true;
             continue;
@@ -266,7 +309,7 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
           // A malformed answer is usually a formatting slip, so the same item gets
           // exactly one retry before the chain moves on.
           for (let attemptNo = 1; attemptNo <= 2; attemptNo += 1) {
-            const result = await attempt(item, prompt, true, jsonSchema, options.timeoutMs);
+            const result = await attempt(item, prompt, true, jsonSchema, options.timeoutMs, options.signal);
             if (!result.ok) {
               failures.push({
             item,

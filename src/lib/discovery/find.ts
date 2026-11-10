@@ -23,7 +23,7 @@ import {
 } from './types';
 
 /** Enough context for the model without turning the prompt into a crawl. */
-export const MAX_SOURCES = 30;
+export const MAX_SOURCES = 12;
 
 /**
  * At least this many sources must survive filtering, or the scan is too thin.
@@ -36,7 +36,7 @@ export const MIN_SOURCES = 2;
  * Discovery is an interactive scan: a model that has not answered in this long
  * is better reported as unavailable than left spinning behind the dialog.
  */
-export const DISCOVERY_LLM_TIMEOUT_MS = 45_000;
+export const DISCOVERY_LLM_TIMEOUT_MS = 150_000;
 
 export type DiscoveryPorts = {
   /** Scraped engines and the keyed fallback, already ordered by preference. */
@@ -174,22 +174,35 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
   deps.onPhase?.('model', sources.length);
 
   async function askModel(prompt: { system: string; user: string }) {
+    // Abort, don't just stop waiting: an abandoned 2-minute request keeps
+    // holding the provider's connection and starves the next scan.
+    const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const answered = await Promise.race([
-      // Bulk on purpose: the scan is interactive and the quality chain has
-      // timed out the 45s budget in practice. The quality rules live in the
-      // prompt and the evidence gates instead.
-      deps.llm.structured(discoverySchema, prompt, {
+    const timedOut = new Promise<null>((resolve) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        resolve(null);
+      }, DISCOVERY_LLM_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([
+        deps.llm.structured(discoverySchema, prompt, {
         profile: 'bulk',
         // A bulk-only outage (all chat models cooling down / unavailable)
         // must not fail the radar: the quality chain can still analyse.
         fallbackProfile: 'quality',
-      }),
-      new Promise<null>((resolve) => {
-        timer = setTimeout(() => resolve(null), DISCOVERY_LLM_TIMEOUT_MS);
-      }),
-    ]).finally(() => clearTimeout(timer));
-    return answered;
+        // Give the adapter a deadline just inside the race below, so an
+        // abandoned request is aborted instead of holding the chain open.
+        timeoutMs: DISCOVERY_LLM_TIMEOUT_MS - 5_000,
+        signal: controller.signal,
+        }),
+        timedOut,
+      ]);
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   const allowed = new Map(sources.map((source) => [source.url, source]));
@@ -371,7 +384,7 @@ function buildPrompt(
 
   return {
     system: `你是独立开发者的灵感侦察员。只根据给定片段判断，不得补充搜索。
-输出 4–8 个值得验证的产品灵感，尽量覆盖不同领域（中文与海外各至少两个），不要反复描述同一个问题来凑数；每条都必须引用片段里的 URL，并给出原文短句作为 quote。
+输出 1–3 个值得验证的产品灵感，尽量覆盖不同领域（中文与海外各至少两个），不要反复描述同一个问题来凑数；每条都必须引用片段里的 URL，并给出原文短句作为 quote。
 要求：
 - problem 写用户的原话困境，不是功能清单。
 - ${angleRule}
