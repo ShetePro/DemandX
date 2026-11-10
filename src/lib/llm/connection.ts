@@ -1,7 +1,7 @@
 import { and, asc, eq } from 'drizzle-orm';
 
 import { db } from '@/lib/db/client';
-import { providerModels, providers } from '@/lib/db/schema';
+import { llmChains, providerModels, providers } from '@/lib/db/schema';
 
 import type { AdapterFailure, AdapterFailureReason } from './adapters/types';
 import { adapterFor } from './chain';
@@ -65,10 +65,10 @@ function codeFor(reason: AdapterFailureReason): AppErrorCode {
   return reason === 'malformed' || reason === 'empty' ? 'LLM_BAD_OUTPUT' : 'LLM_UNAVAILABLE';
 }
 
-function describe(reason: AdapterFailureReason, status: number): string {
+function describe(reason: AdapterFailureReason, status: number, detail?: string): string {
   switch (reason) {
     case 'http':
-      return `连接失败：HTTP ${status}`;
+      return `连接失败：HTTP ${status}${detail === undefined ? '' : `（${detail}）`}`;
     case 'timeout':
       return `连接失败：超过 ${PROBE_TIMEOUT_MS / 1000} 秒未响应`;
     case 'network':
@@ -127,11 +127,28 @@ async function loadProbeTarget(id: number): Promise<
       return { ok: false, code: 'PROVIDER_NOT_FOUND', message: `provider ${id} 不存在` };
     }
 
-    const modelIds = rows
-      .map((row) => row.modelId)
-      .filter((modelId): modelId is string => modelId !== null)
+    // The chain is the operator's own shortlist, so probe those models first:
+    // `provider_models` still carries ids the provider has since dropped, and
+    // walking them alphabetically made a healthy key look broken.
+    const chainRows = await db
+      .select({ modelId: llmChains.modelId })
+      .from(llmChains)
+      .where(eq(llmChains.providerId, id))
+      .orderBy(asc(llmChains.profile), asc(llmChains.position));
+    const candidates = [
+      ...chainRows.map((row) => row.modelId),
+      ...rows.map((row) => row.modelId).filter((modelId): modelId is string => modelId !== null),
+    ];
+    const seen = new Set<string>();
+    const modelIds = candidates
       .filter((modelId) => !modelId.trim().toLowerCase().endsWith('-free'))
-      .slice(0, 5);
+      .filter((modelId) => {
+        const key = modelId.trim().toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 8);
 
     if (modelIds.length === 0) {
       return {
@@ -196,7 +213,8 @@ export async function testProviderConnection(id: number): Promise<ConnectionTest
     if (outcome.ok) {
       const latencyMs = Math.round(performance.now() - startedAt);
       // A probe is a real, billable request: count it like any other call.
-      void recordLlmUsage({
+      // Awaited so a caller (and the settings test) never races the write.
+      await recordLlmUsage({
         providerId: id,
         model: modelId,
         kind,
@@ -220,7 +238,7 @@ export async function testProviderConnection(id: number): Promise<ConnectionTest
   const message =
     lastOutcome.reason === 'http' && status === 403 && isOpencodeBaseUrl(baseUrl)
       ? 'OpenCode 返回 403：免费模型仅限官方客户端，或该模型在当前区域/隐私设置下不可用'
-      : describe(lastOutcome.reason, status);
+      : describe(lastOutcome.reason, status, lastOutcome.detail);
 
   return failure(codeFor(lastOutcome.reason), message, status, lastOutcome.reason);
 }

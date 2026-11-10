@@ -1,4 +1,4 @@
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, notInArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { db } from '@/lib/db/client';
@@ -225,6 +225,22 @@ export async function refreshModels(providerId: number): Promise<Result<Provider
 
   try {
     if (rows.length > 0) {
+      // The listing is authoritative: discovered models it no longer returns
+      // are dead, and leaving them in the cache lets the chain editor and the
+      // connection probe pick model ids the provider rejects. Manual entries
+      // (`source = 'manual'`) are intentional and survive.
+      await db
+        .delete(providerModels)
+        .where(
+          and(
+            eq(providerModels.providerId, parsedId.data),
+            eq(providerModels.source, provider.kind),
+            notInArray(
+              providerModels.modelId,
+              rows.map((row) => row.modelId),
+            ),
+          ),
+        );
       await db
         .insert(providerModels)
         .values(rows)

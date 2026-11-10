@@ -66,7 +66,7 @@ ollama pull qwen3:8b
 | API Key | 留空 |
 
 保存后点「拉取模型」确认能看到 `qwen3:8b`，把模型加入 **bulk** 链；
-**quality** 链用于 S3 聚类、S4 评分与 S5 报告；对话优先使用 **bulk**（响应快），bulk 不可用时才回退 quality。点「测试连接」应返回延迟与模型名。
+**quality** 链用于 S3 聚类、S4 评分与 S5 报告；对话优先使用 **bulk**（响应快），bulk 不可用时才回退 quality。点「测试连接」应返回延迟与模型名。测试连接优先探测链内的模型（bulk → quality），并附带 provider 返回的短错误原文；`/models` 清单里仍列出但已不可调用的模型（如 `big-pickle`）不会再让健康 key 误报 400。
 
 ### 3.2 OpenCode Go 或任意 OpenAI 兼容端点
 

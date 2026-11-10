@@ -164,6 +164,29 @@ suite('refreshModels', () => {
     if (result.ok) expect(result.value[0]?.availableExternally).toBe(false);
   });
 
+  it('drops discovered models the listing no longer returns but keeps manual ones', async () => {
+    const providerId = await seedProvider('OpenCode Go', 'https://opencode.ai/inference/go');
+    await client.sql`
+      insert into provider_models (provider_id, model_id, available_externally, source)
+      values (${providerId}, 'stale-model', true, 'openai-compatible'),
+             (${providerId}, 'manual-only', true, 'manual')
+    `;
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ id: 'fresh-model' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await repo.refreshModels(providerId);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.map((model) => model.modelId)).toEqual(['fresh-model', 'manual-only']);
+    }
+  });
+
   it('keeps the OpenAI-compatible suffix for an ordinary endpoint', async () => {
     const providerId = await seedProvider('Stub', 'http://127.0.0.1:4010/v1');
     const fetchMock = vi.fn().mockResolvedValue(

@@ -129,6 +129,42 @@ suite('testProviderConnection', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('probes the operator-chain model before alphabetically earlier stale ids', async () => {
+    const providerId = await seedProvider('https://example.com/v1');
+    await seedModel(providerId, 'aaa-dead');
+    await seedModel(providerId, 'zzz-live');
+    await client.sql`
+      insert into llm_chains (profile, provider_id, model_id, position)
+      values ('bulk', ${providerId}, 'zzz-live', 0)
+    `;
+    const fetchMock = vi.fn().mockResolvedValue(answer());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await connection.testProviderConnection(providerId);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.model).toBe('zzz-live');
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(String(init?.body)).model).toBe('zzz-live');
+  });
+
+  it('surfaces the upstream message instead of a bare HTTP status', async () => {
+    const providerId = await seedProvider('https://example.com/v1');
+    await seedModel(providerId, 'dead-model');
+    const response = new Response(
+      JSON.stringify({ error: { message: 'Upstream request failed: Model is unavailable.' } }),
+      { status: 400, headers: { 'content-type': 'application/json' } },
+    );
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+
+    const result = await connection.testProviderConnection(providerId);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toBe('连接失败：HTTP 400（Upstream request failed: Model is unavailable.）');
+    }
+  });
+
   it('explains an OpenCode 403 instead of echoing a bare status', async () => {
     const providerId = await seedProvider('https://opencode.ai/inference/go');
     await seedModel(providerId, 'a-paid');
