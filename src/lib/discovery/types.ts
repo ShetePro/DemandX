@@ -129,6 +129,10 @@ export interface DiscoveryResult {
   novelty: { newUrls: number; total: number; ratio: number };
   /** How many historical URLs this scan filtered out before searching. */
   avoided: number;
+  /** Queries actually executed, so a thin scan can be audited from the UI. */
+  queries: string[];
+  /** The shortened keyword each social platform actually searched. */
+  socialQueries: { platform: string; query: string }[];
   /** Providers that answered at least one query, for the UI's status line. */
   providers: string[];
   /** Wall-clock time of the whole scan, search included. */

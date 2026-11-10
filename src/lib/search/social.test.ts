@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createSocialSearch, socialSearchUrl } from './social';
+import { createSocialSearch, socialQueryFor, socialSearchUrl } from './social';
 
 describe('social search', () => {
   it('builds each platform search URL with the encoded query', () => {
@@ -23,5 +23,32 @@ describe('social search', () => {
     const zhihu = createSocialSearch('zhihu');
     expect(zhihu.maxQueries).toBe(1);
     expect(zhihu.platform).toBe('zhihu');
+  });
+});
+
+
+describe('socialQueryFor', () => {
+  it('cuts a planner phrase down to platform keywords', () => {
+    expect(socialQueryFor('zhihu', '律所 外包 文书起草 太贵 替代方案')).toBe('律所 外包 文书起草');
+    expect(socialQueryFor('xiaohongshu', '诊所 排班 excel 换班 太麻烦')).toBe('诊所 排班 excel');
+  });
+
+  it('keeps four English words for X and drops intent words', () => {
+    expect(
+      socialQueryFor('twitter', 'invoice reconciliation spreadsheet small business software'),
+    ).toBe('invoice reconciliation spreadsheet');
+    expect(socialQueryFor('twitter', 'cold email domain banned outreach')).toBe(
+      'cold email domain banned',
+    );
+  });
+
+  it('shortens long Chinese phrase tokens to keywords', () => {
+    expect(socialQueryFor('xiaohongshu', '餐厅出餐时间对不上 前厅后厨催单 记录')).toBe(
+      '餐厅出餐 前厅后厨',
+    );
+  });
+
+  it('falls back to the first terms when everything is an intent word', () => {
+    expect(socialQueryFor('zhihu', '工具 软件 推荐')).toBe('工具 软件');
   });
 });

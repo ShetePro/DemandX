@@ -58,5 +58,11 @@ export interface SearchPort {
    * corpus worth searching); skipped queries do not spend `maxQueries`.
    */
   supportsQuery?: (query: string) => boolean;
+  /**
+   * Skip the first N supported queries before serving one. Lets several
+   * platforms of the same language search different angles instead of all
+   * repeating the first Chinese query.
+   */
+  queryOffset?: number;
   search(q: string, opts: SearchOptions): Promise<SearchHit[]>;
 }

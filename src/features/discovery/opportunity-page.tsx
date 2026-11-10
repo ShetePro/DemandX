@@ -28,6 +28,13 @@ const STEP_LABELS = [
   '模型筛选可落地的方向',
 ] as const;
 
+const SOCIAL_LABELS: Readonly<Record<string, string>> = {
+  zhihu: '知乎',
+  xiaohongshu: '小红书',
+  douyin: '抖音',
+  twitter: 'X',
+};
+
 const MONETIZATION_LABELS: Readonly<Record<string, string>> = {
   subscription: '订阅',
   usage: '按量付费',
@@ -424,6 +431,29 @@ function Results({
           ))}
         </div>
         <p className="text-[12px] leading-5 text-muted">{result.rationale}</p>
+
+        {result.queries.length > 0 ? (
+          <details className="rounded-lg border border-border/60 px-3 py-2 text-[11px] text-muted">
+            <summary className="cursor-pointer select-none text-faint">
+              本轮查询（{result.queries.length}）
+            </summary>
+            <ul className="mt-1.5 flex flex-col gap-1">
+              {result.queries.map((query) => (
+                <li key={query} className="truncate font-mono text-[10.5px]">
+                  {query}
+                </li>
+              ))}
+            </ul>
+            {result.socialQueries.length > 0 ? (
+              <p className="mt-2 text-faint">
+                社交平台实际检索词：
+                {result.socialQueries
+                  .map((item) => `${SOCIAL_LABELS[item.platform] ?? item.platform}「${item.query}」`)
+                  .join('、')}
+              </p>
+            ) : null}
+          </details>
+        ) : null}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-faint">
           <span>
             新颖度 {Math.round(result.novelty.ratio * 100)}%（{result.novelty.newUrls}/

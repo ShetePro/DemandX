@@ -52,8 +52,55 @@ const TARGETS: Readonly<Record<CrawlPlatform, SocialTarget>> = {
   },
 };
 
+/** Which supported query each platform serves, so the three Chinese ones differ. */
+export const SOCIAL_QUERY_OFFSETS: Readonly<Record<CrawlPlatform, number>> = {
+  zhihu: 0,
+  xiaohongshu: 1,
+  douyin: 2,
+  twitter: 0,
+};
+
 export function socialSearchUrl(platform: CrawlPlatform, query: string): string {
   return TARGETS[platform].searchUrl(query);
+}
+
+/** Web-search phrasing is far too long for a platform search box. */
+const INTENT_ZH: ReadonlySet<string> = new Set([
+  '太麻烦', '麻烦', '太贵', '没法', '有没有', '怎么', '如何', '推荐', '求推荐', '求',
+  '工具', '软件', '平台', '替代', '替代方案', '方案', '付费', '价格',
+  '多少钱', '订阅', '值得', '值得吗', '吐槽', '痛点', '效率低', '手工', '手动', '记录',
+]);
+const INTENT_EN: ReadonlySet<string> = new Set([
+  'how', 'to', 'tool', 'tools', 'software', 'platform', 'best', 'alternative',
+  'alternatives', 'pay', 'paid', 'pricing', 'price', 'pain', 'manual', 'for',
+  'the', 'a', 'an', 'small', 'business', 'with', 'and',
+]);
+
+/**
+ * Short keyword query for a platform search box: drop intent/stop words and
+ * keep the 3–4 domain terms. "律所 外包 文书起草 太贵 替代方案" becomes
+ * "律所 外包 文书起草"; X keeps four English words.
+ */
+export function socialQueryFor(platform: CrawlPlatform, query: string): string {
+  const tokens = query.split(/[\s,，。;；:：!！?？、]+/).filter((token) => token !== '');
+  const stop = /[\u4e00-\u9fff]/.test(query) ? INTENT_ZH : INTENT_EN;
+  const limit = platform === 'twitter' ? 4 : 3;
+  const zh = /[\u4e00-\u9fff]/.test(query);
+  const kept = tokens
+    .filter((token) => !stop.has(token.toLowerCase()))
+    // Chinese planners emit phrase tokens ("餐厅出餐时间对不上"); a search box
+    // wants a 2–4 character keyword, not a sentence.
+    .map((token) =>
+      zh && /[\u4e00-\u9fff]/.test(token) && token.length > 4 ? token.slice(0, 4) : token,
+    )
+    .slice(0, limit);
+  const text = (kept.length > 0 ? kept : tokens.slice(0, Math.min(2, tokens.length))).join(' ');
+  const max = platform === 'twitter' ? 48 : 20;
+  return text.length > max ? text.slice(0, max).trim() : text;
+}
+
+export function socialSupportsQuery(platform: CrawlPlatform, query: string): boolean {
+  return acceptsLanguage(platform, query);
 }
 
 function acceptsLanguage(platform: CrawlPlatform, query: string): boolean {
@@ -73,7 +120,8 @@ export function createSocialSearch(platform: CrawlPlatform): SearchPort {
     id: platform,
     platform,
     maxQueries: 1,
-    supportsQuery: (query) => acceptsLanguage(platform, query),
+    queryOffset: SOCIAL_QUERY_OFFSETS[platform],
+    supportsQuery: (query) => socialSupportsQuery(platform, query),
     async search(query, opts): Promise<SearchHit[]> {
       const profileDir = platformProfileDir(platform);
       // No profile means the operator never logged in; never launch a window.
@@ -107,7 +155,9 @@ export function createSocialSearch(platform: CrawlPlatform): SearchPort {
         await applyStealth(context);
 
         const page = await context.newPage();
-        await page.goto(target.searchUrl(query), {
+        // Platform search boxes need keywords, not the planner's full phrase.
+        const socialQuery = socialQueryFor(platform, query);
+        await page.goto(target.searchUrl(socialQuery), {
           waitUntil: 'domcontentloaded',
           timeout: 30_000,
         });

@@ -101,6 +101,7 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
   // Queries run together: discovery is interactive, and the adapters' shared
   // limiter already serialises calls per host, so this does not burst.
   const portCalls = new Map<string, number>();
+  const portSeen = new Map<string, number>();
   const perQuery = await Promise.all(
     queries.map(async (query) => {
       const answered: {
@@ -112,6 +113,9 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
         // Slow platforms serve a bounded number of queries per scan; queries a
         // port cannot answer do not spend its budget.
         if (port.supportsQuery !== undefined && !port.supportsQuery(query)) continue;
+        const seen = portSeen.get(port.id) ?? 0;
+        portSeen.set(port.id, seen + 1);
+        if (port.queryOffset !== undefined && seen < port.queryOffset) continue;
         const used = portCalls.get(port.id) ?? 0;
         if (port.maxQueries !== undefined && used >= port.maxQueries) continue;
         portCalls.set(port.id, used + 1);

@@ -35,6 +35,8 @@ const RESULT: DiscoveryResult = {
   commercialGap: false,
   novelty: { newUrls: 2, total: 2, ratio: 1 },
   avoided: 0,
+  queries: ['跨境 库存 同步', 'invoice reconciliation spreadsheet'],
+  socialQueries: [{ platform: 'zhihu', query: '跨境 库存' }],
   providers: ['ddg', 'bing'],
   elapsedMs: 16_600,
   model: 'glm-5.3-flash',

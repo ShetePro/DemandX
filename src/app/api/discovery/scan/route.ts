@@ -6,6 +6,13 @@ import { planScan } from '@/lib/discovery/planner';
 import { pickDiscoveryQueries } from '@/lib/discovery/queries';
 import { createDiscoveryRuntime } from '@/lib/discovery/runtime';
 import { fetchTrends } from '@/lib/discovery/trends';
+import {
+  SOCIAL_QUERY_OFFSETS,
+  socialQueryFor,
+  socialSupportsQuery,
+} from '@/lib/search/social';
+import { platformProfileDir } from '@/lib/crawl/session-status';
+import { existsSync } from 'node:fs';
 import type { DiscoveryPlan, DiscoveryResult, ScanMemory } from '@/lib/discovery/types';
 
 export const dynamic = 'force-dynamic';
@@ -129,9 +136,20 @@ export async function POST(request: Request): Promise<Response> {
               trendTitles,
             });
 
+            const socialQueries = (
+              ['zhihu', 'xiaohongshu', 'douyin', 'twitter'] as const
+            ).flatMap((platform) => {
+              if (!existsSync(platformProfileDir(platform))) return [];
+              const supported = executed.filter((item) => socialSupportsQuery(platform, item));
+              const query = supported[SOCIAL_QUERY_OFFSETS[platform]];
+              return query === undefined ? [] : [{ platform, query: socialQueryFor(platform, query) }];
+            });
+
             const value: DiscoveryResult = {
               scanId: stored.ok ? stored.value : null,
               ...result.value,
+              queries: executed,
+              socialQueries,
               angles: plan.angles,
               rationale: plan.rationale,
               strategy: plan.strategy,
