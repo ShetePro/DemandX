@@ -6,7 +6,10 @@ import { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { pathToFileURL } from 'node:url';
 
-import { PLATFORM_LOGIN_URLS } from '@/lib/crawl/platform-profile';
+import {
+  isProfileLocked,
+  PLATFORM_LOGIN_URLS,
+} from '@/lib/crawl/platform-profile';
 import { applyStealth } from '@/lib/crawl/stealth';
 
 /**
@@ -95,6 +98,10 @@ async function openLogin(argv: string[]): Promise<void> {
   const log = createLogger(target.platform);
   log(`启动：pnpm crawl:login ${argv.join(' ')}`);
   log(`会话目录：${target.profileDir}`);
+  if (isProfileLocked(target.profileDir)) {
+    log('已有浏览器窗口正在使用该登录目录，请先关闭旧窗口再重新登录。');
+    return;
+  }
   await mkdir(target.profileDir, { recursive: true });
 
   // Same driver as the crawler; loaded lazily so argument errors never need it.

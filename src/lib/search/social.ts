@@ -1,8 +1,10 @@
 import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
+
+import type { Page } from '@playwright/test';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
-import type { CrawlPlatform } from '@/lib/crawl/platform-profile';
+import { isProfileLocked, type CrawlPlatform } from '@/lib/crawl/platform-profile';
 import { platformProfileDir } from '@/lib/crawl/session-status';
 import { applyStealth, humanizeSocialPage } from '@/lib/crawl/stealth';
 
@@ -145,8 +147,15 @@ export function createSocialSearch(platform: CrawlPlatform): SearchPort {
       const profileDir = platformProfileDir(platform);
       // No profile means the operator never logged in; never launch a window.
       if (!existsSync(profileDir)) return [];
+      // The login window (or another scan) owns the profile: a second launch
+      // would pile about:blank tabs into it, so skip this platform.
+      if (isProfileLocked(profileDir)) {
+        socialLog(platform, 'profile is in use (SingletonLock); skipped');
+        return [];
+      }
 
       const target = TARGETS[platform];
+      let page: Page | null = null;
       let context: Awaited<ReturnType<typeof import('@playwright/test')['chromium']['launchPersistentContext']>> | null =
         null;
       try {
@@ -173,7 +182,7 @@ export function createSocialSearch(platform: CrawlPlatform): SearchPort {
         }
         await applyStealth(context);
 
-        const page = await context.newPage();
+        page = await context.newPage();
         // Platform search boxes need keywords, not the planner's full phrase.
         const socialQuery = socialQueryFor(platform, query);
         socialLog(platform, `search query="${query}" socialQuery="${socialQuery}"`);
@@ -188,7 +197,7 @@ export function createSocialSearch(platform: CrawlPlatform): SearchPort {
         await humanizeSocialPage(page);
 
         const raw = await page.evaluate(
-          (selectors) => {
+          (selectors: { itemSelector: string; linkSelector: string; textSelector: string | null }) => {
             const items = [...document.querySelectorAll(selectors.itemSelector)];
             const seen = new Set<string>();
             const results: { url: string; title: string; text: string }[] = [];
@@ -243,6 +252,9 @@ export function createSocialSearch(platform: CrawlPlatform): SearchPort {
         );
         return [];
       } finally {
+        // Close the page before the context: a stuck navigation otherwise
+        // leaves an about:blank tab behind in the profile's window.
+        await page?.close().catch(() => undefined);
         await context?.close().catch(() => undefined);
       }
     },

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
@@ -65,6 +66,15 @@ export function profileDirFor(url: string, options: ProfileDirOptions = {}): str
 
 
 /** Login page per platform; the login script falls back to these. */
+/**
+ * Chrome writes `SingletonLock` while a browser owns the profile. Launching a
+ * second persistent context then either fails or piles about:blank tabs into
+ * the running window, so callers check this before launching.
+ */
+export function isProfileLocked(profileDir: string): boolean {
+  return existsSync(path.join(profileDir, 'SingletonLock'));
+}
+
 export const PLATFORM_LOGIN_URLS: Readonly<Record<string, string>> = {
   xiaohongshu: 'https://www.xiaohongshu.com',
   douyin: 'https://www.douyin.com',

@@ -1,8 +1,11 @@
 import path from 'node:path';
 
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+
 import { describe, expect, it } from 'vitest';
 
-import { platformForUrl, profileDirFor } from './platform-profile';
+import { isProfileLocked, platformForUrl, profileDirFor } from './platform-profile';
 
 describe('platformForUrl', () => {
   it.each([
@@ -44,5 +47,19 @@ describe('profileDirFor', () => {
     expect(profileDirFor('https://example.com/post', { baseDir })).toBe(
       path.join(baseDir, 'pipeline'),
     );
+  });
+});
+
+
+describe('isProfileLocked', () => {
+  it('detects the Chrome singleton lock in a profile directory', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'demandx-profile-'));
+    try {
+      expect(isProfileLocked(dir)).toBe(false);
+      await writeFile(path.join(dir, 'SingletonLock'), '');
+      expect(isProfileLocked(dir)).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
