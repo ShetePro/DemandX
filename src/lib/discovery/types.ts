@@ -65,7 +65,7 @@ export const discoveryPlanSchema = z.object({
   // A directed scan may legitimately use one angle; `normalizePlan` enforces
   // the 3–6 rule only when the model is free to choose.
   angles: z.array(z.string().trim().min(2).max(40)).min(1).max(6),
-  queries: z.array(plannedQuerySchema).min(8).max(12),
+  queries: z.array(plannedQuerySchema).min(6).max(8),
   /** One sentence the UI shows: why these angles, this round. */
   rationale: z.string().trim().min(1).max(160),
 });

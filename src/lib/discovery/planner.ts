@@ -2,6 +2,7 @@ import type { LlmPort } from '@/lib/llm/port';
 
 import { resolvePlannedAngle } from './angles';
 import { coveredDomains, domainOf, domainLabel } from './domains';
+import { scanLog } from './log';
 import { DISCOVERY_QUERIES_PER_SCAN, pickDiscoveryQueries } from './queries';
 import {
   discoveryPlanSchema,
@@ -13,8 +14,28 @@ import {
 /** Angle used when the model cannot plan; keeps every result angle-tagged. */
 export const FALLBACK_ANGLE = '通用业务手工痛点';
 
+/**
+ * A fallback round still needs several angles: the prompt allows one idea per
+ * angle, so a single-angle plan could only ever produce one card.
+ */
+export const FALLBACK_ANGLES = [
+  '发票与报销',
+  '对账与收款',
+  '库存与订单',
+  '客服与排班',
+] as const;
+
+/** Best-effort theme for a query when no model plan exists. */
+export function fallbackAngleFor(query: string): string {
+  if (/对账|收款|账单|催收|reconcil|payment|payout/i.test(query)) return '对账与收款';
+  if (/库存|订单|超卖|inventory|oversell|order/i.test(query)) return '库存与订单';
+  if (/发票|报销|票据|invoice|expense|receipt/i.test(query)) return '发票与报销';
+  if (/客服|排班|工单|support|schedul|ticket/i.test(query)) return '客服与排班';
+  return FALLBACK_ANGLE;
+}
+
 /** The planner must not hang the interactive scan; fallback is cheap. */
-export const PLAN_TIMEOUT_MS = 30_000;
+export const PLAN_TIMEOUT_MS = 45_000;
 
 /**
  * Forced exploration seeds. The planner is told to look through two random
@@ -150,7 +171,7 @@ ${fixedRule}
 - 角度名必须是 2–10 个字的短标签（如「诊所排班」「外贸单据」），不要写成解释句、不要带冒号；具体买家与工作流放进查询词里。
 - 历史扫描出现过的角度不要重复；如果某个角度已被采用（用户真的开始研究），可以换一个更窄的子方向继续深挖，但要在角度名里体现差异。
 - 查询要像真实用户会打出的关键词，包含行业词 + 痛点词，不要用站点限定符，不要堆砌同义词。
-- 自动规划时输出 8–12 条查询，每个角度至少 1 条；中英文都要有。
+- 自动规划时输出 6–8 条查询，每个角度至少 1 条；中英文都要有。
 - 查询必须能带出商业语境：优先"愿意付费/报价/采购/招聘/外包/替代方案/太贵"这类词，避免只检索教程、百科或纯情绪讨论；每个角度都要能回答"谁现在为此花钱或花时间"。
 - 优先从本轮热点里寻找"人们最近正在抱怨/求工具"的工作流，但不要原样抄标题；热点只用来启发角度。
 ${directed ? '- 探索种子本轮不适用，方向已由用户指定。' : '- 把探索种子当作本轮必须认真看的方向，可以产出 1–2 个与种子相关的角度。'}
@@ -231,6 +252,7 @@ export async function planScan(ports: PlanPorts): Promise<DiscoveryPlan> {
     hint = '上一轮的角度在同一买家领域内重复，或覆盖了最近扫描已用过的领域。请让每个角度来自不同领域，并避开已覆盖领域。';
   }
 
+  scanLog(`plan fallback: model plan unavailable (timeout or invalid output)`);
   return fallbackPlan(random, directions);
   } finally {
     clearTimeout(timer);
@@ -289,12 +311,12 @@ export function normalizePlan(
   const covered = new Set(queries.map((item) => item.angle));
   if (directed) {
     if (!angles.every((angle) => covered.has(angle))) return null;
-    if (queries.length < Math.min(8, angles.length * 2)) return null;
+    if (queries.length < Math.min(6, angles.length * 2)) return null;
   } else {
     // Trimming may drop some of the model's queries; the kept angles must all
     // still be represented, and the plan must stay broad enough to be useful.
     if (!angles.every((angle) => covered.has(angle))) return null;
-    if (queries.length < Math.min(8, angles.length * 2)) return null;
+    if (queries.length < Math.min(6, angles.length * 2)) return null;
   }
 
   return {
@@ -345,12 +367,18 @@ export function fallbackPlan(
   }
 
   const queries = pickDiscoveryQueries(DISCOVERY_QUERIES_PER_SCAN, random);
+  const tagged = queries.map((query) => ({ query, angle: fallbackAngleFor(query) }));
+  const angles = [...new Set(tagged.map((item) => item.angle))];
+  for (const angle of FALLBACK_ANGLES) {
+    if (angles.length >= 3) break;
+    if (!angles.includes(angle)) angles.push(angle);
+  }
   return {
-    angles: [FALLBACK_ANGLE],
-    queries: queries.map((query) => ({
-      query,
-      angle: FALLBACK_ANGLE,
-      language: /[\u4e00-\u9fff]/.test(query) ? 'zh' : 'en',
+    angles,
+    queries: tagged.map((item) => ({
+      query: item.query,
+      angle: item.angle,
+      language: /[\u4e00-\u9fff]/.test(item.query) ? 'zh' : 'en',
     })),
     strategy: 'fallback',
     rationale: '本轮未能生成新角度（模型不可用或输出不合规），回退固定查询池。',

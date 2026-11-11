@@ -33,6 +33,13 @@ export const DISCOVERY_QUERY_POOL: readonly string[] = [
   'hiring screening spreadsheet recruiter tool',
   'reddit small business spreadsheet automate',
   'reddit freelance invoice chasing tool',
+  '求推荐 发票 管理 工具 小公司',
+  '有没有 对账 软件 推荐 电商',
+  '我需要 库存 同步 工具 卖家',
+  'I need a tool to chase invoices',
+  'looking for a tool to reconcile marketplace payouts',
+  'any recommendations small business accounting software',
+  'would pay for software that automates timesheets',
   '知乎 发票 报销 太麻烦 小公司',
   'v2ex 库存 同步 工具 收费',
 ];

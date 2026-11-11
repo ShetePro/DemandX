@@ -6,6 +6,7 @@ import {
   cleanDirections,
   EXPLORATION_SEEDS,
   FALLBACK_ANGLE,
+  FALLBACK_ANGLES,
   fallbackPlan,
   normalizePlan,
   planScan,
@@ -128,7 +129,8 @@ describe('planScan', () => {
     });
 
     expect(plan.strategy).toBe('fallback');
-    expect(plan.angles).toEqual([FALLBACK_ANGLE]);
+    expect(plan.angles.length).toBeGreaterThanOrEqual(3);
+    expect(plan.queries.every((item) => plan.angles.includes(item.angle))).toBe(true);
     expect(plan.queries.length).toBeGreaterThanOrEqual(8);
   });
 
@@ -297,10 +299,13 @@ describe('cleanDirections', () => {
 });
 
 describe('fallbackPlan', () => {
-  it('tags every sampled query with the fallback angle and its language', () => {
+  it('tags every sampled query with a themed fallback angle and its language', () => {
     const plan = fallbackPlan(() => 0.5);
-    expect(plan.angles).toEqual([FALLBACK_ANGLE]);
-    expect(plan.queries.every((item) => item.angle === FALLBACK_ANGLE)).toBe(true);
+    const allowed = [FALLBACK_ANGLE, ...FALLBACK_ANGLES];
+    expect(plan.angles.length).toBeGreaterThanOrEqual(3);
+    expect(plan.angles.every((angle) => allowed.includes(angle))).toBe(true);
+    expect(plan.queries.every((item) => plan.angles.includes(item.angle))).toBe(true);
+    expect(new Set(plan.queries.map((item) => item.angle)).size).toBeGreaterThan(1);
     expect(plan.queries.some((item) => item.language === 'zh')).toBe(true);
     expect(plan.queries.some((item) => item.language === 'en')).toBe(true);
   });

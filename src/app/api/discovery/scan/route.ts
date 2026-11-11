@@ -16,7 +16,7 @@ import { existsSync } from 'node:fs';
 import type { DiscoveryPlan, DiscoveryResult, ScanMemory } from '@/lib/discovery/types';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
+export const maxDuration = 600;
 
 /** Sort key: English-only queries before mixed/Chinese ones. */
 function englishFirst(query: string): number {
@@ -44,7 +44,17 @@ let scanInFlight = false;
  * the novelty; these guarantee the pool contains commercially anchored
  * snippets even when a newly invented angle is too narrow for the engines.
  */
-const FALLBACK_PROBES = 6;
+const FALLBACK_PROBES = 8;
+
+/**
+ * Two demand-shaped searches run every round: the planner invents novelty, but
+ * these guarantee the evidence pool contains first-person "I need / 求推荐"
+ * posts instead of only vendor pages and third-person complaints.
+ */
+const DEMAND_PROBES = [
+  '求推荐 小公司 手工 工具 发票 对账',
+  'I need a tool to automate manual invoices and reconciliation',
+] as const;
 
 /**
  * NDJSON instead of a server action: the dialog must show which phase is
@@ -122,6 +132,7 @@ export async function POST(request: Request): Promise<Response> {
             ...new Set([
               ...plan.queries.map((item) => item.query),
               ...pickDiscoveryQueries(FALLBACK_PROBES),
+              ...DEMAND_PROBES,
             ]),
           ].sort((left, right) => englishFirst(left) - englishFirst(right));
 

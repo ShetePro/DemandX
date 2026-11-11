@@ -115,6 +115,34 @@ describe('findOpportunities', () => {
     if (result.ok) expect(result.value.providers).toEqual(['bing']);
   });
 
+  it('drops an idea whose quote is not first-person demand when a demand source exists', async () => {
+    const demandSource: SearchHit = {
+      url: 'https://example.com/demand',
+      title: '库存同步',
+      snippet: '我愿意付费买一个自动同步多平台库存的工具。',
+      platform: 'web',
+    };
+    const vendorSource: SearchHit = {
+      url: 'https://example.com/vendor',
+      title: '库存同步工具价格',
+      snippet: '该工具每月 200 元，支持多平台库存同步。',
+      platform: 'web',
+    };
+    const idea = {
+      ...OPPORTUNITY,
+      evidence: [{ url: 'https://example.com/vendor', quote: '每月 200 元' }],
+    };
+
+    const result = await findOpportunities({
+      searchPorts: [port('ddg', [demandSource, vendorSource])],
+      queries: ['库存 同步'],
+      llm: llmReturning({ opportunities: [idea] }),
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain('缺少需求原话 1');
+  });
+
   it('fails with NO_SOURCES when nothing answers', async () => {
     const result = await findOpportunities({
       searchPorts: [brokenPort('ddg'), port('bing', [])],

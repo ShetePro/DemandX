@@ -153,6 +153,18 @@ export function hasBusinessSignal(text: string): boolean {
   return BUSINESS_PATTERN.test(text);
 }
 
+/**
+ * First-person demand: the user says they need/want/recommend/would pay. A
+ * vendor page can mention customers and prices without ever being demand, so
+ * the radar marks these snippets separately and prefers quoting them.
+ */
+export const DEMAND_PATTERN =
+  /(我(?:需要|想要|想|希望|求)|求推荐|求一个|有没有(?:人|什么|哪个|推荐|工具)|谁能推荐|找个|找一款|愿意付费|太麻烦|受不了|崩溃|头疼|I\s+(?:need|want|wish)|I'?d\s+pay|looking\s+for|any\s+recommendations?|recommend(?:ation)?s?\b|is\s+there\s+(?:a|any)\s+tool|need\s+a\s+tool|help\s+me\s+find|sick\s+of|struggling\s+with|hate\s+(?:doing|chasing|maintaining))/i;
+
+export function hasDemandLanguage(text: string): boolean {
+  return DEMAND_PATTERN.test(text);
+}
+
 /** The text the model and the filter both see for one hit. */
 export function sourceText(source: DiscoverySource): string {
   return `${source.title}\n${source.snippet}`;

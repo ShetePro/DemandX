@@ -2,6 +2,7 @@ import type { LlmPort } from '@/lib/llm/port';
 import type { SearchPort } from '@/lib/search/port';
 
 import { resolvePlannedAngle } from './angles';
+import { scanLog } from './log';
 import {
   ideaTokens,
   isNovelFingerprint,
@@ -11,9 +12,11 @@ import {
 import { DISCOVERY_HITS_PER_QUERY, pickDiscoveryQueries } from './queries';
 import {
   hasBusinessSignal,
+  hasDemandLanguage,
   isFirstHandSource,
   quoteGrounded,
   selectSources,
+  sourceText,
 } from './sources';
 import {
   discoverySchema,
@@ -36,7 +39,7 @@ export const MIN_SOURCES = 2;
  * Discovery is an interactive scan: a model that has not answered in this long
  * is better reported as unavailable than left spinning behind the dialog.
  */
-export const DISCOVERY_LLM_TIMEOUT_MS = 150_000;
+export const DISCOVERY_LLM_TIMEOUT_MS = 180_000;
 
 export type DiscoveryPorts = {
   /** Scraped engines and the keyed fallback, already ordered by preference. */
@@ -214,6 +217,7 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
       prior,
       priorTokens: priorIdeas.map((idea) => ideaTokens(idea.title, idea.problem)),
       firstHandAvailable: sources.some((source) => isFirstHandSource(source.url)),
+      demandAvailable: sources.some((source) => hasDemandLanguage(sourceText(source))),
     });
 
   let asked = await askModel(buildPrompt(sources, angles, priorIdeas));
@@ -236,17 +240,25 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
   }
 
   let checked = check(asked.value.data.opportunities);
+  scanLog(
+    `model=${asked.value.used.modelId} returned=${asked.value.data.opportunities.length} ` +
+      `accepted=${checked.opportunities.length} ungrounded=${checked.ungrounded} ` +
+      `unanchored=${checked.unanchored} noFirstHand=${checked.noFirstHand} ` +
+      `noDemand=${checked.noDemand} offAngle=${checked.offAngle} duplicates=${checked.duplicates} ` +
+      `angles=[${angles.join('|')}] demandSources=${sources.filter((source) => hasDemandLanguage(sourceText(source))).length}`,
+  );
 
   // A model that ignored the evidence rules gets one corrective retry on the
   // same snippets: replanning costs a search round and may not fix the cause.
   if (
     checked.opportunities.length === 0 &&
-    (checked.ungrounded > 0 || checked.unanchored > 0)
+    (checked.ungrounded > 0 || checked.unanchored > 0 || checked.noDemand > 0)
   ) {
     const problems = [
       checked.ungrounded > 0 ? `${checked.ungrounded} 条灵感的 quote 在片段里找不到原文` : '',
       checked.unanchored > 0 ? `${checked.unanchored} 条灵感没有引用带「商业线索」标记的片段` : '',
       checked.noFirstHand > 0 ? `${checked.noFirstHand} 条灵感没有引用带「真实讨论」标记的片段` : '',
+      checked.noDemand > 0 ? `${checked.noDemand} 条灵感没有引用带「需求原话」标记的片段` : '',
       checked.placeholder > 0 ? `${checked.placeholder} 条输出是「无有效灵感」占位内容` : '',
     ]
       .filter((problem) => problem !== '')
@@ -269,7 +281,7 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
     }
   }
 
-  const { duplicates, offAngle, ungrounded, unanchored, placeholder } = checked;
+  const { duplicates, offAngle, ungrounded, unanchored, noDemand, placeholder } = checked;
   // Evidence beats silence: a grounded, on-angle idea without a paid source is
   // still a lead. It ships flagged rather than failing the whole scan, and the
   // UI tells the operator what is missing.
@@ -291,7 +303,7 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
     return {
       ok: false,
       code: 'INVALID_OUTPUT',
-      message: `模型输出未通过校验：引文不匹配 ${ungrounded}、缺少商业线索 ${unanchored}、角度不符 ${offAngle}、占位/无有效灵感 ${placeholder}，本次扫描作废。`,
+      message: `模型输出未通过校验：引文不匹配 ${ungrounded}、缺少商业线索 ${unanchored}、缺少需求原话 ${noDemand}、角度不符 ${offAngle}、占位/无有效灵感 ${placeholder}，本次扫描作废。`,
     };
   }
 
@@ -341,12 +353,16 @@ function buildPrompt(
   const businessIndexes = ordered.flatMap((source, index) =>
     hasBusinessSignal(`${source.title}\n${source.snippet}`) ? [index + 1] : [],
   );
+  const demandIndexes = ordered.flatMap((source, index) =>
+    hasDemandLanguage(`${source.title}\n${source.snippet}`) ? [index + 1] : [],
+  );
 
   const list = ordered
     .map((source, index) => {
       const marks = [
         businessIndexes.includes(index + 1) ? '[商业线索]' : '',
         isFirstHandSource(source.url) ? '[真实讨论]' : '',
+        demandIndexes.includes(index + 1) ? '[需求原话]' : '',
       ]
         .filter((mark) => mark !== '')
         .join('');
@@ -360,6 +376,11 @@ function buildPrompt(
       : businessIndexes.map((index) => `[${index}]`).join(' ');
 
   const firstHandAvailable = ordered.some((source) => isFirstHandSource(source.url));
+  const demandRule =
+    demandIndexes.length === 0
+      ? '- 本轮没有带「需求原话」标记的片段：quote 必须是最接近用户抱怨的原话，不要用厂商文案或第三人称总结。'
+      : '- 每条灵感的 evidence 至少一条 quote 来自带「需求原话」标记的片段（用户自己说「我需要/我想要/求推荐/愿意付费」）。没有可引用的需求原话就不要输出这条灵感。';
+
   const firstHandRule = firstHandAvailable
     ? '- 每条灵感至少一条引文来自带「真实讨论」标记的片段（Reddit / Hacker News / GitHub Issue / 论坛里用户自述）；没有真实讨论就不要输出这条灵感。'
     : '- 本轮没有带「真实讨论」标记的片段：可以引用普通网页，但 problem 必须写明这是二手描述，不要把厂商宣传语当用户原话。';
@@ -384,7 +405,7 @@ function buildPrompt(
 
   return {
     system: `你是独立开发者的灵感侦察员。只根据给定片段判断，不得补充搜索。
-输出 1–3 个值得验证的产品灵感，尽量覆盖不同领域（中文与海外各至少两个），不要反复描述同一个问题来凑数；每条都必须引用片段里的 URL，并给出原文短句作为 quote。
+输出 2–4 个值得验证的产品灵感，尽量覆盖不同领域（中英文来源都要用到），不要反复描述同一个问题来凑数；每条都必须引用片段里的 URL，并给出原文短句作为 quote。
 要求：
 - problem 写用户的原话困境，不是功能清单。
 - ${angleRule}
@@ -394,6 +415,7 @@ function buildPrompt(
 - mvp 写一个人 1–2 周能上线的范围；需要牌照、硬件、双边市场或大规模数据的想法不要输出。
 - 每条灵感的 evidence 至少引用一条下方「必选证据来源」里的编号；这些片段含价格、付费、招聘、外包或替代方案。没有商业线索可引用就不要输出这条灵感。
 ${firstHandRule}
+${demandRule}
 - 片段之间互相矛盾或只是同一来源的重复，不要当成多个灵感。
 - 不要重复「最近已产出的灵感」里的方向；如果确实要深挖，必须换买家或工作流，并在 title/problem 里体现差异。
 - 每个角度最多输出 1 条灵感；不同角度必须是不同买家与工作流，禁止用同一产品形态换行业凑数。
@@ -403,6 +425,8 @@ ${firstHandRule}
 }
 
 type CandidateCheck = {
+  /** Ideas dropped because they wrote to demand but cited no demand-language source. */
+  noDemand: number;
   opportunities: Opportunity[];
   /** Grounded, on-angle, novel ideas with no commercial citation. */
   unanchoredItems: Opportunity[];
@@ -430,6 +454,7 @@ function validateCandidates(
     prior: readonly string[];
     priorTokens: readonly ReadonlySet<string>[];
     firstHandAvailable: boolean;
+    demandAvailable: boolean;
   },
 ): CandidateCheck {
   const opportunities: Opportunity[] = [];
@@ -441,6 +466,7 @@ function validateCandidates(
   let ungrounded = 0;
   let unanchored = 0;
   let noFirstHand = 0;
+  let noDemand = 0;
   let placeholder = 0;
 
   for (const candidate of candidates) {
@@ -507,6 +533,20 @@ function validateCandidates(
       continue;
     }
 
+    // Demand evidence must be the user's own words ("I need", "求推荐", "愿意
+    // 付费"), not a vendor page or a third-person summary. Only enforced when
+    // the round actually collected such a snippet.
+    if (
+      context.demandAvailable &&
+      !evidence.some((item) => {
+        const source = context.allowed.get(item.url);
+        return source !== undefined && hasDemandLanguage(sourceText(source));
+      })
+    ) {
+      noDemand += 1;
+      continue;
+    }
+
     const anchored = evidence.some((item) => {
       const source = context.allowed.get(item.url);
       return source !== undefined && hasBusinessSignal(`${source.title}\n${source.snippet}`);
@@ -535,6 +575,7 @@ function validateCandidates(
     ungrounded,
     unanchored,
     noFirstHand,
+    noDemand,
     placeholder,
   };
 }
