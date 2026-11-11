@@ -1,6 +1,7 @@
 import path from 'node:path';
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 import { describe, expect, it } from 'vitest';
@@ -52,11 +53,32 @@ describe('profileDirFor', () => {
 
 
 describe('isProfileLocked', () => {
-  it('detects the Chrome singleton lock in a profile directory', async () => {
+  it('reports a plain lock file as in use', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'demandx-profile-'));
     try {
       expect(isProfileLocked(dir)).toBe(false);
       await writeFile(path.join(dir, 'SingletonLock'), '');
+      expect(isProfileLocked(dir)).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('clears a lock left behind by a dead Chrome pid', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'demandx-profile-'));
+    try {
+      await symlink('somehost-999999', path.join(dir, 'SingletonLock'));
+      expect(isProfileLocked(dir)).toBe(false);
+      expect(existsSync(path.join(dir, 'SingletonLock'))).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the lock while the owning pid is alive', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'demandx-profile-'));
+    try {
+      await symlink(`somehost-${process.pid}`, path.join(dir, 'SingletonLock'));
       expect(isProfileLocked(dir)).toBe(true);
     } finally {
       await rm(dir, { recursive: true, force: true });

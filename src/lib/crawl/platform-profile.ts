@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, lstatSync, readlinkSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
@@ -70,9 +70,43 @@ export function profileDirFor(url: string, options: ProfileDirOptions = {}): str
  * Chrome writes `SingletonLock` while a browser owns the profile. Launching a
  * second persistent context then either fails or piles about:blank tabs into
  * the running window, so callers check this before launching.
+ *
+ * The lock is a symlink to `<host>-<pid>`; a crash (or SIGKILL) leaves it
+ * behind with a dead pid, which would otherwise disable the platform forever.
  */
 export function isProfileLocked(profileDir: string): boolean {
-  return existsSync(path.join(profileDir, 'SingletonLock'));
+  const lock = path.join(profileDir, 'SingletonLock');
+  // Chrome's lock is a symlink to `host-pid` (a dangling target), so
+  // `existsSync` would follow it and report false for a perfectly live lock.
+  try {
+    lstatSync(lock);
+  } catch {
+    return false;
+  }
+  let pid: number | null = null;
+  try {
+    const target = readlinkSync(lock);
+    const parsed = Number(target.slice(target.lastIndexOf('-') + 1));
+    if (Number.isInteger(parsed) && parsed > 0) pid = parsed;
+  } catch {
+    // Not a symlink: treat it as a live lock rather than deleting an unknown file.
+    return true;
+  }
+  if (pid === null) return true;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') return true;
+  }
+  for (const name of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
+    try {
+      unlinkSync(path.join(profileDir, name));
+    } catch {
+      // Already gone or owned by another user; the next launch reports it.
+    }
+  }
+  return false;
 }
 
 export const PLATFORM_LOGIN_URLS: Readonly<Record<string, string>> = {
