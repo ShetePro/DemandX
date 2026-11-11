@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readlinkSync, unlinkSync } from 'node:fs';
+import { lstatSync, readlinkSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
