@@ -86,11 +86,15 @@ export function OpportunityPage({
   const [elapsed, setElapsed] = useState(0);
   const [step, setStep] = useState(0);
   const requestId = useRef(0);
+  /** React StrictMode mounts twice in dev; never POST two scans for one page. */
+  const scanInFlight = useRef(false);
   const skeletonRef = useRef<HTMLDivElement | null>(null);
   /** URLs shown by earlier scans this visit; the next scan excludes them. */
   const seenUrls = useRef<string[]>([]);
 
   async function scan(): Promise<void> {
+    if (scanInFlight.current) return;
+    scanInFlight.current = true;
     const id = ++requestId.current;
     setScanning(true);
     setError(null);
@@ -122,6 +126,7 @@ export function OpportunityPage({
         setError({ message: '扫描失败：网络或服务端错误，请重试。' });
       }
     } finally {
+      scanInFlight.current = false;
       if (id === requestId.current) setScanning(false);
     }
   }

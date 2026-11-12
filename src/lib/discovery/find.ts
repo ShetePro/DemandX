@@ -41,6 +41,9 @@ export const MIN_SOURCES = 2;
  */
 export const DISCOVERY_LLM_TIMEOUT_MS = 180_000;
 
+/** One angle's completion; two run in parallel inside the round budget. */
+const PER_ANGLE_TIMEOUT_MS = 90_000;
+
 export type DiscoveryPorts = {
   /** Scraped engines and the keyed fallback, already ordered by preference. */
   searchPorts: readonly SearchPort[];
@@ -176,33 +179,77 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
 
   deps.onPhase?.('model', sources.length);
 
-  async function askModel(prompt: { system: string; user: string }) {
-    // Abort, don't just stop waiting: an abandoned 2-minute request keeps
-    // holding the provider's connection and starves the next scan.
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timedOut = new Promise<null>((resolve) => {
-      timer = setTimeout(() => {
-        controller.abort();
-        resolve(null);
-      }, DISCOVERY_LLM_TIMEOUT_MS);
-    });
+  async function askOnce(
+    prompt: { system: string; user: string },
+    signal: AbortSignal,
+    timeoutMs: number,
+  ) {
     try {
-      return await Promise.race([
-        deps.llm.structured(discoverySchema, prompt, {
+      return await deps.llm.structured(discoverySchema, prompt, {
         profile: 'bulk',
         // A bulk-only outage (all chat models cooling down / unavailable)
         // must not fail the radar: the quality chain can still analyse.
         fallbackProfile: 'quality',
-        // Give the adapter a deadline just inside the race below, so an
-        // abandoned request is aborted instead of holding the chain open.
-        timeoutMs: DISCOVERY_LLM_TIMEOUT_MS - 5_000,
-        signal: controller.signal,
-        }),
-        timedOut,
-      ]);
+        timeoutMs,
+        signal,
+      });
     } catch {
       return null;
+    }
+  }
+
+  // One request for 3–5 ideas forces a slow model to reason about diversity
+  // and four sets of evidence at once; per-angle requests are smaller and a
+  // single timeout no longer discards the whole round.
+  async function askAngles(
+    anglesToAsk: readonly string[],
+  ): Promise<{ ideas: Opportunity[]; model: string } | null> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DISCOVERY_LLM_TIMEOUT_MS);
+    const queue = [...anglesToAsk.slice(0, 4)];
+    const ideas: Opportunity[] = [];
+    const models = new Set<string>();
+    let succeeded = false;
+
+    async function worker(): Promise<void> {
+      for (;;) {
+        const angle = queue.shift();
+        if (angle === undefined || controller.signal.aborted) return;
+        const result = await askOnce(
+          buildPrompt(sources, [angle], priorIdeas, undefined, angle),
+          controller.signal,
+          PER_ANGLE_TIMEOUT_MS,
+        );
+        if (result !== null && result.ok) {
+          succeeded = true;
+          models.add(result.value.used.modelId);
+          ideas.push(...result.value.data.opportunities);
+        }
+      }
+    }
+
+    try {
+      // Two at a time: four concurrent long completions on one provider key
+      // are throttled and each passes the per-call deadline.
+      const workers = Math.min(anglesToAsk.length, 2);
+      await Promise.all(Array.from({ length: workers }, () => worker()));
+    } finally {
+      clearTimeout(timer);
+    }
+    return succeeded ? { ideas, model: [...models].join('+') } : null;
+  }
+
+  async function askModel(prompt: { system: string; user: string }) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DISCOVERY_LLM_TIMEOUT_MS);
+    const timedOut = new Promise<null>((resolve) => {
+      controller.signal.addEventListener('abort', () => resolve(null), { once: true });
+    });
+    try {
+      return await Promise.race([
+        askOnce(prompt, controller.signal, DISCOVERY_LLM_TIMEOUT_MS - 5_000),
+        timedOut,
+      ]);
     } finally {
       clearTimeout(timer);
     }
@@ -220,28 +267,47 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
       demandAvailable: sources.some((source) => hasDemandLanguage(sourceText(source))),
     });
 
-  let asked = await askModel(buildPrompt(sources, angles, priorIdeas));
   const partial = { sources, providers: [...providers] };
-  if (asked === null) {
-    return {
-      ok: false,
-      code: 'LLM_UNAVAILABLE',
-      message: '模型响应超时，请重试（本次扫描未完成）。',
-      partial,
-    };
-  }
-  if (!asked.ok) {
-    return {
-      ok: false,
-      code: 'LLM_UNAVAILABLE',
-      message: `灵感分析失败：${asked.message}${failureHint(asked.message)}`,
-      partial,
-    };
+  let modelLabel: string;
+  let rawIdeas: Opportunity[];
+
+  if (angles.length >= 2) {
+    const run = await askAngles(angles);
+    if (run === null) {
+      return {
+        ok: false,
+        code: 'LLM_UNAVAILABLE',
+        message: '模型响应超时，请重试（本次扫描未完成）。',
+        partial,
+      };
+    }
+    modelLabel = run.model;
+    rawIdeas = run.ideas;
+  } else {
+    const asked = await askModel(buildPrompt(sources, angles, priorIdeas));
+    if (asked === null) {
+      return {
+        ok: false,
+        code: 'LLM_UNAVAILABLE',
+        message: '模型响应超时，请重试（本次扫描未完成）。',
+        partial,
+      };
+    }
+    if (!asked.ok) {
+      return {
+        ok: false,
+        code: 'LLM_UNAVAILABLE',
+        message: `灵感分析失败：${asked.message}${failureHint(asked.message)}`,
+        partial,
+      };
+    }
+    modelLabel = asked.value.used.modelId;
+    rawIdeas = asked.value.data.opportunities;
   }
 
-  let checked = check(asked.value.data.opportunities);
+  let checked = check(rawIdeas);
   scanLog(
-    `model=${asked.value.used.modelId} returned=${asked.value.data.opportunities.length} ` +
+    `model=${modelLabel} returned=${rawIdeas.length} ` +
       `accepted=${checked.opportunities.length} ungrounded=${checked.ungrounded} ` +
       `unanchored=${checked.unanchored} noFirstHand=${checked.noFirstHand} ` +
       `noDemand=${checked.noDemand} offAngle=${checked.offAngle} duplicates=${checked.duplicates} ` +
@@ -275,7 +341,7 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
     if (retry !== null && retry.ok) {
       const second = check(retry.value.data.opportunities);
       if (second.opportunities.length > 0) {
-        asked = retry;
+        modelLabel = retry.value.used.modelId;
         checked = second;
       }
     }
@@ -315,7 +381,7 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
       commercialGap,
       providers: [...providers],
       elapsedMs: Date.now() - startedAt,
-      model: asked.value.used.modelId,
+      model: modelLabel,
     },
   };
 }
@@ -343,6 +409,7 @@ function buildPrompt(
   angles: readonly string[],
   priorIdeas: readonly { title: string; problem: string }[],
   hint?: string,
+  focus?: string,
 ): { system: string; user: string } {
   const ordered = [...sources].sort((left, right) => {
     const leftBusiness = hasBusinessSignal(`${left.title}\n${left.snippet}`) ? 1 : 0;
@@ -397,15 +464,22 @@ function buildPrompt(
           .join('\n');
 
   const angleRule =
-    angles.length === 0
-      ? '每条灵感都要带 angle，用一个能说明买家与工作流的短标签。'
-      : `本轮的 angle 只能从以下列表里取，且尽量让不同灵感落在不同角度上：\n${angles
-          .map((angle) => `- ${angle}`)
-          .join('\n')}`;
+    focus !== undefined
+      ? `本轮只针对「${focus}」这个角度，angle 必须原样写成「${focus}」。`
+      : angles.length === 0
+        ? '每条灵感都要带 angle，用一个能说明买家与工作流的短标签。'
+        : `本轮的 angle 只能从以下列表里取，且尽量让不同灵感落在不同角度上：\n${angles
+            .map((angle) => `- ${angle}`)
+            .join('\n')}`;
+  const ideaCount = focus === undefined ? '3–5' : '1–2';
+  const perAngleRule =
+    focus === undefined
+      ? '${perAngleRule}'
+      : '- 只输出这个角度下的 1–2 条灵感，每条仍要满足所有证据要求。';
 
   return {
     system: `你是独立开发者的灵感侦察员。只根据给定片段判断，不得补充搜索。
-输出 2–4 个值得验证的产品灵感，尽量覆盖不同领域（中英文来源都要用到），不要反复描述同一个问题来凑数；每条都必须引用片段里的 URL，并给出原文短句作为 quote。
+输出 ${ideaCount} 个值得验证的产品灵感，尽量覆盖不同领域（中英文来源都要用到），不要反复描述同一个问题来凑数；每条都必须引用片段里的 URL，并给出原文短句作为 quote。
 要求：
 - problem 写用户的原话困境，不是功能清单。
 - ${angleRule}
@@ -418,7 +492,7 @@ ${firstHandRule}
 ${demandRule}
 - 片段之间互相矛盾或只是同一来源的重复，不要当成多个灵感。
 - 不要重复「最近已产出的灵感」里的方向；如果确实要深挖，必须换买家或工作流，并在 title/problem 里体现差异。
-- 每个角度最多输出 1 条灵感；不同角度必须是不同买家与工作流，禁止用同一产品形态换行业凑数。
+${perAngleRule}
 - 全部用中文。${hint === undefined ? '' : `\n\n上一轮的问题：${hint}`}`,
     user: `必选证据来源（含商业线索）：${requiredSources}\n\n最近已产出的灵感（不要重复）：\n${recentIdeas}\n\n候选片段：\n\n${list}\n\n请输出 opportunities 数组。`,
   };

@@ -92,6 +92,8 @@ function describeFailure(failure: AdapterFailure): string {
 
 /** Provider failures are invisible in a local app; keep a short audit trail. */
 function logFailure(item: ChainItem, failure: AdapterFailure): void {
+  // Unit tests inject fake adapters; their failures are not provider health.
+  if (process.env.VITEST !== undefined || process.env.NODE_ENV === 'test') return;
   try {
     const dir = path.join(homedir(), '.demandx', 'logs');
     mkdirSync(dir, { recursive: true });

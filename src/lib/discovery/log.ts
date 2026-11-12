@@ -7,6 +7,8 @@ import path from 'node:path';
  * "only one idea" can be traced to the model, the evidence gates or the plan.
  */
 export function scanLog(message: string): void {
+  // Vitest exercises these paths with stub models; keep the operator log clean.
+  if (process.env.VITEST !== undefined || process.env.NODE_ENV === 'test') return;
   try {
     const dir = path.join(homedir(), '.demandx', 'logs');
     mkdirSync(dir, { recursive: true });

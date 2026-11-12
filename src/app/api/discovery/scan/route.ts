@@ -88,6 +88,11 @@ export async function POST(request: Request): Promise<Response> {
         return;
       }
       scanInFlight = true;
+      // Safety net: the flag must not stay stuck forever if a provider call
+      // ignores an abort. The normal path clears it in `finally`.
+      const watchdog = setTimeout(() => {
+        scanInFlight = false;
+      }, 540_000);
 
       try {
         const runtime = await createDiscoveryRuntime();
@@ -195,11 +200,10 @@ export async function POST(request: Request): Promise<Response> {
           // A duplicate-heavy, empty or ungrounded round is worth exactly one
           // replan; a model/provider failure is not, because the next attempt
           // would hit the same provider state.
-          if (
-            result.code !== 'TOO_SIMILAR' &&
-            result.code !== 'NO_SOURCES' &&
-            result.code !== 'INVALID_OUTPUT'
-          ) {
+          // Only a different angle/query set can fix these; re-running the
+          // model on a slow provider after an evidence rejection only doubles
+          // the wait (`find` already does one corrective retry internally).
+          if (result.code !== 'TOO_SIMILAR' && result.code !== 'NO_SOURCES') {
             break;
           }
 
@@ -229,6 +233,7 @@ export async function POST(request: Request): Promise<Response> {
       } catch {
         send({ type: 'error', code: 'SCAN_FAILED', message: '扫描失败：服务端错误' });
       } finally {
+        clearTimeout(watchdog);
         scanInFlight = false;
         controller.close();
       }

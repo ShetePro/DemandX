@@ -35,7 +35,7 @@ export function fallbackAngleFor(query: string): string {
 }
 
 /** The planner must not hang the interactive scan; fallback is cheap. */
-export const PLAN_TIMEOUT_MS = 45_000;
+export const PLAN_TIMEOUT_MS = 30_000;
 
 /**
  * Forced exploration seeds. The planner is told to look through two random
