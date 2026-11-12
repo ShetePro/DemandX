@@ -35,27 +35,28 @@ function brokenPort(id: string): SearchPort {
   };
 }
 
+const STUB_USED = {
+  providerId: 1,
+  providerName: 'stub',
+  kind: 'openai-compatible',
+  baseUrl: 'http://stub',
+  modelId: 'stub',
+  headers: {},
+} as const;
+
 function llmReturning(data: unknown): LlmPort {
   return {
     async structured() {
       return {
         ok: true,
-        value: {
-          data,
-          used: {
-            providerId: 1,
-            providerName: 'stub',
-            kind: 'openai-compatible',
-            baseUrl: 'http://stub',
-            modelId: 'stub',
-            headers: {},
-          },
-          usage: { in: 1, out: 1 },
-        },
+        value: { data, used: STUB_USED, usage: { in: 1, out: 1 } },
       } as never;
     },
     async text() {
-      throw new Error('unused');
+      return {
+        ok: true,
+        value: { text: JSON.stringify(data), used: STUB_USED, usage: { in: 1, out: 1 } },
+      } as never;
     },
   };
 }
@@ -75,11 +76,11 @@ const OPPORTUNITY = {
 
 describe('findOpportunities', () => {
   it('collects snippets from every port, then asks the model once', async () => {
-    const structured = vi.fn(llmReturning({ opportunities: [OPPORTUNITY] }).structured);
+    const text = vi.fn(llmReturning({ opportunities: [OPPORTUNITY] }).text);
     const result = await findOpportunities({
       searchPorts: [port('ddg', [hit(1), hit(2), hit(3)]), port('bing', [hit(4), hit(5)])],
       queries: ['库存 同步', '库存 卖家', '库存 超卖'],
-      llm: { structured, text: vi.fn() } as unknown as LlmPort,
+      llm: { structured: vi.fn(), text } as unknown as LlmPort,
     });
 
     expect(result.ok).toBe(true);
@@ -88,7 +89,7 @@ describe('findOpportunities', () => {
     expect(result.value.providers).toEqual(['ddg', 'bing']);
     expect(result.value.opportunities).toEqual([OPPORTUNITY]);
 
-    const prompt = structured.mock.calls[0]?.[1] as { user: string };
+    const prompt = text.mock.calls[0]?.[0] as { user: string };
     expect(prompt.user).toContain('https://example.com/post-1');
   });
 
@@ -186,10 +187,10 @@ describe('findOpportunities', () => {
       queries: ['库存 同步', '库存 卖家', '库存 超卖'],
       llm: {
         async structured() {
-          return { ok: false, code: 'NO_PROVIDER', message: '没有可用模型' } as never;
+          throw new Error('unused');
         },
         async text() {
-          throw new Error('unused');
+          return { ok: false, code: 'NO_PROVIDER', message: '没有可用模型' } as never;
         },
       } as unknown as LlmPort,
     });
@@ -385,17 +386,15 @@ describe('findOpportunities', () => {
   });
 
   it('tells the model which directions already exist', async () => {
-    const structured = vi.fn(
-      llmReturning({ opportunities: [OPPORTUNITY] }).structured,
-    );
+    const text = vi.fn(llmReturning({ opportunities: [OPPORTUNITY] }).text);
     await findOpportunities({
       searchPorts: [port('ddg', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
       queries: ['库存 同步'],
       priorIdeas: [{ title: '旧方向：库存同步', problem: '卖家手工同步库存' }],
-      llm: { structured, text: vi.fn() } as unknown as LlmPort,
+      llm: { structured: vi.fn(), text } as unknown as LlmPort,
     });
 
-    const prompt = structured.mock.calls[0]?.[1] as { user: string };
+    const prompt = text.mock.calls[0]?.[0] as { user: string };
     expect(prompt.user).toContain('旧方向：库存同步');
     expect(prompt.user).toContain('最近已产出的灵感（不要重复）');
   });
@@ -455,15 +454,15 @@ describe('findOpportunities', () => {
       searchPorts: [port('ddg', [hit(1), hit(2), hit(3), hit(4), hit(5)])],
       llm: {
         async structured() {
+          throw new Error('unused');
+        },
+        async text() {
           return {
             ok: false,
             code: 'LLM_UNAVAILABLE',
             message:
               '所有 provider 均失败（bulk）：OpenCode Go#glm-5.3-flash: network、OpenCode Go#big-pickle: cooldown',
           } as never;
-        },
-        async text() {
-          throw new Error('unused');
         },
       } as unknown as LlmPort,
       queries: ['库存 同步'],

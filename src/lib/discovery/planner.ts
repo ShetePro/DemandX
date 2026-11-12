@@ -2,6 +2,7 @@ import type { LlmPort } from '@/lib/llm/port';
 
 import { resolvePlannedAngle } from './angles';
 import { coveredDomains, domainOf, domainLabel } from './domains';
+import { parseJsonObject } from './json';
 import { scanLog } from './log';
 import { DISCOVERY_QUERIES_PER_SCAN, pickDiscoveryQueries } from './queries';
 import {
@@ -62,7 +63,7 @@ export const EXPLORATION_SEEDS: readonly string[] = [
 ];
 
 export interface PlanPorts {
-  llm: Pick<LlmPort, 'structured'>;
+  llm: Pick<LlmPort, 'text'>;
   memory: ScanMemory;
   trends: readonly TrendItem[];
   /** False when the trend request failed, so the prompt says so instead of lying. */
@@ -230,23 +231,28 @@ export async function planScan(ports: PlanPorts): Promise<DiscoveryPlan> {
       hint,
     );
 
+    // Text + local validation: some providers hang on `response_format` and
+    // the plan prompt already spells out the JSON shape.
     const asked = await ports.llm
-      .structured(discoveryPlanSchema, { system: prompt.system, user: prompt.user }, {
+      .text({ system: prompt.system, user: prompt.user }, {
         profile: 'bulk',
-        fallbackProfile: 'quality',
         timeoutMs: PLAN_TIMEOUT_MS,
         signal: controller.signal,
       })
       .catch(() => null);
 
     if (asked !== null && asked.ok) {
-      const plan = normalizePlan(
-        asked.value.data,
-        asked.value.used.modelId,
-        directions,
-        avoidDomains,
-      );
-      if (plan !== null) return plan;
+      const parsed = parseJsonObject(asked.value.text);
+      const decoded = parsed === null ? null : discoveryPlanSchema.safeParse(parsed);
+      if (decoded !== null && decoded.success) {
+        const plan = normalizePlan(
+          decoded.data,
+          asked.value.used.modelId,
+          directions,
+          avoidDomains,
+        );
+        if (plan !== null) return plan;
+      }
     }
 
     hint = '上一轮的角度在同一买家领域内重复，或覆盖了最近扫描已用过的领域。请让每个角度来自不同领域，并避开已覆盖领域。';

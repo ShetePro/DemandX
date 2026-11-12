@@ -108,9 +108,22 @@ function logFailure(item: ChainItem, failure: AdapterFailure): void {
 
 /** JSON.parse + zod, with messages that never quote the payload. */
 function decode<T>(text: string, schema: z.ZodType<T>): Result<T> {
+  // Some providers ignore `response_format`: minimax adds prose/think tags,
+  // others wrap JSON in a fence. Extract the JSON object before parsing so a
+  // correct answer is not discarded for its envelope.
+  let clean = text.trim();
+  const thinkEnd = clean.lastIndexOf('<｜end▁of▁thinking｜>');
+  if (thinkEnd >= 0) clean = clean.slice(thinkEnd + '<｜end▁of▁thinking｜>'.length).trim();
+  clean = clean.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const first = clean.indexOf('{');
+  const last = clean.lastIndexOf('}');
+  if (first > 0 || (last >= 0 && last < clean.length - 1)) {
+    if (first >= 0 && last > first) clean = clean.slice(first, last + 1);
+  }
+
   let raw: unknown;
   try {
-    raw = JSON.parse(text) as unknown;
+    raw = JSON.parse(clean) as unknown;
   } catch {
     return fail('VALIDATION_FAILED', '响应不是合法 JSON');
   }
@@ -252,11 +265,14 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
       const failures: Failure[] = [];
       const profiles = profilesOf(options);
 
-      for (const profile of profiles) {
+      let itemCount = 0;
+      chainLoop: for (const profile of profiles) {
         const chain = await deps.loadChain(profile);
         if (!chain.ok) return chain;
 
         for (const item of chain.value) {
+          if (options.maxItems !== undefined && itemCount >= options.maxItems) break chainLoop;
+          itemCount += 1;
           if (options.signal?.aborted) break;
           if (cooling(item)) {
             failures.push(cooldownFailure(item));
@@ -273,6 +289,15 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
             code: result.code,
             ...(result.detail === undefined ? {} : { detail: result.detail }),
           });
+          // OpenCode Go reports an exhausted plan as 429; every model on the
+          // same key will answer the same way, so stop instead of burning the
+          // operator's next four minutes on other chain items.
+          if (result.detail !== undefined && /usage limit|GoUsageLimit/i.test(result.detail)) {
+            return fail(
+              'LLM_UNAVAILABLE',
+              'OpenCode Go 用量已用尽（GoUsageLimitError）：请等待额度重置，或在 /settings/llm 切换到其他 provider。',
+            );
+          }
         }
       }
 
@@ -295,11 +320,14 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
       let sawBadOutput = false;
       let sawOtherFailure = false;
 
-      for (const profile of profiles) {
+      let itemCount = 0;
+      chainLoop: for (const profile of profiles) {
         const chain = await deps.loadChain(profile);
         if (!chain.ok) return chain;
 
         for (const item of chain.value) {
+          if (options.maxItems !== undefined && itemCount >= options.maxItems) break chainLoop;
+          itemCount += 1;
           if (options.signal?.aborted) break;
           if (cooling(item)) {
             failures.push(cooldownFailure(item));
@@ -318,6 +346,15 @@ export function createLlmPort(deps: LlmPortDeps): LlmPort {
             code: result.code,
             ...(result.detail === undefined ? {} : { detail: result.detail }),
           });
+          // OpenCode Go reports an exhausted plan as 429; every model on the
+          // same key will answer the same way, so stop instead of burning the
+          // operator's next four minutes on other chain items.
+          if (result.detail !== undefined && /usage limit|GoUsageLimit/i.test(result.detail)) {
+            return fail(
+              'LLM_UNAVAILABLE',
+              'OpenCode Go 用量已用尽（GoUsageLimitError）：请等待额度重置，或在 /settings/llm 切换到其他 provider。',
+            );
+          }
               sawOtherFailure = true;
               break;
             }

@@ -332,6 +332,24 @@ describe('createLlmPort · structured', () => {
     expect(again.ok).toBe(true);
   });
 
+  it('stops the chain when the provider reports an exhausted quota', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ error: { type: 'GoUsageLimitError', message: 'usage limit' } }),
+          { status: 429, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(answer('from b'));
+
+    const result = await makePort([A, B]).text(PROMPT, { profile: 'bulk' });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain('GoUsageLimitError');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('does not cool a provider down for a transport blip', async () => {
     fetchMock
       .mockRejectedValueOnce(new TypeError('fetch failed'))

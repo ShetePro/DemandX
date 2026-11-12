@@ -44,12 +44,12 @@ const TRENDS: TrendItem[] = [
 ];
 
 function llmAnswering(data: unknown) {
-  const structured = vi.fn<
-    (schema: unknown, prompt: unknown, options: unknown) => Promise<unknown>
+  const text = vi.fn<
+    (prompt: unknown, options: unknown) => Promise<unknown>
   >(async () => ({
     ok: true as const,
     value: {
-      data,
+      text: JSON.stringify(data),
       used: {
         providerId: 1,
         providerName: 'stub',
@@ -61,8 +61,8 @@ function llmAnswering(data: unknown) {
       usage: { in: 1, out: 1 },
     },
   }));
-  const llm = { structured } as unknown as Pick<LlmPort, 'structured'>;
-  return { llm, structured };
+  const llm = { text } as unknown as Pick<LlmPort, 'text'>;
+  return { llm, text };
 }
 
 const VALID = {
@@ -82,7 +82,7 @@ const VALID = {
 
 describe('planScan', () => {
   it('shows the model trends, history and adopted directions', async () => {
-    const { llm, structured } = llmAnswering(VALID);
+    const { llm, text } = llmAnswering(VALID);
     const plan = await planScan({
       llm,
       memory: MEMORY,
@@ -94,7 +94,7 @@ describe('planScan', () => {
     expect(plan.strategy).toBe('planned');
     expect(plan.angles).toEqual(['诊所排班', '门店库存', '外贸单据']);
 
-    const prompt = structured.mock.calls[0]?.[1] as { system: string; user: string };
+    const prompt = text.mock.calls[0]?.[0] as { system: string; user: string };
     expect(prompt.user).toContain('scheduling tools for tiny clinics');
     expect(prompt.user).toContain('自由职业者发票助手');
     expect(prompt.user).toContain('小店主财务');
@@ -102,7 +102,7 @@ describe('planScan', () => {
   });
 
   it('states that trends are unavailable instead of pretending', async () => {
-    const { llm, structured } = llmAnswering(VALID);
+    const { llm, text } = llmAnswering(VALID);
     await planScan({
       llm,
       memory: MEMORY,
@@ -111,14 +111,14 @@ describe('planScan', () => {
       random: () => 0,
     });
 
-    const prompt = structured.mock.calls[0]?.[1] as { user: string };
+    const prompt = text.mock.calls[0]?.[0] as { user: string };
     expect(prompt.user).toContain('热点源本轮不可达');
   });
 
   it('falls back to the static pool when the model cannot plan', async () => {
-    const failing: Pick<LlmPort, 'structured'> = {
-      structured: vi.fn(async () => ({ ok: false as const, code: 'NO_PROVIDER', message: 'x' })),
-    } as unknown as Pick<LlmPort, 'structured'>;
+    const failing: Pick<LlmPort, 'text'> = {
+      text: vi.fn(async () => ({ ok: false as const, code: 'NO_PROVIDER', message: 'x' })),
+    } as unknown as Pick<LlmPort, 'text'>;
 
     const plan = await planScan({
       llm: failing,
@@ -183,7 +183,7 @@ describe('directed scans', () => {
   };
 
   it('locks the plan to the directions the operator picked', async () => {
-    const { llm, structured } = llmAnswering(DIRECTED);
+    const { llm, text } = llmAnswering(DIRECTED);
     const plan = await planScan({
       llm,
       memory: MEMORY,
@@ -202,15 +202,15 @@ describe('directed scans', () => {
       '门店库存',
     ]);
 
-    const prompt = structured.mock.calls[0]?.[1] as { system: string; user: string };
+    const prompt = text.mock.calls[0]?.[0] as { system: string; user: string };
     expect(prompt.system).toContain('本轮用户指定了方向：诊所排班、门店库存');
     expect(prompt.user).toContain('用户已指定方向，忽略种子');
   });
 
   it('falls back to template queries on the same directions when the model fails', async () => {
-    const failing: Pick<LlmPort, 'structured'> = {
-      structured: vi.fn(async () => ({ ok: false as const, code: 'NO_PROVIDER', message: 'x' })),
-    } as unknown as Pick<LlmPort, 'structured'>;
+    const failing: Pick<LlmPort, 'text'> = {
+      text: vi.fn(async () => ({ ok: false as const, code: 'NO_PROVIDER', message: 'x' })),
+    } as unknown as Pick<LlmPort, 'text'>;
 
     const plan = await planScan({
       llm: failing,

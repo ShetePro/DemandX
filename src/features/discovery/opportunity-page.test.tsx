@@ -73,6 +73,8 @@ const RESULT: DiscoveryResult = {
 beforeEach(() => {
   router.push.mockReset();
   router.refresh.mockReset();
+  // The page suppresses StrictMode's duplicate auto-scan via sessionStorage.
+  sessionStorage.clear();
 });
 
 describe('OpportunityPage', () => {

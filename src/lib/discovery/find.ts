@@ -2,6 +2,7 @@ import type { LlmPort } from '@/lib/llm/port';
 import type { SearchPort } from '@/lib/search/port';
 
 import { resolvePlannedAngle } from './angles';
+import { parseJsonObject } from './json';
 import { scanLog } from './log';
 import {
   ideaTokens,
@@ -39,10 +40,10 @@ export const MIN_SOURCES = 2;
  * Discovery is an interactive scan: a model that has not answered in this long
  * is better reported as unavailable than left spinning behind the dialog.
  */
-export const DISCOVERY_LLM_TIMEOUT_MS = 180_000;
+export const DISCOVERY_LLM_TIMEOUT_MS = 260_000;
 
-/** One angle's completion; two run in parallel inside the round budget. */
-const PER_ANGLE_TIMEOUT_MS = 90_000;
+/** One angle's completion; sequential so the provider answers one at a time. */
+const PER_ANGLE_TIMEOUT_MS = 120_000;
 
 export type DiscoveryPorts = {
   /** Scraped engines and the keyed fallback, already ordered by preference. */
@@ -183,16 +184,32 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
     prompt: { system: string; user: string },
     signal: AbortSignal,
     timeoutMs: number,
+    maxItems?: number,
   ) {
     try {
-      return await deps.llm.structured(discoverySchema, prompt, {
+      // Text rather than `structured`: several OpenAI-compatible providers
+      // hang or ignore `response_format` here, while the prompt already spells
+      // out the exact JSON object. Parse and validate locally instead.
+      const result = await deps.llm.text(prompt, {
         profile: 'bulk',
-        // A bulk-only outage (all chat models cooling down / unavailable)
-        // must not fail the radar: the quality chain can still analyse.
-        fallbackProfile: 'quality',
         timeoutMs,
         signal,
+        ...(maxItems === undefined ? {} : { maxItems }),
       });
+      if (!result.ok) return result;
+      const parsed = parseJsonObject(result.value.text);
+      const decoded = parsed === null ? null : discoverySchema.safeParse(parsed);
+      if (decoded === null || !decoded.success) {
+        return { ok: false as const, code: 'bad_output', message: '模型输出不是合法 JSON' };
+      }
+      return {
+        ok: true as const,
+        value: {
+          data: decoded.data,
+          used: result.value.used,
+          usage: result.value.usage,
+        },
+      };
     } catch {
       return null;
     }
@@ -206,7 +223,7 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
   ): Promise<{ ideas: Opportunity[]; model: string } | null> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), DISCOVERY_LLM_TIMEOUT_MS);
-    const queue = [...anglesToAsk.slice(0, 4)];
+    const queue = [...anglesToAsk.slice(0, 2)];
     const ideas: Opportunity[] = [];
     const models = new Set<string>();
     let succeeded = false;
@@ -219,6 +236,9 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
           buildPrompt(sources, [angle], priorIdeas, undefined, angle),
           controller.signal,
           PER_ANGLE_TIMEOUT_MS,
+          // One model per angle: chaining to the second model doubles the wait
+          // and the provider may be usage-limited anyway.
+          1,
         );
         if (result !== null && result.ok) {
           succeeded = true;
@@ -229,9 +249,9 @@ export async function findOpportunities(deps: DiscoveryPorts): Promise<Discovery
     }
 
     try {
-      // Two at a time: four concurrent long completions on one provider key
-      // are throttled and each passes the per-call deadline.
-      const workers = Math.min(anglesToAsk.length, 2);
+      // Sequential: concurrent long completions on one provider key are
+      // throttled and each passes the per-call deadline.
+      const workers = 1;
       await Promise.all(Array.from({ length: workers }, () => worker()));
     } finally {
       clearTimeout(timer);
@@ -479,6 +499,8 @@ function buildPrompt(
 
   return {
     system: `你是独立开发者的灵感侦察员。只根据给定片段判断，不得补充搜索。
+严格输出这个 JSON 结构，不要 markdown 代码块，不要解释：
+{"opportunities":[{"title":"","problem":"","audience":"","angle":"","signal":"problem","currentAlternative":"","competitors":[],"monetization":"subscription","mvp":"","evidence":[{"url":"","quote":""}]}]}
 输出 ${ideaCount} 个值得验证的产品灵感，尽量覆盖不同领域（中英文来源都要用到），不要反复描述同一个问题来凑数；每条都必须引用片段里的 URL，并给出原文短句作为 quote。
 要求：
 - problem 写用户的原话困境，不是功能清单。

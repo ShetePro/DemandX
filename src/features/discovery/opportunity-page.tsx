@@ -70,6 +70,10 @@ export interface OpportunityPageProps {
  * than a dialog can show — provenance, timings, model choice and several
  * opportunities with their quotes all need room to be read side by side.
  */
+/** Suppresses StrictMode's double mount without disabling later visits. */
+const AUTO_SCAN_KEY = 'demandx.radar.autoScanAt';
+const AUTO_SCAN_DEDUPE_MS = 10_000;
+
 export function OpportunityPage({
   find = streamDiscoveryScan,
   start = startDiscoveredResearchAction,
@@ -134,6 +138,15 @@ export function OpportunityPage({
   // One scan per visit, started on the next tick: the route itself is the
   // action, and deferring keeps the mount render free of a state write.
   useEffect(() => {
+    // Two mounts milliseconds apart (React StrictMode) must not send two
+    // scans: the second would get SCAN_BUSY and hide the running one.
+    try {
+      const last = Number(sessionStorage.getItem(AUTO_SCAN_KEY) ?? 0);
+      if (Date.now() - last < AUTO_SCAN_DEDUPE_MS) return;
+      sessionStorage.setItem(AUTO_SCAN_KEY, String(Date.now()));
+    } catch {
+      // Private mode: fall through and scan once.
+    }
     const timer = setTimeout(() => void scan(), 0);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- scan is stable per visit

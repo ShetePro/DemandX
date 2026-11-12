@@ -20,6 +20,8 @@ export type CallOptions = {
   timeoutMs?: number;
   /** Aborting cancels the in-flight provider request and stops the chain. */
   signal?: AbortSignal;
+  /** Stop after this many chain items (per-angle calls use one model only). */
+  maxItems?: number;
 };
 
 /** Token counts as reported by the provider; 0 when it reports nothing. */
